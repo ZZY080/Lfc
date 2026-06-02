@@ -14,6 +14,12 @@
     "sourceMap": true,
     "outDir": "./dist",
     "baseUrl": "./",
+    "paths": {
+      "@config/*": ["./src/config/*"],
+      "@integration/*": ["./src/integration/*"],
+      "@module/*": ["./src/module/*"],
+      "@shared/*": ["./src/shared/*"]
+    },
     "incremental": true,
     "skipLibCheck": true,
     "strictNullChecks": true,

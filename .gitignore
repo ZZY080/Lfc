@@ -16,6 +16,12 @@ dist-ssr
 miniprogram_npm
 
 *.env.*
+!*.env.example
+
+# Server runtime data
+server/lfc-nest/uploads/
+server/lfc-nest/.env.development
+server/lfc-nest/.env.production
 
 # Editor directories and files
 .vscode/*
