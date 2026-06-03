@@ -75,7 +75,11 @@ class MainActivity : ComponentActivity() {
                     }
                     composable("home") {
                         val homeViewModel: HomeViewModel = viewModel(
-                            factory = HomeViewModelFactory(tokenManager, searchHistoryStore),
+                            factory = HomeViewModelFactory(
+                                tokenManager,
+                                searchHistoryStore,
+                                applicationContext,
+                            ),
                         )
                         HomeScreen(
                             onLogout = {

@@ -7,28 +7,30 @@ import {
   Patch,
   UseGuards,
 } from '@nestjs/common';
-import { ConsumerMessageService } from '@module/message/service/consumer-message.service';
+import { ConsumerNotificationService } from '@module/message/service/consumer-notification.service';
 import { JwtAuthGuard } from '@shared/guard/jwt-auth.guard';
 import { CurrentUser } from '@shared/decorator/user.decorator';
 
-@Controller('consumer/message')
+@Controller('consumer/notification')
 @UseGuards(JwtAuthGuard)
-export class ConsumerMessageController {
-  constructor(private readonly consumerMessageService: ConsumerMessageService) {}
+export class ConsumerNotificationController {
+  constructor(
+    private readonly consumerNotificationService: ConsumerNotificationService,
+  ) {}
 
   @Get('unread-count')
   getUnreadCount(@CurrentUser('userId') userId: number) {
-    return this.consumerMessageService.getUnreadCount(userId);
+    return this.consumerNotificationService.getUnreadCount(userId);
   }
 
   @Get()
   findAll(@CurrentUser('userId') userId: number) {
-    return this.consumerMessageService.findAll(userId);
+    return this.consumerNotificationService.findAll(userId);
   }
 
   @Patch('read-all')
   markAllRead(@CurrentUser('userId') userId: number) {
-    return this.consumerMessageService.markAllRead(userId);
+    return this.consumerNotificationService.markAllRead(userId);
   }
 
   @Get(':id')
@@ -36,15 +38,7 @@ export class ConsumerMessageController {
     @CurrentUser('userId') userId: number,
     @Param('id', ParseIntPipe) id: number,
   ) {
-    return this.consumerMessageService.findOne(userId, id);
-  }
-
-  @Patch(':id/read')
-  markRead(
-    @CurrentUser('userId') userId: number,
-    @Param('id', ParseIntPipe) id: number,
-  ) {
-    return this.consumerMessageService.markRead(userId, id);
+    return this.consumerNotificationService.findOne(userId, id);
   }
 
   @Delete(':id')
@@ -52,6 +46,6 @@ export class ConsumerMessageController {
     @CurrentUser('userId') userId: number,
     @Param('id', ParseIntPipe) id: number,
   ) {
-    return this.consumerMessageService.remove(userId, id);
+    return this.consumerNotificationService.remove(userId, id);
   }
 }

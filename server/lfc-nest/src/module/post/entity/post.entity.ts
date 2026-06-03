@@ -20,6 +20,18 @@ export class PostEntity {
   @Column({ type: 'text' })
   content: string;
 
+  @Column({ type: 'simple-json', nullable: true })
+  images: string[];
+
+  @Column({ name: 'like_count', default: 0 })
+  likeCount: number;
+
+  @Column({ name: 'favorite_count', default: 0 })
+  favoriteCount: number;
+
+  @Column({ name: 'comment_count', default: 0 })
+  commentCount: number;
+
   @Column({ name: 'author_id' })
   authorId: number;
 

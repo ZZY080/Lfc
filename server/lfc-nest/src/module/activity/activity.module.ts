@@ -21,5 +21,6 @@ import { MessageModule } from '@module/message/message.module';
   ],
   controllers: [ConsumerActivityController, AdminActivityController],
   providers: [ConsumerActivityService, AdminActivityService, RoleAuthzService],
+  exports: [ConsumerActivityService],
 })
 export class ActivityModule {}

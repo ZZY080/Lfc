@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.lfc.consumer.data.ApiClient
+import com.lfc.consumer.data.MediaUploadHelper
 import com.lfc.consumer.data.local.TokenManager
 import com.lfc.consumer.data.model.LoginRequest
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -16,8 +17,6 @@ import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
-import java.io.File
-import java.io.FileOutputStream
 
 data class AuthUiState(
     val isLoading: Boolean = false,
@@ -67,11 +66,15 @@ class AuthViewModel(
         viewModelScope.launch {
             _uiState.value = AuthUiState(isLoading = true)
             try {
-                val uploadFile = uriToUploadFile(studentCardUri)
+                val uploadFile = MediaUploadHelper.uriToUploadFile(
+                    context = context,
+                    uri = studentCardUri,
+                    prefix = "student_card",
+                )
                 val requestFile = uploadFile.file.asRequestBody(uploadFile.mimeType.toMediaTypeOrNull())
                 val part = MultipartBody.Part.createFormData(
                     "studentCard",
-                    uploadFile.file.name,
+                    uploadFile.fileName,
                     requestFile,
                 )
 
@@ -97,40 +100,6 @@ class AuthViewModel(
 
     fun clearError() {
         _uiState.value = _uiState.value.copy(error = null)
-    }
-
-    private data class UploadFile(val file: File, val mimeType: String)
-
-    private fun uriToUploadFile(uri: Uri): UploadFile {
-        val rawMimeType = context.contentResolver.getType(uri)
-        val extension = mimeTypeToExtension(rawMimeType, uri)
-        val mimeType = normalizeMimeType(rawMimeType, extension)
-        val file = File(context.cacheDir, "student_card_${System.currentTimeMillis()}.$extension")
-        context.contentResolver.openInputStream(uri)?.use { input ->
-            FileOutputStream(file).use { output -> input.copyTo(output) }
-        } ?: throw IllegalArgumentException("无法读取图片")
-        return UploadFile(file, mimeType)
-    }
-
-    private fun mimeTypeToExtension(mimeType: String?, uri: Uri): String {
-        return when {
-            mimeType?.contains("png", ignoreCase = true) == true -> "png"
-            mimeType?.contains("webp", ignoreCase = true) == true -> "webp"
-            uri.lastPathSegment?.endsWith(".png", ignoreCase = true) == true -> "png"
-            uri.lastPathSegment?.endsWith(".webp", ignoreCase = true) == true -> "webp"
-            else -> "jpg"
-        }
-    }
-
-    private fun normalizeMimeType(mimeType: String?, extension: String): String {
-        if (!mimeType.isNullOrBlank() && mimeType != "image/*" && mimeType.startsWith("image/")) {
-            return mimeType
-        }
-        return when (extension) {
-            "png" -> "image/png"
-            "webp" -> "image/webp"
-            else -> "image/jpeg"
-        }
     }
 
     private fun parseErrorMessage(e: Exception, fallback: String): String {

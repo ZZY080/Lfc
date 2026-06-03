@@ -17,7 +17,12 @@ import {
   LoginBodyDto,
   RegisterBodyDto,
 } from '@module/auth/dto/consumer-auth.dto';
-import { MessageService } from '@module/message/service/message.service';
+import { NotificationService } from '@module/message/service/notification.service';
+import { generateDefaultNickname } from '@module/user/util/user-nickname.util';
+import {
+  generateUniqueLfcNo,
+  normalizeLfcNo,
+} from '@module/user/util/user-lfc-no.util';
 
 @Injectable()
 export class ConsumerAuthService implements OnModuleInit {
@@ -27,13 +32,14 @@ export class ConsumerAuthService implements OnModuleInit {
     private readonly jwtService: JwtService,
     private readonly redisService: RedisService,
     private readonly configService: ConfigService,
-    private readonly messageService: MessageService,
+    private readonly notificationService: NotificationService,
     @InjectRepository(UserEntity)
     private readonly userRepository: Repository<UserEntity>,
   ) {}
 
   async onModuleInit() {
     await this.seedAdminUser();
+    await this.backfillMissingLfcNo();
   }
 
   async register(body: RegisterBodyDto, studentCardUrl: string): Promise<AuthTokenDto> {
@@ -52,17 +58,21 @@ export class ConsumerAuthService implements OnModuleInit {
     }
 
     const hashedPassword = await bcrypt.hash(body.password, 10);
+    const nickname = await this.generateUniqueNickname();
+    const lfcNo = await this.createUniqueLfcNo();
     const user = await this.userRepository.save(
       this.userRepository.create({
         email: body.email,
         password: hashedPassword,
         studentId: body.studentId,
         studentCardUrl,
+        nickname,
+        lfcNo,
         role: UserRole.CONSUMER,
       }),
     );
 
-    await this.messageService.sendWelcome(user.id);
+    await this.notificationService.sendWelcome(user.id);
 
     return this.issueTokens(user);
   }
@@ -113,6 +123,33 @@ export class ConsumerAuthService implements OnModuleInit {
     return { message: '已退出登录' };
   }
 
+  private createUniqueLfcNo() {
+    return generateUniqueLfcNo((lfcNo) =>
+      this.userRepository.exist({ where: { lfcNo } }),
+    );
+  }
+
+  private async backfillMissingLfcNo() {
+    const users = await this.userRepository.find({ select: ['id', 'lfcNo'] });
+    for (const user of users) {
+      if (!normalizeLfcNo(user.lfcNo)) {
+        user.lfcNo = await this.createUniqueLfcNo();
+        await this.userRepository.save(user);
+      }
+    }
+  }
+
+  private async generateUniqueNickname(): Promise<string> {
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const nickname = generateDefaultNickname();
+      const exists = await this.userRepository.exist({ where: { nickname } });
+      if (!exists) {
+        return nickname;
+      }
+    }
+    return `${generateDefaultNickname()}${Date.now() % 100000}`;
+  }
+
   private async issueTokens(user: UserEntity): Promise<AuthTokenDto> {
     const payload = { userId: user.id, role: user.role };
     const accessToken = this.jwtService.sign(payload, {
@@ -155,16 +192,27 @@ export class ConsumerAuthService implements OnModuleInit {
       where: { email: adminEmail },
     });
     if (existing) {
+      if (!normalizeLfcNo(existing.lfcNo)) {
+        existing.lfcNo = await this.createUniqueLfcNo();
+        await this.userRepository.save(existing);
+      }
       return;
     }
 
     const hashedPassword = await bcrypt.hash(adminPassword, 10);
+    const region = this.configService.get<string>('ALIYUN_OSS_REGION', 'oss-cn-shanghai');
+    const privateBucket = this.configService.get<string>(
+      'ALIYUN_OSS_BUCKET_PRIVATE',
+      'lfc-dev-private',
+    );
+    const lfcNo = await this.createUniqueLfcNo();
     await this.userRepository.save(
       this.userRepository.create({
         email: adminEmail,
         password: hashedPassword,
         studentId: 'ADMIN001',
-        studentCardUrl: '/uploads/student-cards/admin-placeholder.jpg',
+        studentCardUrl: `https://${privateBucket}.${region}.aliyuncs.com/system/admin-placeholder.jpg`,
+        lfcNo,
         role: UserRole.ADMIN,
       }),
     );

@@ -19,7 +19,6 @@ miniprogram_npm
 !*.env.example
 
 # Server runtime data
-server/lfc-nest/uploads/
 server/lfc-nest/.env.development
 server/lfc-nest/.env.production
 

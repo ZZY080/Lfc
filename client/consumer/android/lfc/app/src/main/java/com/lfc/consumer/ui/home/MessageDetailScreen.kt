@@ -29,7 +29,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.lfc.consumer.data.model.MessageDto
+import com.lfc.consumer.data.model.NotificationDto
 import com.lfc.consumer.ui.theme.XhsRed
 import com.lfc.consumer.ui.theme.XhsRedContainer
 import com.lfc.consumer.ui.theme.XhsTextPrimary
@@ -38,7 +38,7 @@ import com.lfc.consumer.ui.theme.XhsTextSecondary
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MessageDetailScreen(
-    message: MessageDto?,
+    message: NotificationDto?,
     isLoading: Boolean,
     onBack: () -> Unit,
     onActivityClick: (Int) -> Unit = {},

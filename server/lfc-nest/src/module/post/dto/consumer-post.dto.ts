@@ -1,11 +1,13 @@
 export interface CreatePostBodyDto {
-  title: string;
-  content: string;
+  title?: string;
+  content?: string;
+  images?: string[];
 }
 
 export interface UpdatePostBodyDto {
   title?: string;
   content?: string;
+  images?: string[];
 }
 
 export interface PostFeedQueryDto {
@@ -22,4 +24,8 @@ export interface PostFeedResultDto {
   page: number;
   limit: number;
   hasMore: boolean;
+}
+
+export interface UploadImageResultDto {
+  url: string;
 }

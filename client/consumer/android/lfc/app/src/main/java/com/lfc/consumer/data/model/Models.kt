@@ -20,7 +20,36 @@ data class PostDto(
     val authorId: Int,
     val createdAt: String,
     val updatedAt: String,
+    val images: List<String>? = null,
+    val likeCount: Int = 0,
+    val favoriteCount: Int = 0,
+    val commentCount: Int = 0,
+    val isLiked: Boolean = false,
+    val isFavorited: Boolean = false,
     val author: UserDto? = null,
+)
+
+data class PostCommentDto(
+    val id: Int,
+    val postId: Int,
+    val userId: Int,
+    val content: String,
+    val parentId: Int? = null,
+    val createdAt: String,
+    val author: UserDto? = null,
+)
+
+data class CreatePostCommentRequest(
+    val content: String,
+    val parentId: Int? = null,
+)
+
+data class PostSocialStateDto(
+    val likeCount: Int,
+    val favoriteCount: Int,
+    val commentCount: Int,
+    val isLiked: Boolean,
+    val isFavorited: Boolean,
 )
 
 data class PostFeedResponse(
@@ -54,19 +83,26 @@ data class SearchUiState(
 )
 
 data class CreatePostRequest(
-    val title: String,
-    val content: String,
+    val title: String? = null,
+    val content: String? = null,
+    val images: List<String>? = null,
 )
 
 data class UpdatePostRequest(
     val title: String? = null,
     val content: String? = null,
+    val images: List<String>? = null,
+)
+
+data class UploadImageResponse(
+    val url: String,
 )
 
 data class ActivityDto(
     val id: Int,
     val title: String,
     val description: String,
+    val images: List<String>? = null,
     val location: String,
     val startTime: String,
     val endTime: String,
@@ -89,8 +125,9 @@ data class ActivityParticipantDto(
 )
 
 data class CreateActivityRequest(
-    val title: String,
-    val description: String,
+    val title: String? = null,
+    val description: String? = null,
+    val images: List<String>? = null,
     val location: String,
     val startTime: String,
     val endTime: String,
@@ -100,18 +137,67 @@ data class CreateActivityRequest(
 data class UpdateActivityRequest(
     val title: String? = null,
     val description: String? = null,
+    val images: List<String>? = null,
     val location: String? = null,
     val startTime: String? = null,
     val endTime: String? = null,
     val maxParticipants: Int? = null,
 )
 
+data class UserProfileDto(
+    val id: Int,
+    val lfcNo: String,
+    val studentId: String,
+    val nickname: String? = null,
+    val bio: String? = null,
+    val avatarUrl: String? = null,
+    val coverUrl: String? = null,
+    val postCount: Int,
+    val followingCount: Int = 0,
+    val followerCount: Int = 0,
+    val likeAndFavoriteCount: Int = 0,
+    val isFollowing: Boolean = false,
+    val isSelf: Boolean = false,
+    val showCommentsPublic: Boolean = false,
+    val showFavoritesPublic: Boolean = false,
+    val showLikesPublic: Boolean = false,
+    val posts: List<PostDto> = emptyList(),
+    val activities: List<ActivityDto> = emptyList(),
+    val participationCount: Int = 0,
+)
+
+data class UpdateProfileRequest(
+    val nickname: String? = null,
+    val bio: String? = null,
+    val avatarUrl: String? = null,
+    val coverUrl: String? = null,
+    val showCommentsPublic: Boolean? = null,
+    val showFavoritesPublic: Boolean? = null,
+    val showLikesPublic: Boolean? = null,
+)
+
+data class FollowStateDto(
+    val isFollowing: Boolean,
+)
+
+data class ProfileCommentDto(
+    val id: Int,
+    val postId: Int,
+    val userId: Int,
+    val content: String,
+    val parentId: Int? = null,
+    val createdAt: String,
+    val post: PostDto? = null,
+)
+
+fun UserProfileDto.displayName(): String = nickname?.takeIf { it.isNotBlank() } ?: studentId
+
 data class LoginRequest(
     val email: String,
     val password: String,
 )
 
-data class MessageDto(
+data class NotificationDto(
     val id: Int,
     val userId: Int,
     val title: String,
@@ -121,6 +207,36 @@ data class MessageDto(
     val relatedId: Int?,
     val isRead: Boolean,
     val createdAt: String,
+)
+
+data class ConversationDto(
+    val id: Int,
+    val peerUserId: Int,
+    val peerStudentId: String,
+    val lastMessageContent: String? = null,
+    val lastMessageAt: String? = null,
+    val unreadCount: Int = 0,
+    val createdAt: String,
+    val updatedAt: String,
+)
+
+data class ChatMessageDto(
+    val id: Int,
+    val conversationId: Int,
+    val senderId: Int,
+    val content: String,
+    val messageType: String = "TEXT",
+    val isRead: Boolean = false,
+    val createdAt: String,
+    val sender: UserDto? = null,
+)
+
+data class CreateConversationRequest(
+    val peerUserId: Int,
+)
+
+data class SendChatMessageRequest(
+    val content: String,
 )
 
 data class UnreadCountDto(

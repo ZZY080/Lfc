@@ -1,4 +1,6 @@
 import {
+  ArrayMaxSize,
+  IsArray,
   IsDateString,
   IsEnum,
   IsInt,
@@ -15,13 +17,20 @@ import {
 import { ActivityStatus } from '@shared/enum/user-role.enum';
 
 export class CreateActivityBodySchema implements CreateActivityBodyDto {
+  @IsOptional()
   @IsString()
   @MinLength(1)
-  title: string;
+  title?: string;
 
+  @IsOptional()
   @IsString()
-  @MinLength(1)
-  description: string;
+  description?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @ArrayMaxSize(20, { message: '最多上传20张图片' })
+  images?: string[];
 
   @IsString()
   @MinLength(1)
@@ -47,8 +56,13 @@ export class UpdateActivityBodySchema implements UpdateActivityBodyDto {
 
   @IsOptional()
   @IsString()
-  @MinLength(1)
   description?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @ArrayMaxSize(20, { message: '最多上传20张图片' })
+  images?: string[];
 
   @IsOptional()
   @IsString()

@@ -119,45 +119,6 @@ fun XhsDetailAuthorRow(
 }
 
 @Composable
-fun XhsPostDetailBottomBar(modifier: Modifier = Modifier) {
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        shadowElevation = 8.dp,
-        color = Color.White,
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .height(36.dp)
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(Color(0xFFF5F5F5)),
-                contentAlignment = Alignment.CenterStart,
-            ) {
-                Text(
-                    "说点什么...",
-                    modifier = Modifier.padding(horizontal = 14.dp),
-                    color = XhsTextSecondary,
-                    fontSize = 14.sp,
-                )
-            }
-            Spacer(modifier = Modifier.width(12.dp))
-            Icon(Icons.Default.FavoriteBorder, contentDescription = "点赞", tint = XhsTextPrimary)
-            Spacer(modifier = Modifier.width(14.dp))
-            Icon(Icons.Default.StarBorder, contentDescription = "收藏", tint = XhsTextPrimary)
-            Spacer(modifier = Modifier.width(14.dp))
-            Icon(Icons.Default.ChatBubbleOutline, contentDescription = "评论", tint = XhsTextPrimary)
-        }
-    }
-}
-
-@Composable
 fun XhsActivityDetailBottomBar(
     participantCount: Int,
     maxParticipants: Int,

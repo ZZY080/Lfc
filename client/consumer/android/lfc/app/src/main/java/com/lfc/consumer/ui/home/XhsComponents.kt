@@ -18,12 +18,16 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Event
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -35,10 +39,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
+import com.lfc.consumer.data.model.PostDto
 import com.lfc.consumer.ui.theme.XhsRed
 import com.lfc.consumer.ui.theme.XhsTextPrimary
 import com.lfc.consumer.ui.theme.XhsTextSecondary
@@ -52,18 +59,44 @@ private val coverGradients = listOf(
     listOf(Color(0xFFF093FB), Color(0xFFF5576C)),
 )
 
+private fun gradientIndexForId(id: Int, size: Int): Int = Math.floorMod(id, size)
+
 fun coverGradientForId(id: Int): Brush {
-    val colors = coverGradients[id % coverGradients.size]
+    val colors = coverGradients[gradientIndexForId(id, coverGradients.size)]
     return Brush.linearGradient(colors)
 }
 
-fun cardHeightForId(id: Int) = (140 + (id % 4) * 36).dp
+fun cardHeightForId(id: Int) = (160 + gradientIndexForId(id, 4) * 28).dp
+
+@Composable
+fun XhsFeedCard(
+    post: PostDto,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit = {},
+) {
+    val coverUrl = post.images?.firstOrNull()
+    val authorLabel = post.author?.studentId ?: "同学${post.authorId}"
+    XhsFeedCard(
+        title = post.title,
+        content = post.content,
+        coverImageUrl = coverUrl,
+        authorLabel = authorLabel,
+        likeCount = post.likeCount,
+        isLiked = post.isLiked,
+        id = post.id,
+        modifier = modifier,
+        onClick = onClick,
+    )
+}
 
 @Composable
 fun XhsFeedCard(
     title: String,
-    subtitle: String,
+    content: String,
+    coverImageUrl: String?,
     authorLabel: String,
+    likeCount: Int,
+    isLiked: Boolean = false,
     id: Int,
     modifier: Modifier = Modifier,
     onClick: () -> Unit = {},
@@ -77,53 +110,262 @@ fun XhsFeedCard(
         shadowElevation = 1.dp,
     ) {
         Column {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(cardHeightForId(id))
-                    .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp))
-                    .background(coverGradientForId(id)),
-                contentAlignment = Alignment.BottomStart,
-            ) {
-                Text(
-                    text = title,
-                    modifier = Modifier.padding(12.dp),
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
+            if (coverImageUrl != null) {
+                AsyncImage(
+                    model = coverImageUrl,
+                    contentDescription = title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(0.75f)
+                        .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp)),
+                )
+            } else {
+                TextNoteCover(
+                    content = content,
+                    id = id,
                 )
             }
-            Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+            Text(
+                text = title,
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                color = XhsTextPrimary,
+                fontWeight = FontWeight.Medium,
+                fontSize = 14.sp,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                lineHeight = 20.sp,
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 10.dp, end = 10.dp, bottom = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(20.dp)
+                        .clip(CircleShape)
+                        .background(coverGradientForId(id.hashCode())),
+                )
                 Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodySmall,
+                    text = authorLabel,
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(start = 6.dp),
+                    style = MaterialTheme.typography.labelSmall,
                     color = XhsTextSecondary,
-                    maxLines = 2,
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    if (isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                    contentDescription = null,
+                    tint = if (isLiked) XhsRed else XhsTextSecondary,
+                    modifier = Modifier.size(14.dp),
+                )
+                Text(
+                    text = formatLikeCount(likeCount),
+                    modifier = Modifier.padding(start = 2.dp),
+                    fontSize = 11.sp,
+                    color = if (isLiked) XhsRed else XhsTextSecondary,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun XhsProfileFeedCard(
+    post: PostDto,
+    authorLabel: String,
+    isPinned: Boolean = false,
+    modifier: Modifier = Modifier,
+) {
+    val coverUrl = post.images?.firstOrNull()
+    val viewCount = post.likeCount + post.commentCount + post.favoriteCount
+    val aspectRatio = 0.68f + gradientIndexForId(post.id, 4) * 0.06f
+
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(0.dp),
+        color = Color.White,
+        shadowElevation = 0.dp,
+    ) {
+        Column {
+            Box {
+                if (coverUrl != null) {
+                    AsyncImage(
+                        model = coverUrl,
+                        contentDescription = post.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(aspectRatio),
+                    )
+                } else {
+                    ProfileTextNoteCover(
+                        content = post.content.ifBlank { post.title },
+                        id = post.id,
+                    )
+                }
+
+                if (isPinned) {
                     Box(
                         modifier = Modifier
-                            .size(20.dp)
-                            .clip(CircleShape)
-                            .background(coverGradientForId(id.hashCode())),
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
+                            .align(Alignment.TopStart)
+                            .padding(6.dp)
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(XhsRed)
+                            .padding(horizontal = 5.dp, vertical = 1.dp),
+                    ) {
+                        Text("置顶", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                if (viewCount > 0) {
+                    Row(
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(6.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color.Black.copy(alpha = 0.42f))
+                            .padding(horizontal = 5.dp, vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            Icons.Default.Visibility,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(10.dp),
+                        )
+                        Text(
+                            text = formatLikeCount(viewCount),
+                            color = Color.White,
+                            fontSize = 9.sp,
+                            modifier = Modifier.padding(start = 2.dp),
+                        )
+                    }
+                }
+            }
+
+            Text(
+                text = post.title,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 7.dp),
+                color = XhsTextPrimary,
+                fontWeight = FontWeight.Medium,
+                fontSize = 12.sp,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                lineHeight = 17.sp,
+            )
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 8.dp, end = 8.dp, bottom = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                XhsProfileAvatar(label = authorLabel, size = 16)
+                Text(
+                    text = "$authorLabel  ${formatProfileDate(post.createdAt)}",
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(start = 4.dp),
+                    fontSize = 9.sp,
+                    color = XhsTextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Icon(
+                    if (post.isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                    contentDescription = null,
+                    tint = if (post.isLiked) XhsRed else XhsTextSecondary.copy(alpha = 0.7f),
+                    modifier = Modifier.size(11.dp),
+                )
+                if (post.likeCount > 0) {
                     Text(
-                        text = authorLabel,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = XhsTextSecondary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f),
+                        text = formatLikeCount(post.likeCount),
+                        modifier = Modifier.padding(start = 2.dp),
+                        fontSize = 9.sp,
+                        color = if (post.isLiked) XhsRed else XhsTextSecondary,
                     )
                 }
             }
         }
     }
+}
+
+@Composable
+private fun ProfileTextNoteCover(
+    content: String,
+    id: Int,
+) {
+    val pastelColors = listOf(
+        Color(0xFFF8F3E8),
+        Color(0xFFEDF5F0),
+        Color(0xFFF3EFF8),
+        Color(0xFFF5F0EB),
+    )
+    val bg = pastelColors[gradientIndexForId(id, pastelColors.size)]
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .aspectRatio(0.72f + gradientIndexForId(id, 3) * 0.06f)
+            .background(bg)
+            .padding(12.dp),
+        contentAlignment = Alignment.TopStart,
+    ) {
+        Text(
+            text = content,
+            color = XhsTextPrimary.copy(alpha = 0.88f),
+            fontSize = 12.sp,
+            lineHeight = 18.sp,
+            maxLines = 6,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+internal fun TextNoteCover(
+    content: String,
+    id: Int,
+    cornerRadius: androidx.compose.ui.unit.Dp = 12.dp,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .aspectRatio(0.75f)
+            .clip(RoundedCornerShape(topStart = cornerRadius, topEnd = cornerRadius))
+            .background(coverGradientForId(id))
+            .padding(10.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(RoundedCornerShape(8.dp))
+                .background(Color.White)
+                .padding(12.dp),
+        ) {
+            Text(
+                text = content.ifBlank { "纯文字笔记" },
+                color = XhsTextPrimary,
+                fontSize = 13.sp,
+                lineHeight = 20.sp,
+                maxLines = 8,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+private fun formatLikeCount(count: Int): String = when {
+    count <= 0 -> "0"
+    count < 10000 -> count.toString()
+    else -> String.format("%.1fw", count / 10000f)
 }
 
 @Composable
@@ -142,7 +384,7 @@ fun XhsBottomBar(
             modifier = Modifier
                 .fillMaxWidth()
                 .navigationBarsPadding()
-                .padding(horizontal = 4.dp, vertical = 4.dp),
+                .padding(start = 4.dp, end = 4.dp, top = 10.dp, bottom = 6.dp),
             horizontalArrangement = Arrangement.SpaceAround,
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -160,19 +402,25 @@ fun XhsBottomBar(
             )
             Box(
                 modifier = Modifier
-                    .offset(y = (-8).dp)
-                    .size(48.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(XhsRed)
-                    .clickable(onClick = onPublishClick),
+                    .defaultMinSize(minWidth = 52.dp)
+                    .padding(vertical = 4.dp),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(
-                    Icons.Default.Add,
-                    contentDescription = "发布",
-                    tint = Color.White,
-                    modifier = Modifier.size(28.dp),
-                )
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(XhsRed)
+                        .clickable(onClick = onPublishClick),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Default.Add,
+                        contentDescription = "发布",
+                        tint = Color.White,
+                        modifier = Modifier.size(26.dp),
+                    )
+                }
             }
             XhsNavItem(
                 label = "消息",
@@ -237,7 +485,19 @@ fun XhsProfileAvatar(
     label: String,
     modifier: Modifier = Modifier,
     size: Int = 72,
+    avatarUrl: String? = null,
 ) {
+    if (!avatarUrl.isNullOrBlank()) {
+        AsyncImage(
+            model = avatarUrl,
+            contentDescription = label,
+            contentScale = ContentScale.Crop,
+            modifier = modifier
+                .size(size.dp)
+                .clip(CircleShape),
+        )
+        return
+    }
     Box(
         modifier = modifier
             .size(size.dp)

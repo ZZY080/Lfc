@@ -1,21 +1,21 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { MessageEntity } from '@module/message/entity/message.entity';
+import { NotificationEntity } from '@module/message/entity/notification.entity';
 import { RoleAuthzService } from '@shared/auth/role-authz.service';
 import { UserRole } from '@shared/enum/user-role.enum';
 
 @Injectable()
-export class ConsumerMessageService {
+export class ConsumerNotificationService {
   constructor(
-    @InjectRepository(MessageEntity)
-    private readonly messageRepository: Repository<MessageEntity>,
+    @InjectRepository(NotificationEntity)
+    private readonly notificationRepository: Repository<NotificationEntity>,
     private readonly roleAuthzService: RoleAuthzService,
   ) {}
 
   async findAll(userId: number) {
     await this.roleAuthzService.assertRole(userId, UserRole.CONSUMER);
-    return this.messageRepository.find({
+    return this.notificationRepository.find({
       where: { userId },
       order: { createdAt: 'DESC' },
     });
@@ -23,7 +23,7 @@ export class ConsumerMessageService {
 
   async getUnreadCount(userId: number) {
     await this.roleAuthzService.assertRole(userId, UserRole.CONSUMER);
-    const count = await this.messageRepository.count({
+    const count = await this.notificationRepository.count({
       where: { userId, isRead: false },
     });
     return { count };
@@ -31,41 +31,36 @@ export class ConsumerMessageService {
 
   async findOne(userId: number, id: number) {
     await this.roleAuthzService.assertRole(userId, UserRole.CONSUMER);
-    const message = await this.messageRepository.findOne({ where: { id } });
-    if (!message) {
-      throw new NotFoundException('消息不存在');
+    const notification = await this.notificationRepository.findOne({ where: { id } });
+    if (!notification) {
+      throw new NotFoundException('通知不存在');
     }
-    if (message.userId !== userId) {
-      throw new ForbiddenException('无权查看该消息');
+    if (notification.userId !== userId) {
+      throw new ForbiddenException('无权查看该通知');
     }
-    if (!message.isRead) {
-      message.isRead = true;
-      await this.messageRepository.save(message);
+    if (!notification.isRead) {
+      notification.isRead = true;
+      await this.notificationRepository.save(notification);
     }
-    return message;
-  }
-
-  async markRead(userId: number, id: number) {
-    const message = await this.findOne(userId, id);
-    return message;
+    return notification;
   }
 
   async markAllRead(userId: number) {
     await this.roleAuthzService.assertRole(userId, UserRole.CONSUMER);
-    await this.messageRepository.update({ userId, isRead: false }, { isRead: true });
+    await this.notificationRepository.update({ userId, isRead: false }, { isRead: true });
     return { message: '已全部标记为已读' };
   }
 
   async remove(userId: number, id: number) {
     await this.roleAuthzService.assertRole(userId, UserRole.CONSUMER);
-    const message = await this.messageRepository.findOne({ where: { id } });
-    if (!message) {
-      throw new NotFoundException('消息不存在');
+    const notification = await this.notificationRepository.findOne({ where: { id } });
+    if (!notification) {
+      throw new NotFoundException('通知不存在');
     }
-    if (message.userId !== userId) {
-      throw new ForbiddenException('无权删除该消息');
+    if (notification.userId !== userId) {
+      throw new ForbiddenException('无权删除该通知');
     }
-    await this.messageRepository.remove(message);
+    await this.notificationRepository.remove(notification);
     return { message: '删除成功' };
   }
 }

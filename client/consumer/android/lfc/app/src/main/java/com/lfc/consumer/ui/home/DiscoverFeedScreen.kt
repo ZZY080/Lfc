@@ -187,10 +187,7 @@ fun DiscoverFeedScreen(
                     ) {
                         items(feedState.posts, key = { it.id }) { post ->
                             XhsFeedCard(
-                                title = post.title,
-                                subtitle = post.content,
-                                authorLabel = post.author?.studentId ?: "同学${post.authorId}",
-                                id = post.id,
+                                post = post,
                                 onClick = { onPostClick(post.id) },
                             )
                         }

@@ -1,6 +1,6 @@
 import { MessageRelatedType, MessageType } from '@shared/enum/message-type.enum';
 
-export interface MessageDto {
+export interface NotificationDto {
   id: number;
   userId: number;
   title: string;
@@ -12,11 +12,7 @@ export interface MessageDto {
   createdAt: Date;
 }
 
-export interface UnreadCountDto {
-  count: number;
-}
-
-export interface SendMessageDto {
+export interface SendNotificationDto {
   userId: number;
   title: string;
   content: string;

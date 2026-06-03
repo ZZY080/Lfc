@@ -6,43 +6,45 @@ import {
   ManyToOne,
   PrimaryGeneratedColumn,
 } from 'typeorm';
-import {
-  MessageRelatedType,
-  MessageType,
-} from '@shared/enum/message-type.enum';
 import { UserEntity } from '@module/user/entity/user.entity';
+import { ConversationEntity } from '@module/message/entity/conversation.entity';
 
-@Entity({ name: 'message' })
+export enum ChatMessageType {
+  TEXT = 'TEXT',
+  IMAGE = 'IMAGE',
+}
+
+@Entity({ name: 'chat_message' })
 export class MessageEntity {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ name: 'user_id', type: 'int' })
-  userId: number;
+  @Column({ name: 'conversation_id' })
+  conversationId: number;
+
+  @Column({ name: 'sender_id' })
+  senderId: number;
+
+  @ManyToOne(() => ConversationEntity, (conversation) => conversation.messages, {
+    onDelete: 'CASCADE',
+  })
+  @JoinColumn({ name: 'conversation_id' })
+  conversation: ConversationEntity;
 
   @ManyToOne(() => UserEntity, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'user_id' })
-  user: UserEntity;
-
-  @Column()
-  title: string;
+  @JoinColumn({ name: 'sender_id' })
+  sender: UserEntity;
 
   @Column({ type: 'text' })
   content: string;
 
-  @Column({ type: 'enum', enum: MessageType })
-  type: MessageType;
-
   @Column({
-    name: 'related_type',
+    name: 'message_type',
     type: 'enum',
-    enum: MessageRelatedType,
-    nullable: true,
+    enum: ChatMessageType,
+    default: ChatMessageType.TEXT,
   })
-  relatedType: MessageRelatedType | null;
-
-  @Column({ name: 'related_id', type: 'int', nullable: true })
-  relatedId: number | null;
+  messageType: ChatMessageType;
 
   @Column({ name: 'is_read', type: 'boolean', default: false })
   isRead: boolean;

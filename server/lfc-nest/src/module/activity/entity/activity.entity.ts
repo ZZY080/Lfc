@@ -23,6 +23,9 @@ export class ActivityEntity {
   @Column({ type: 'text' })
   description: string;
 
+  @Column({ type: 'simple-json', nullable: true })
+  images: string[];
+
   @Column()
   location: string;
 

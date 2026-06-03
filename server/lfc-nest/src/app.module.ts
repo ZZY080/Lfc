@@ -12,6 +12,8 @@ import { AuthModule } from '@module/auth/auth.module';
 import { PostModule } from '@module/post/post.module';
 import { ActivityModule } from '@module/activity/activity.module';
 import { MessageModule } from '@module/message/message.module';
+import { UserModule } from '@module/user/user.module';
+import { AliyunModule } from '@integration/aliyun/aliyun.module';
 
 @Module({
   imports: [
@@ -31,10 +33,12 @@ import { MessageModule } from '@module/message/message.module';
     }),
     MysqlModule,
     RedisModule,
+    AliyunModule,
     AuthModule,
     PostModule,
     ActivityModule,
     MessageModule,
+    UserModule,
   ],
 })
 export class AppModule {}

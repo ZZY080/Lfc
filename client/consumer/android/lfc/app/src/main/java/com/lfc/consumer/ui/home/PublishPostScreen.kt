@@ -1,115 +1,99 @@
 package com.lfc.consumer.ui.home
 
+import android.net.Uri
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.lfc.consumer.data.model.PostDto
-import com.lfc.consumer.ui.theme.XhsRed
+import com.lfc.consumer.ui.theme.XhsTextPrimary
+import com.lfc.consumer.ui.theme.XhsTextSecondary
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PublishPostScreen(
     initial: PostDto? = null,
     isSubmitting: Boolean = false,
     onBack: () -> Unit,
-    onSubmit: (title: String, content: String) -> Unit,
+    onSubmit: (title: String, content: String, imageUris: List<Uri>) -> Unit,
 ) {
     var title by remember { mutableStateOf(initial?.title ?: "") }
     var content by remember { mutableStateOf(initial?.content ?: "") }
+    val selectedImages = rememberPublishImageSelection()
+    val existingImages = initial?.images.orEmpty()
+    val canSubmit = content.isNotBlank() || selectedImages.isNotEmpty() || existingImages.isNotEmpty()
 
-    Scaffold(
-        contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        topBar = {
-            TopAppBar(
-                modifier = Modifier.statusBarsPadding(),
-                windowInsets = WindowInsets(0, 0, 0, 0),
-                title = {
-                    Text(
-                        if (initial == null) "发布笔记" else "编辑笔记",
-                        fontWeight = FontWeight.Bold,
-                        color = XhsRed,
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
+    XhsPublishScreenContainer(modifier = Modifier.fillMaxSize()) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            XhsPublishTopBar(
+                title = if (initial == null) "发布笔记" else "编辑笔记",
+                actionLabel = if (initial == null) "发布" else "保存",
+                onBack = onBack,
+                onAction = { onSubmit(title.trim(), content.trim(), selectedImages.toList()) },
+                actionEnabled = canSubmit,
+                isSubmitting = isSubmitting,
             )
-        },
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .imePadding()
-                .verticalScroll(rememberScrollState())
-                .padding(20.dp),
-        ) {
-            Text(
-                "像小红书一样，用标题和内容记录校园生活",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(modifier = Modifier.height(20.dp))
-            OutlinedTextField(
-                value = title,
-                onValueChange = { title = it },
-                label = { Text("标题") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-            )
-            Spacer(modifier = Modifier.height(12.dp))
-            OutlinedTextField(
-                value = content,
-                onValueChange = { content = it },
-                label = { Text("正文") },
-                modifier = Modifier.fillMaxWidth(),
-                minLines = 8,
-            )
-            Spacer(modifier = Modifier.height(32.dp))
-            Button(
-                onClick = { onSubmit(title.trim(), content.trim()) },
-                enabled = title.isNotBlank() && content.isNotBlank() && !isSubmitting,
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = XhsRed),
+            HorizontalDivider(color = Color(0xFFEEEEEE))
+
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .imePadding()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp, vertical = 16.dp),
             ) {
-                if (isSubmitting) {
-                    CircularProgressIndicator(color = MaterialTheme.colorScheme.onPrimary)
-                } else {
-                    Text(if (initial == null) "发布" else "保存")
-                }
+                PublishImagePicker(
+                    existingImageUrls = existingImages,
+                    selectedImages = selectedImages,
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                XhsPublishTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    placeholder = "添加标题（可选）",
+                    singleLine = true,
+                    textStyle = TextStyle(
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = XhsTextPrimary,
+                    ),
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                XhsPublishTextField(
+                    value = content,
+                    onValueChange = { content = it },
+                    placeholder = "分享你的校园生活、学习经验…\n支持纯文字，也可配图发布",
+                    minLines = 10,
+                    textStyle = TextStyle(
+                        fontSize = 16.sp,
+                        lineHeight = 26.sp,
+                        color = XhsTextPrimary,
+                    ),
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = "最多可选 $MAX_PUBLISH_IMAGES 张图片 · 纯文字或图文均可发布",
+                    fontSize = 12.sp,
+                    color = XhsTextSecondary,
+                )
             }
         }
     }

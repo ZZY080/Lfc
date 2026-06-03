@@ -1,42 +1,31 @@
 package com.lfc.consumer.ui.home
 
+import android.net.Uri
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.lfc.consumer.data.model.ActivityDto
 import com.lfc.consumer.ui.theme.XhsRed
+import com.lfc.consumer.ui.theme.XhsTextSecondary
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PublishActivityScreen(
     initial: ActivityDto? = null,
@@ -49,6 +38,7 @@ fun PublishActivityScreen(
         startTime: String,
         endTime: String,
         maxParticipants: Int,
+        imageUris: List<Uri>,
     ) -> Unit,
 ) {
     var title by remember { mutableStateOf(initial?.title ?: "") }
@@ -57,98 +47,19 @@ fun PublishActivityScreen(
     var startTime by remember { mutableStateOf(initial?.startTime?.take(16)?.replace(" ", "T") ?: "") }
     var endTime by remember { mutableStateOf(initial?.endTime?.take(16)?.replace(" ", "T") ?: "") }
     var maxParticipants by remember { mutableStateOf((initial?.maxParticipants ?: 0).toString()) }
+    val selectedImages = rememberPublishImageSelection()
+    val existingImages = initial?.images.orEmpty()
 
-    val isValid = title.isNotBlank() && description.isNotBlank() &&
-        location.isNotBlank() && startTime.isNotBlank() && endTime.isNotBlank()
+    val isValid = location.isNotBlank() && startTime.isNotBlank() && endTime.isNotBlank() &&
+        (description.isNotBlank() || selectedImages.isNotEmpty() || existingImages.isNotEmpty())
 
-    Scaffold(
-        contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        topBar = {
-            TopAppBar(
-                modifier = Modifier.statusBarsPadding(),
-                windowInsets = WindowInsets(0, 0, 0, 0),
-                title = {
-                    Text(
-                        if (initial == null) "发布活动" else "编辑活动",
-                        fontWeight = FontWeight.Bold,
-                        color = XhsRed,
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
-            )
-        },
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .imePadding()
-                .verticalScroll(rememberScrollState())
-                .padding(20.dp),
-        ) {
-            Text(
-                "填写活动信息，提交后将由管理员审核",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(modifier = Modifier.height(20.dp))
-            OutlinedTextField(
-                value = title,
-                onValueChange = { title = it },
-                label = { Text("活动标题") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-            )
-            Spacer(modifier = Modifier.height(12.dp))
-            OutlinedTextField(
-                value = description,
-                onValueChange = { description = it },
-                label = { Text("活动描述") },
-                modifier = Modifier.fillMaxWidth(),
-                minLines = 4,
-            )
-            Spacer(modifier = Modifier.height(12.dp))
-            OutlinedTextField(
-                value = location,
-                onValueChange = { location = it },
-                label = { Text("活动地点") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-            )
-            Spacer(modifier = Modifier.height(12.dp))
-            OutlinedTextField(
-                value = startTime,
-                onValueChange = { startTime = it },
-                label = { Text("开始时间") },
-                modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("2026-06-10T14:00:00") },
-                singleLine = true,
-            )
-            Spacer(modifier = Modifier.height(12.dp))
-            OutlinedTextField(
-                value = endTime,
-                onValueChange = { endTime = it },
-                label = { Text("结束时间") },
-                modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("2026-06-10T16:00:00") },
-                singleLine = true,
-            )
-            Spacer(modifier = Modifier.height(12.dp))
-            OutlinedTextField(
-                value = maxParticipants,
-                onValueChange = { maxParticipants = it },
-                label = { Text("人数上限（0 表示不限）") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-            )
-            Spacer(modifier = Modifier.height(32.dp))
-            Button(
-                onClick = {
+    XhsPublishScreenContainer(modifier = Modifier.fillMaxSize()) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            XhsPublishTopBar(
+                title = if (initial == null) "发布活动" else "编辑活动",
+                actionLabel = if (initial == null) "提交" else "保存",
+                onBack = onBack,
+                onAction = {
                     onSubmit(
                         title.trim(),
                         description.trim(),
@@ -156,17 +67,101 @@ fun PublishActivityScreen(
                         startTime.trim(),
                         endTime.trim(),
                         maxParticipants.toIntOrNull() ?: 0,
+                        selectedImages.toList(),
                     )
                 },
-                enabled = isValid && !isSubmitting,
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = XhsRed),
+                actionEnabled = isValid,
+                isSubmitting = isSubmitting,
+            )
+            HorizontalDivider(color = Color(0xFFEEEEEE))
+
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .imePadding()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp, vertical = 16.dp),
             ) {
-                if (isSubmitting) {
-                    CircularProgressIndicator(color = MaterialTheme.colorScheme.onPrimary)
-                } else {
-                    Text(if (initial == null) "提交审核" else "保存修改")
+                PublishImagePicker(
+                    existingImageUrls = existingImages,
+                    selectedImages = selectedImages,
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                XhsPublishFieldCard {
+                    XhsPublishSectionTitle("基本信息")
+                    XhsPublishTextField(
+                        value = title,
+                        onValueChange = { title = it },
+                        placeholder = "活动标题（可选，不填将自动生成）",
+                        singleLine = true,
+                        textStyle = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.Bold),
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    XhsPublishTextField(
+                        value = description,
+                        onValueChange = { description = it },
+                        placeholder = "介绍活动内容、流程和注意事项…\n支持纯文字，也可配图发布",
+                        minLines = 4,
+                        textStyle = TextStyle(fontSize = 15.sp, lineHeight = 24.sp),
+                    )
                 }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                XhsPublishFieldCard {
+                    XhsPublishSectionTitle("时间地点")
+                    XhsPublishTextField(
+                        value = location,
+                        onValueChange = { location = it },
+                        placeholder = "活动地点，例如：体育馆",
+                        singleLine = true,
+                    )
+                    Spacer(modifier = Modifier.height(14.dp))
+                    XhsPublishTextField(
+                        value = startTime,
+                        onValueChange = { startTime = it },
+                        placeholder = "开始时间，例如：2026-06-10T14:00",
+                        singleLine = true,
+                    )
+                    Spacer(modifier = Modifier.height(14.dp))
+                    XhsPublishTextField(
+                        value = endTime,
+                        onValueChange = { endTime = it },
+                        placeholder = "结束时间，例如：2026-06-10T16:00",
+                        singleLine = true,
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                XhsPublishFieldCard {
+                    XhsPublishSectionTitle("报名设置")
+                    XhsPublishTextField(
+                        value = maxParticipants,
+                        onValueChange = { maxParticipants = it.filter { c -> c.isDigit() } },
+                        placeholder = "人数上限，0 表示不限",
+                        singleLine = true,
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Text(
+                    text = "最多可选 $MAX_PUBLISH_IMAGES 张图片 · 提交后将由管理员审核",
+                    fontSize = 13.sp,
+                    lineHeight = 20.sp,
+                    color = XhsTextSecondary,
+                    modifier = Modifier.padding(horizontal = 4.dp),
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "审核结果会通过消息通知你",
+                    fontSize = 13.sp,
+                    color = XhsRed,
+                    modifier = Modifier.padding(horizontal = 4.dp),
+                )
             }
         }
     }

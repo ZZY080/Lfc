@@ -2,8 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ActivityEntity } from '@module/activity/entity/activity.entity';
-import { MessageEntity } from '@module/message/entity/message.entity';
-import { SendMessageDto } from '@module/message/dto/message.dto';
+import { NotificationEntity } from '@module/message/entity/notification.entity';
+import { SendNotificationDto } from '@module/message/dto/notification.dto';
 import { ActivityStatus } from '@shared/enum/user-role.enum';
 import {
   MessageRelatedType,
@@ -11,15 +11,15 @@ import {
 } from '@shared/enum/message-type.enum';
 
 @Injectable()
-export class MessageService {
+export class NotificationService {
   constructor(
-    @InjectRepository(MessageEntity)
-    private readonly messageRepository: Repository<MessageEntity>,
+    @InjectRepository(NotificationEntity)
+    private readonly notificationRepository: Repository<NotificationEntity>,
   ) {}
 
-  async send(payload: SendMessageDto) {
-    return this.messageRepository.save(
-      this.messageRepository.create({
+  async send(payload: SendNotificationDto) {
+    return this.notificationRepository.save(
+      this.notificationRepository.create({
         userId: payload.userId,
         title: payload.title,
         content: payload.content,

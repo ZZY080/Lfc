@@ -29,9 +29,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
 import com.lfc.consumer.data.model.ActivityDto
 import com.lfc.consumer.ui.theme.XhsRed
 import com.lfc.consumer.ui.theme.XhsRedContainer
@@ -99,6 +101,7 @@ private fun ActivityCard(
         shadowElevation = 1.dp,
     ) {
         Column {
+            val coverUrl = activity.images?.firstOrNull()
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -107,6 +110,14 @@ private fun ActivityCard(
                     .background(coverGradientForId(activity.id)),
                 contentAlignment = Alignment.BottomStart,
             ) {
+                if (coverUrl != null) {
+                    AsyncImage(
+                        model = coverUrl,
+                        contentDescription = activity.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
                 Text(
                     text = activity.title,
                     modifier = Modifier.padding(16.dp),

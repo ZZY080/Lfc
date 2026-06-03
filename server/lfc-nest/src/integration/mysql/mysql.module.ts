@@ -4,8 +4,14 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
 import { UserEntity } from '@module/user/entity/user.entity';
 import { PostEntity } from '@module/post/entity/post.entity';
+import { PostLikeEntity } from '@module/post/entity/post-like.entity';
+import { PostFavoriteEntity } from '@module/post/entity/post-favorite.entity';
+import { PostCommentEntity } from '@module/post/entity/post-comment.entity';
 import { ActivityEntity } from '@module/activity/entity/activity.entity';
 import { ActivityParticipantEntity } from '@module/activity/entity/activity-participant.entity';
+import { NotificationEntity } from '@module/message/entity/notification.entity';
+import { ConversationEntity } from '@module/message/entity/conversation.entity';
+import { UserFollowEntity } from '@module/user/entity/user-follow.entity';
 import { MessageEntity } from '@module/message/entity/message.entity';
 
 @Global()
@@ -25,9 +31,15 @@ import { MessageEntity } from '@module/message/entity/message.entity';
         entities: [
           UserEntity,
           PostEntity,
+          PostLikeEntity,
+          PostFavoriteEntity,
+          PostCommentEntity,
           ActivityEntity,
           ActivityParticipantEntity,
+          NotificationEntity,
+          ConversationEntity,
           MessageEntity,
+          UserFollowEntity,
         ],
         charset: 'utf8mb4',
         timezone: '+08:00',

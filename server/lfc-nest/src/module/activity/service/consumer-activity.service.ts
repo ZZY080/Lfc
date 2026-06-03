@@ -15,11 +15,13 @@ import {
   CreateActivityBodyDto,
   UpdateActivityBodyDto,
 } from '@module/activity/dto/activity.dto';
-import { MessageService } from '@module/message/service/message.service';
+import { NotificationService } from '@module/message/service/notification.service';
 import { UserEntity } from '@module/user/entity/user.entity';
 
 @Injectable()
 export class ConsumerActivityService {
+  private static readonly MAX_IMAGES = 20;
+
   constructor(
     @InjectRepository(ActivityEntity)
     private readonly activityRepository: Repository<ActivityEntity>,
@@ -28,15 +30,17 @@ export class ConsumerActivityService {
     @InjectRepository(UserEntity)
     private readonly userRepository: Repository<UserEntity>,
     private readonly roleAuthzService: RoleAuthzService,
-    private readonly messageService: MessageService,
+    private readonly notificationService: NotificationService,
   ) {}
 
   async create(userId: number, body: CreateActivityBodyDto) {
     await this.roleAuthzService.assertRole(userId, UserRole.CONSUMER);
     this.validateTimeRange(body.startTime, body.endTime);
+    const normalized = this.normalizeActivityBody(body);
 
     const activity = this.activityRepository.create({
-      ...body,
+      ...normalized,
+      location: body.location,
       startTime: new Date(body.startTime),
       endTime: new Date(body.endTime),
       maxParticipants: body.maxParticipants ?? 0,
@@ -44,7 +48,7 @@ export class ConsumerActivityService {
       status: ActivityStatus.PENDING,
     });
     const saved = await this.activityRepository.save(activity);
-    await this.messageService.sendActivitySubmitted(userId, saved);
+    await this.notificationService.sendActivitySubmitted(userId, saved);
     return saved;
   }
 
@@ -69,6 +73,14 @@ export class ConsumerActivityService {
       where: { userId },
       relations: ['activity', 'activity.author'],
       order: { joinedAt: 'DESC' },
+    });
+  }
+
+  findApprovedByAuthor(authorId: number) {
+    return this.activityRepository.find({
+      where: { authorId, status: ActivityStatus.APPROVED },
+      relations: ['author'],
+      order: { startTime: 'DESC' },
     });
   }
 
@@ -99,14 +111,25 @@ export class ConsumerActivityService {
       );
     }
 
+    const normalized = this.normalizeActivityBody(
+      {
+        title: body.title ?? activity.title,
+        description: body.description ?? activity.description,
+        images: body.images ?? activity.images ?? [],
+      },
+      activity,
+    );
+
     Object.assign(activity, {
-      ...body,
+      ...normalized,
+      location: body.location ?? activity.location,
       startTime: body.startTime ? new Date(body.startTime) : activity.startTime,
       endTime: body.endTime ? new Date(body.endTime) : activity.endTime,
+      maxParticipants: body.maxParticipants ?? activity.maxParticipants,
       status: ActivityStatus.PENDING,
     });
     const saved = await this.activityRepository.save(activity);
-    await this.messageService.sendActivitySubmitted(userId, saved);
+    await this.notificationService.sendActivitySubmitted(userId, saved);
     return saved;
   }
 
@@ -146,7 +169,7 @@ export class ConsumerActivityService {
 
     const joiner = await this.userRepository.findOne({ where: { id: userId } });
     if (joiner && activity.authorId !== userId) {
-      await this.messageService.sendActivityJoin(
+      await this.notificationService.sendActivityJoin(
         activity.authorId,
         activity,
         joiner.studentId,
@@ -165,6 +188,27 @@ export class ConsumerActivityService {
     }
     await this.participantRepository.remove(participant);
     return { message: '已取消报名' };
+  }
+
+  private normalizeActivityBody(
+    body: Pick<CreateActivityBodyDto, 'title' | 'description' | 'images'>,
+    existing?: ActivityEntity,
+  ) {
+    const description = body.description?.trim() ?? existing?.description ?? '';
+    const images = (body.images ?? existing?.images ?? []).filter(Boolean);
+    if (images.length > ConsumerActivityService.MAX_IMAGES) {
+      throw new BadRequestException(
+        `最多上传${ConsumerActivityService.MAX_IMAGES}张图片`,
+      );
+    }
+    if (!description && images.length === 0) {
+      throw new BadRequestException('请填写活动介绍或上传至少一张图片');
+    }
+    const title =
+      body.title?.trim() ||
+      description.slice(0, 30) ||
+      (images.length > 0 ? '图片活动' : '校园活动');
+    return { title, description, images };
   }
 
   private validateTimeRange(startTime: string, endTime: string) {

@@ -5,7 +5,7 @@ import { ActivityEntity } from '@module/activity/entity/activity.entity';
 import { RoleAuthzService } from '@shared/auth/role-authz.service';
 import { ActivityStatus, UserRole } from '@shared/enum/user-role.enum';
 import { ReviewActivityBodyDto } from '@module/activity/dto/activity.dto';
-import { MessageService } from '@module/message/service/message.service';
+import { NotificationService } from '@module/message/service/notification.service';
 
 @Injectable()
 export class AdminActivityService {
@@ -13,7 +13,7 @@ export class AdminActivityService {
     @InjectRepository(ActivityEntity)
     private readonly activityRepository: Repository<ActivityEntity>,
     private readonly roleAuthzService: RoleAuthzService,
-    private readonly messageService: MessageService,
+    private readonly notificationService: NotificationService,
   ) {}
 
   async findPending(userId: number) {
@@ -44,7 +44,7 @@ export class AdminActivityService {
     }
     activity.status = body.status;
     const saved = await this.activityRepository.save(activity);
-    await this.messageService.sendActivityReview(
+    await this.notificationService.sendActivityReview(
       activity.authorId,
       saved,
       body.status,

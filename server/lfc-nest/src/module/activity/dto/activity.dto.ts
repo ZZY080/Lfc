@@ -1,6 +1,7 @@
 export interface CreateActivityBodyDto {
-  title: string;
-  description: string;
+  title?: string;
+  description?: string;
+  images?: string[];
   location: string;
   startTime: string;
   endTime: string;
@@ -10,6 +11,7 @@ export interface CreateActivityBodyDto {
 export interface UpdateActivityBodyDto {
   title?: string;
   description?: string;
+  images?: string[];
   location?: string;
   startTime?: string;
   endTime?: string;
