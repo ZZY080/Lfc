@@ -4,7 +4,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -22,13 +21,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
 import com.lfc.consumer.data.model.ActivityDto
 import com.lfc.consumer.ui.theme.XhsBackground
 import com.lfc.consumer.ui.theme.XhsRed
@@ -40,8 +36,12 @@ fun ActivityDetailScreen(
     activity: ActivityDto?,
     isLoading: Boolean,
     isJoining: Boolean,
+    currentUserId: Int? = null,
+    isAuthorFollowing: Boolean = false,
     onBack: () -> Unit,
     onJoin: () -> Unit,
+    onAuthorClick: (Int) -> Unit = {},
+    onFollowToggle: () -> Unit = {},
 ) {
     Box(
         modifier = Modifier
@@ -57,61 +57,44 @@ fun ActivityDetailScreen(
                 val participantLabels = participants.map {
                     it.user?.studentId ?: "同学${it.userId}"
                 }
-                val coverUrl = activity.images?.firstOrNull()
+                val images = activity.images.orEmpty()
+                val isSelf = currentUserId != null && currentUserId == activity.authorId
                 Column(modifier = Modifier.fillMaxSize()) {
+                    XhsDetailAuthorHeader(
+                        authorLabel = authorLabel,
+                        authorId = activity.authorId,
+                        onBack = onBack,
+                        onAuthorClick = onAuthorClick,
+                    ) {
+                        if (!isSelf) {
+                            XhsDetailFollowButton(
+                                isFollowing = isAuthorFollowing,
+                                onClick = onFollowToggle,
+                            )
+                        }
+                    }
+
                     Column(
                         modifier = Modifier
                             .weight(1f)
                             .verticalScroll(rememberScrollState()),
                     ) {
-                        if (coverUrl != null) {
-                            AsyncImage(
-                                model = coverUrl,
+                        if (images.isNotEmpty()) {
+                            XhsDetailImageCarousel(
+                                images = images,
                                 contentDescription = activity.title,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .aspectRatio(0.75f),
+                                aspectRatio = 0.75f,
                             )
                         } else {
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(300.dp)
+                                    .height(220.dp)
                                     .background(coverGradientForId(activity.id)),
-                                contentAlignment = Alignment.BottomStart,
-                            ) {
-                                Column(modifier = Modifier.padding(20.dp)) {
-                                    Text(
-                                        text = activity.title,
-                                        color = Color.White,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 22.sp,
-                                        lineHeight = 30.sp,
-                                    )
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Text(
-                                        text = activityStatusLabel(activity.status),
-                                        color = Color.White.copy(alpha = 0.9f),
-                                        fontSize = 13.sp,
-                                    )
-                                }
-                            }
-                        }
-                        activity.images?.drop(1)?.forEach { url ->
-                            AsyncImage(
-                                model = url,
-                                contentDescription = null,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 8.dp)
-                                    .aspectRatio(0.75f)
-                                    .clip(RoundedCornerShape(12.dp)),
                             )
                         }
-                        XhsDetailAuthorRow(authorLabel = authorLabel)
                         Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+                            Spacer(modifier = Modifier.height(16.dp))
                             Text(
                                 text = activity.title,
                                 fontWeight = FontWeight.Bold,
@@ -205,7 +188,6 @@ fun ActivityDetailScreen(
                 }
             }
         }
-        XhsDetailBackButton(onBack = onBack)
     }
 }
 

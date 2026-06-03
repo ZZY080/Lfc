@@ -16,6 +16,7 @@ import com.lfc.consumer.data.model.PostCommentDto
 import com.lfc.consumer.data.model.PostDto
 import com.lfc.consumer.data.model.PostSocialStateDto
 import com.lfc.consumer.data.model.PostFeedResponse
+import com.lfc.consumer.data.model.PaginatedResponse
 import com.lfc.consumer.data.model.UnreadCountDto
 import com.lfc.consumer.data.model.UploadImageResponse
 import com.lfc.consumer.data.model.UpdateProfileRequest
@@ -71,22 +72,57 @@ interface LfcApiService {
     suspend fun updateMyProfile(@Body request: UpdateProfileRequest): UserProfileDto
 
     @GET("consumer/user/me/favorites")
-    suspend fun getMyFavoritePosts(): List<PostDto>
+    suspend fun getMyFavoritePosts(
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 10,
+    ): PaginatedResponse<PostDto>
 
     @GET("consumer/user/me/likes")
-    suspend fun getMyLikedPosts(): List<PostDto>
+    suspend fun getMyLikedPosts(
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 10,
+    ): PaginatedResponse<PostDto>
 
     @GET("consumer/user/me/comments")
-    suspend fun getMyProfileComments(): List<ProfileCommentDto>
+    suspend fun getMyProfileComments(
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 10,
+    ): PaginatedResponse<ProfileCommentDto>
+
+    @GET("consumer/user/{id}/posts")
+    suspend fun getUserPosts(
+        @Path("id") id: Int,
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 10,
+    ): PaginatedResponse<PostDto>
+
+    @GET("consumer/user/{id}/activities")
+    suspend fun getUserActivities(
+        @Path("id") id: Int,
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 10,
+    ): PaginatedResponse<ActivityDto>
 
     @GET("consumer/user/{id}/favorites")
-    suspend fun getUserFavoritePosts(@Path("id") id: Int): List<PostDto>
+    suspend fun getUserFavoritePosts(
+        @Path("id") id: Int,
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 10,
+    ): PaginatedResponse<PostDto>
 
     @GET("consumer/user/{id}/likes")
-    suspend fun getUserLikedPosts(@Path("id") id: Int): List<PostDto>
+    suspend fun getUserLikedPosts(
+        @Path("id") id: Int,
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 10,
+    ): PaginatedResponse<PostDto>
 
     @GET("consumer/user/{id}/comments")
-    suspend fun getUserProfileComments(@Path("id") id: Int): List<ProfileCommentDto>
+    suspend fun getUserProfileComments(
+        @Path("id") id: Int,
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 10,
+    ): PaginatedResponse<ProfileCommentDto>
 
     @POST("consumer/user/{id}/follow")
     suspend fun toggleFollow(@Path("id") id: Int): FollowStateDto
@@ -136,6 +172,12 @@ interface LfcApiService {
 
     @DELETE("consumer/post/{id}")
     suspend fun deletePost(@Path("id") id: Int)
+
+    @GET("consumer/activity/feed")
+    suspend fun getActivityFeed(
+        @Query("page") page: Int,
+        @Query("limit") limit: Int,
+    ): PaginatedResponse<ActivityDto>
 
     @GET("consumer/activity")
     suspend fun getApprovedActivities(): List<ActivityDto>

@@ -17,6 +17,7 @@ import com.lfc.consumer.data.model.CreatePostCommentRequest
 import com.lfc.consumer.data.model.CreatePostRequest
 import com.lfc.consumer.data.model.PostCommentDto
 import com.lfc.consumer.data.model.FeedUiState
+import com.lfc.consumer.data.model.ActivityFeedUiState
 import com.lfc.consumer.data.model.SearchUiState
 import com.lfc.consumer.data.model.ChatMessageDto
 import com.lfc.consumer.data.model.ConversationDto
@@ -28,6 +29,8 @@ import com.lfc.consumer.data.model.UpdateActivityRequest
 import com.lfc.consumer.data.model.UpdatePostRequest
 import com.lfc.consumer.data.model.PostSocialStateDto
 import com.lfc.consumer.data.model.ProfileCommentDto
+import com.lfc.consumer.data.model.ProfileTabUiState
+import com.lfc.consumer.data.model.ProfileTabsUiState
 import com.lfc.consumer.data.model.UpdateProfileRequest
 import com.lfc.consumer.data.model.UserProfileDto
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -44,6 +47,7 @@ import com.google.gson.JsonParser
 
 data class HomeUiState(
     val feed: FeedUiState = FeedUiState(),
+    val activityFeed: ActivityFeedUiState = ActivityFeedUiState(),
     val posts: List<PostDto> = emptyList(),
     val activities: List<ActivityDto> = emptyList(),
     val myPosts: List<PostDto> = emptyList(),
@@ -74,13 +78,16 @@ data class HomeUiState(
     val selectedUserProfile: UserProfileDto? = null,
     val isUserProfileLoading: Boolean = false,
     val myProfile: UserProfileDto? = null,
+    val profileNotes: List<PostDto> = emptyList(),
+    val profileActivities: List<ActivityDto> = emptyList(),
     val profileFavoritePosts: List<PostDto> = emptyList(),
     val profileLikedPosts: List<PostDto> = emptyList(),
     val profileComments: List<ProfileCommentDto> = emptyList(),
+    val profileTabs: ProfileTabsUiState = ProfileTabsUiState(),
     val profileSearchKeyword: String = "",
-    val isProfileLibraryLoading: Boolean = false,
     val isProfileUpdating: Boolean = false,
     val isPrivacyUpdating: Boolean = false,
+    val detailAuthorFollowing: Boolean? = null,
 )
 
 class HomeViewModel(
@@ -101,11 +108,13 @@ class HomeViewModel(
 
     init {
         loadFeed(refresh = true)
+        loadActivityFeed(refresh = true)
         refreshProfileData()
     }
 
     fun refreshAll() {
         loadFeed(refresh = true)
+        loadActivityFeed(refresh = true)
         refreshProfileData()
     }
 
@@ -114,13 +123,12 @@ class HomeViewModel(
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
             try {
                 val profile = api.getMyProfile()
-                val activities = api.getApprovedActivities()
                 val myParticipations = api.getMyParticipations()
                 val notifications = api.getNotifications()
                 val unreadCount = loadTotalUnreadCount()
+                val myId = profile.id
                 _uiState.value = _uiState.value.copy(
                     posts = profile.posts,
-                    activities = activities,
                     myProfile = profile,
                     myPosts = profile.posts,
                     myActivities = profile.activities,
@@ -128,7 +136,14 @@ class HomeViewModel(
                     notifications = notifications,
                     unreadCount = unreadCount,
                     isLoading = false,
+                    profileNotes = emptyList(),
+                    profileActivities = emptyList(),
+                    profileComments = emptyList(),
+                    profileFavoritePosts = emptyList(),
+                    profileLikedPosts = emptyList(),
+                    profileTabs = ProfileTabsUiState(targetUserId = myId),
                 )
+                loadProfileTab(tab = 0, userId = myId)
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
@@ -200,6 +215,63 @@ class HomeViewModel(
         val feed = _uiState.value.feed
         if (!feed.hasMore || feed.isLoadingMore || feed.isRefreshing) return
         loadFeed(refresh = false)
+    }
+
+    fun loadActivityFeed(refresh: Boolean = false) {
+        val feed = _uiState.value.activityFeed
+        if (refresh && feed.isRefreshing) return
+        if (!refresh && feed.isLoadingMore) return
+
+        val page = if (refresh) 1 else feed.page
+
+        _uiState.value = _uiState.value.copy(
+            activityFeed = feed.copy(
+                isRefreshing = refresh,
+                isInitialLoading = refresh && feed.activities.isEmpty(),
+                isLoadingMore = !refresh && feed.hasMore,
+                page = page,
+            ),
+        )
+
+        viewModelScope.launch {
+            try {
+                val response = api.getActivityFeed(page = page, limit = ACTIVITY_FEED_PAGE_SIZE)
+                val current = _uiState.value.activityFeed
+                val merged = if (refresh) {
+                    response.items
+                } else {
+                    current.activities + response.items.filter { new ->
+                        current.activities.none { it.id == new.id }
+                    }
+                }
+                _uiState.value = _uiState.value.copy(
+                    activityFeed = current.copy(
+                        activities = merged,
+                        page = page + 1,
+                        hasMore = response.hasMore,
+                        isRefreshing = false,
+                        isInitialLoading = false,
+                        isLoadingMore = false,
+                    ),
+                    activities = merged,
+                )
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    activityFeed = _uiState.value.activityFeed.copy(
+                        isRefreshing = false,
+                        isInitialLoading = false,
+                        isLoadingMore = false,
+                    ),
+                    error = parseError(e, "加载活动失败"),
+                )
+            }
+        }
+    }
+
+    fun loadMoreActivityFeed() {
+        val feed = _uiState.value.activityFeed
+        if (!feed.hasMore || feed.isLoadingMore || feed.isRefreshing) return
+        loadActivityFeed(refresh = false)
     }
 
     fun selectFeedTab(tab: String) {
@@ -513,13 +585,16 @@ class HomeViewModel(
                 isPostCommentsLoading = true,
                 selectedPost = null,
                 postComments = emptyList(),
+                detailAuthorFollowing = null,
             )
             try {
                 val post = api.getPost(id)
                 val comments = api.getPostComments(id)
+                val authorFollowing = loadAuthorFollowState(post.authorId)
                 _uiState.value = _uiState.value.copy(
                     selectedPost = post,
                     postComments = comments,
+                    detailAuthorFollowing = authorFollowing,
                     isPostLoading = false,
                     isPostCommentsLoading = false,
                 )
@@ -620,10 +695,19 @@ class HomeViewModel(
 
     fun loadActivityDetail(id: Int) {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isActivityLoading = true, selectedActivity = null)
+            _uiState.value = _uiState.value.copy(
+                isActivityLoading = true,
+                selectedActivity = null,
+                detailAuthorFollowing = null,
+            )
             try {
                 val activity = api.getActivity(id)
-                _uiState.value = _uiState.value.copy(selectedActivity = activity, isActivityLoading = false)
+                val authorFollowing = loadAuthorFollowState(activity.authorId)
+                _uiState.value = _uiState.value.copy(
+                    selectedActivity = activity,
+                    detailAuthorFollowing = authorFollowing,
+                    isActivityLoading = false,
+                )
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isActivityLoading = false,
@@ -637,13 +721,18 @@ class HomeViewModel(
         _uiState.value = _uiState.value.copy(
             selectedPost = null,
             postComments = emptyList(),
+            detailAuthorFollowing = null,
             isPostLoading = false,
             isPostCommentsLoading = false,
         )
     }
 
     fun clearSelectedActivity() {
-        _uiState.value = _uiState.value.copy(selectedActivity = null, isActivityLoading = false)
+        _uiState.value = _uiState.value.copy(
+            selectedActivity = null,
+            detailAuthorFollowing = null,
+            isActivityLoading = false,
+        )
     }
 
     fun loadNotificationDetail(id: Int) {
@@ -774,13 +863,23 @@ class HomeViewModel(
 
     fun loadUserProfile(userId: Int) {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isUserProfileLoading = true, selectedUserProfile = null)
+            _uiState.value = _uiState.value.copy(
+                isUserProfileLoading = true,
+                selectedUserProfile = null,
+                profileNotes = emptyList(),
+                profileActivities = emptyList(),
+                profileComments = emptyList(),
+                profileFavoritePosts = emptyList(),
+                profileLikedPosts = emptyList(),
+                profileTabs = ProfileTabsUiState(targetUserId = userId),
+            )
             try {
                 val profile = api.getUserProfile(userId)
                 _uiState.value = _uiState.value.copy(
                     selectedUserProfile = profile,
                     isUserProfileLoading = false,
                 )
+                loadProfileTab(tab = 0, userId = userId)
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isUserProfileLoading = false,
@@ -802,19 +901,27 @@ class HomeViewModel(
         _uiState.value = _uiState.value.copy(
             selectedUserProfile = null,
             isUserProfileLoading = false,
+            profileNotes = emptyList(),
+            profileActivities = emptyList(),
             profileComments = emptyList(),
             profileFavoritePosts = emptyList(),
             profileLikedPosts = emptyList(),
+            profileTabs = ProfileTabsUiState(),
         )
     }
 
-    fun loadProfileLibrary(tab: Int, userId: Int? = null) {
-        if (tab !in 2..4) return
+    fun loadProfileTab(
+        tab: Int,
+        userId: Int? = null,
+        refresh: Boolean = false,
+        loadMore: Boolean = false,
+    ) {
+        if (tab !in 0..4) return
         val myId = _uiState.value.myProfile?.id
         val targetId = userId ?: myId ?: return
         val isSelf = targetId == myId
 
-        if (!isSelf) {
+        if (!isSelf && tab in 2..4) {
             val profile = _uiState.value.selectedUserProfile
             if (profile?.id != targetId) return
             val allowed = when (tab) {
@@ -826,60 +933,217 @@ class HomeViewModel(
             if (!allowed) return
         }
 
+        val state = _uiState.value
+        val tabsState = if (state.profileTabs.targetUserId == targetId) {
+            state.profileTabs
+        } else {
+            ProfileTabsUiState(targetUserId = targetId)
+        }
+        val tabState = tabsState.tabs[tab]
+
+        if (loadMore) {
+            if (!tabState.hasMore || tabState.isLoadingMore || tabState.isRefreshing) return
+        } else if (!refresh) {
+            val hasData = when (tab) {
+                0 -> state.profileNotes.isNotEmpty()
+                1 -> state.profileActivities.isNotEmpty()
+                2 -> state.profileComments.isNotEmpty()
+                3 -> state.profileFavoritePosts.isNotEmpty()
+                4 -> state.profileLikedPosts.isNotEmpty()
+                else -> false
+            }
+            if (hasData || tabState.isInitialLoading || tabState.isRefreshing) return
+        }
+
+        val page = when {
+            refresh -> 1
+            loadMore -> tabState.page
+            else -> 1
+        }
+        _uiState.value = state.copy(
+            profileTabs = tabsState.withTab(
+                tab,
+                tabState.copy(
+                    isRefreshing = refresh,
+                    isInitialLoading = !refresh && !loadMore,
+                    isLoadingMore = loadMore,
+                ),
+            ),
+        )
+
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isProfileLibraryLoading = true)
             try {
+                val replace = !loadMore
                 when (tab) {
-                    2 -> {
-                        val comments = if (isSelf) {
-                            api.getMyProfileComments()
-                        } else {
-                            api.getUserProfileComments(targetId)
+                    0 -> {
+                        val response = api.getUserPosts(targetId, page, PROFILE_TAB_PAGE_SIZE)
+                        applyProfileTabResult(tab, page, response.hasMore, replace) { current ->
+                            current.copy(
+                                profileNotes = mergePosts(current.profileNotes, response.items, replace),
+                            )
                         }
-                        _uiState.value = _uiState.value.copy(profileComments = comments)
+                    }
+                    1 -> {
+                        val response = api.getUserActivities(targetId, page, PROFILE_TAB_PAGE_SIZE)
+                        applyProfileTabResult(tab, page, response.hasMore, replace) { current ->
+                            current.copy(
+                                profileActivities = mergeActivities(
+                                    current.profileActivities,
+                                    response.items,
+                                    replace,
+                                ),
+                            )
+                        }
+                    }
+                    2 -> {
+                        val response = if (isSelf) {
+                            api.getMyProfileComments(page, PROFILE_TAB_PAGE_SIZE)
+                        } else {
+                            api.getUserProfileComments(targetId, page, PROFILE_TAB_PAGE_SIZE)
+                        }
+                        applyProfileTabResult(tab, page, response.hasMore, replace) { current ->
+                            current.copy(
+                                profileComments = mergeComments(
+                                    current.profileComments,
+                                    response.items,
+                                    replace,
+                                ),
+                            )
+                        }
                     }
                     3 -> {
-                        val favorites = if (isSelf) {
-                            api.getMyFavoritePosts()
+                        val response = if (isSelf) {
+                            api.getMyFavoritePosts(page, PROFILE_TAB_PAGE_SIZE)
                         } else {
-                            api.getUserFavoritePosts(targetId)
+                            api.getUserFavoritePosts(targetId, page, PROFILE_TAB_PAGE_SIZE)
                         }
-                        _uiState.value = _uiState.value.copy(profileFavoritePosts = favorites)
+                        applyProfileTabResult(tab, page, response.hasMore, replace) { current ->
+                            current.copy(
+                                profileFavoritePosts = mergePosts(
+                                    current.profileFavoritePosts,
+                                    response.items,
+                                    replace,
+                                ),
+                            )
+                        }
                     }
-                    4 -> {
-                        val likes = if (isSelf) {
-                            api.getMyLikedPosts()
+                    else -> {
+                        val response = if (isSelf) {
+                            api.getMyLikedPosts(page, PROFILE_TAB_PAGE_SIZE)
                         } else {
-                            api.getUserLikedPosts(targetId)
+                            api.getUserLikedPosts(targetId, page, PROFILE_TAB_PAGE_SIZE)
                         }
-                        _uiState.value = _uiState.value.copy(profileLikedPosts = likes)
+                        applyProfileTabResult(tab, page, response.hasMore, replace) { current ->
+                            current.copy(
+                                profileLikedPosts = mergePosts(
+                                    current.profileLikedPosts,
+                                    response.items,
+                                    replace,
+                                ),
+                            )
+                        }
                     }
                 }
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(error = parseError(e, "加载内容失败"))
-            } finally {
-                _uiState.value = _uiState.value.copy(isProfileLibraryLoading = false)
+                val current = _uiState.value
+                val currentTabState = current.profileTabs.tabs[tab]
+                _uiState.value = current.copy(
+                    profileTabs = current.profileTabs.withTab(
+                        tab,
+                        currentTabState.copy(
+                            isRefreshing = false,
+                            isInitialLoading = false,
+                            isLoadingMore = false,
+                        ),
+                    ),
+                    error = parseError(e, "加载内容失败"),
+                )
             }
         }
     }
 
+    fun refreshProfileTab(tab: Int, userId: Int? = null) {
+        loadProfileTab(tab, userId, refresh = true)
+    }
+
+    fun loadMoreProfileTab(tab: Int, userId: Int? = null) {
+        loadProfileTab(tab, userId, loadMore = true)
+    }
+
+    private fun applyProfileTabResult(
+        tab: Int,
+        page: Int,
+        hasMore: Boolean,
+        @Suppress("UNUSED_PARAMETER") replace: Boolean,
+        update: (HomeUiState) -> HomeUiState,
+    ) {
+        val current = _uiState.value
+        val currentTabState = current.profileTabs.tabs[tab]
+        _uiState.value = update(current).copy(
+            profileTabs = current.profileTabs.withTab(
+                tab,
+                currentTabState.copy(
+                    page = page + 1,
+                    hasMore = hasMore,
+                    isRefreshing = false,
+                    isInitialLoading = false,
+                    isLoadingMore = false,
+                ),
+            ),
+        )
+    }
+
+    private fun mergePosts(
+        existing: List<PostDto>,
+        incoming: List<PostDto>,
+        replace: Boolean,
+    ): List<PostDto> {
+        if (replace) return incoming
+        return existing + incoming.filter { new -> existing.none { it.id == new.id } }
+    }
+
+    private fun mergeActivities(
+        existing: List<ActivityDto>,
+        incoming: List<ActivityDto>,
+        replace: Boolean,
+    ): List<ActivityDto> {
+        if (replace) return incoming
+        return existing + incoming.filter { new -> existing.none { it.id == new.id } }
+    }
+
+    private fun mergeComments(
+        existing: List<ProfileCommentDto>,
+        incoming: List<ProfileCommentDto>,
+        replace: Boolean,
+    ): List<ProfileCommentDto> {
+        if (replace) return incoming
+        return existing + incoming.filter { new -> existing.none { it.id == new.id } }
+    }
+
+    private fun ProfileTabsUiState.withTab(tab: Int, tabState: ProfileTabUiState): ProfileTabsUiState {
+        val updated = tabs.toMutableList()
+        updated[tab] = tabState
+        return copy(tabs = updated)
+    }
+
+    companion object {
+        private const val PROFILE_TAB_PAGE_SIZE = 10
+        private const val ACTIVITY_FEED_PAGE_SIZE = 10
+    }
+
     fun searchMyPosts(keyword: String) {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(
-                profileSearchKeyword = keyword,
-                isProfileLibraryLoading = true,
-            )
+            _uiState.value = _uiState.value.copy(profileSearchKeyword = keyword)
             try {
                 val posts = api.getMyPosts(keyword.takeIf { it.isNotBlank() })
                 val profile = _uiState.value.myProfile
                 _uiState.value = _uiState.value.copy(
                     myPosts = posts,
                     myProfile = profile?.copy(posts = posts, postCount = posts.size),
-                    isProfileLibraryLoading = false,
+                    profileNotes = posts,
                 )
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
-                    isProfileLibraryLoading = false,
                     error = parseError(e, "搜索失败"),
                 )
             }
@@ -954,13 +1218,44 @@ class HomeViewModel(
     fun toggleFollow(userId: Int) {
         viewModelScope.launch {
             try {
-                api.toggleFollow(userId)
+                val result = api.toggleFollow(userId)
                 val profile = api.getUserProfile(userId)
-                _uiState.value = _uiState.value.copy(selectedUserProfile = profile)
+                _uiState.value = _uiState.value.copy(
+                    selectedUserProfile = profile,
+                    detailAuthorFollowing = if (isDetailAuthor(userId)) result.isFollowing else _uiState.value.detailAuthorFollowing,
+                )
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(error = parseError(e, "操作失败"))
             }
         }
+    }
+
+    fun toggleDetailAuthorFollow(authorId: Int) {
+        viewModelScope.launch {
+            try {
+                val result = api.toggleFollow(authorId)
+                val current = _uiState.value
+                _uiState.value = current.copy(
+                    detailAuthorFollowing = result.isFollowing,
+                    selectedUserProfile = current.selectedUserProfile?.takeIf { it.id == authorId }
+                        ?.copy(isFollowing = result.isFollowing)
+                        ?: current.selectedUserProfile,
+                )
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(error = parseError(e, "操作失败"))
+            }
+        }
+    }
+
+    private fun isDetailAuthor(authorId: Int): Boolean {
+        val state = _uiState.value
+        return state.selectedPost?.authorId == authorId || state.selectedActivity?.authorId == authorId
+    }
+
+    private suspend fun loadAuthorFollowState(authorId: Int): Boolean? {
+        val myId = _uiState.value.myProfile?.id ?: return null
+        if (authorId == myId) return null
+        return api.getUserProfile(authorId).isFollowing
     }
 
     private suspend fun loadTotalUnreadCount(): Int {

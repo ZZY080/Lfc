@@ -7,6 +7,7 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { ConsumerActivityService } from '@module/activity/service/consumer-activity.service';
@@ -16,6 +17,7 @@ import {
 } from '@module/activity/schema/activity.schema';
 import { JwtAuthGuard } from '@shared/guard/jwt-auth.guard';
 import { CurrentUser } from '@shared/decorator/user.decorator';
+import { PaginationQuerySchema } from '@shared/schema/pagination.schema';
 
 @Controller('consumer/activity')
 export class ConsumerActivityController {
@@ -35,6 +37,14 @@ export class ConsumerActivityController {
   @Get()
   findApproved() {
     return this.consumerActivityService.findApproved();
+  }
+
+  @Get('feed')
+  findApprovedFeed(@Query() query: PaginationQuerySchema) {
+    return this.consumerActivityService.findApprovedPaginated(
+      query.page,
+      query.limit,
+    );
   }
 
   @Get('mine')

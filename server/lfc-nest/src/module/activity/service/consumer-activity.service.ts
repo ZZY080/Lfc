@@ -17,6 +17,10 @@ import {
 } from '@module/activity/dto/activity.dto';
 import { NotificationService } from '@module/message/service/notification.service';
 import { UserEntity } from '@module/user/entity/user.entity';
+import {
+  createPaginatedResult,
+  normalizePagination,
+} from '@shared/dto/paginated-result.dto';
 
 @Injectable()
 export class ConsumerActivityService {
@@ -60,6 +64,24 @@ export class ConsumerActivityService {
     });
   }
 
+  async findApprovedPaginated(page?: number, limit?: number) {
+    const { page: normalizedPage, limit: normalizedLimit, skip } =
+      normalizePagination(page, limit);
+    const [activities, total] = await this.activityRepository.findAndCount({
+      where: { status: ActivityStatus.APPROVED },
+      relations: ['author', 'participants', 'participants.user'],
+      order: { startTime: 'ASC' },
+      skip,
+      take: normalizedLimit,
+    });
+    return createPaginatedResult(
+      activities,
+      total,
+      normalizedPage,
+      normalizedLimit,
+    );
+  }
+
   findMine(userId: number) {
     return this.activityRepository.find({
       where: { authorId: userId },
@@ -82,6 +104,31 @@ export class ConsumerActivityService {
       relations: ['author'],
       order: { startTime: 'DESC' },
     });
+  }
+
+  async findByAuthorPaginated(
+    authorId: number,
+    isSelf: boolean,
+    page?: number,
+    limit?: number,
+  ) {
+    const { page: normalizedPage, limit: normalizedLimit, skip } =
+      normalizePagination(page, limit);
+    const [activities, total] = await this.activityRepository.findAndCount({
+      where: isSelf
+        ? { authorId }
+        : { authorId, status: ActivityStatus.APPROVED },
+      relations: isSelf ? ['participants'] : ['author'],
+      order: { createdAt: 'DESC' },
+      skip,
+      take: normalizedLimit,
+    });
+    return createPaginatedResult(
+      activities,
+      total,
+      normalizedPage,
+      normalizedLimit,
+    );
   }
 
   async findOne(id: number) {

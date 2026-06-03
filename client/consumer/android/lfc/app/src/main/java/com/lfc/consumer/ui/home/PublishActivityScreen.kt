@@ -46,6 +46,8 @@ fun PublishActivityScreen(
     var location by remember { mutableStateOf(initial?.location ?: "") }
     var startTime by remember { mutableStateOf(initial?.startTime?.take(16)?.replace(" ", "T") ?: "") }
     var endTime by remember { mutableStateOf(initial?.endTime?.take(16)?.replace(" ", "T") ?: "") }
+    var showStartPicker by remember { mutableStateOf(false) }
+    var showEndPicker by remember { mutableStateOf(false) }
     var maxParticipants by remember { mutableStateOf((initial?.maxParticipants ?: 0).toString()) }
     val selectedImages = rememberPublishImageSelection()
     val existingImages = initial?.images.orEmpty()
@@ -119,18 +121,18 @@ fun PublishActivityScreen(
                         singleLine = true,
                     )
                     Spacer(modifier = Modifier.height(14.dp))
-                    XhsPublishTextField(
+                    XhsPublishDateTimeField(
+                        label = "开始时间",
                         value = startTime,
-                        onValueChange = { startTime = it },
-                        placeholder = "开始时间，例如：2026-06-10T14:00",
-                        singleLine = true,
+                        placeholder = "请选择开始时间",
+                        onClick = { showStartPicker = true },
                     )
                     Spacer(modifier = Modifier.height(14.dp))
-                    XhsPublishTextField(
+                    XhsPublishDateTimeField(
+                        label = "结束时间",
                         value = endTime,
-                        onValueChange = { endTime = it },
-                        placeholder = "结束时间，例如：2026-06-10T16:00",
-                        singleLine = true,
+                        placeholder = "请选择结束时间",
+                        onClick = { showEndPicker = true },
                     )
                 }
 
@@ -165,4 +167,34 @@ fun PublishActivityScreen(
             }
         }
     }
+
+    ActivityDateTimePickerSheet(
+        visible = showStartPicker,
+        title = "选择开始时间",
+        initialValue = startTime,
+        onDismiss = { showStartPicker = false },
+        onConfirm = { value ->
+            startTime = value
+            showStartPicker = false
+            if (endTime.isBlank()) {
+                parseActivityDateTime(value)?.let { startCalendar ->
+                    val endCalendar = (startCalendar.clone() as java.util.Calendar).apply {
+                        add(java.util.Calendar.HOUR_OF_DAY, 2)
+                    }
+                    endTime = formatActivityDateTimeForApi(endCalendar)
+                }
+            }
+        },
+    )
+
+    ActivityDateTimePickerSheet(
+        visible = showEndPicker,
+        title = "选择结束时间",
+        initialValue = endTime.ifBlank { startTime },
+        onDismiss = { showEndPicker = false },
+        onConfirm = { value ->
+            endTime = value
+            showEndPicker = false
+        },
+    )
 }

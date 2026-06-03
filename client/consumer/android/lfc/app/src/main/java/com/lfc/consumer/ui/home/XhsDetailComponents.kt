@@ -1,10 +1,13 @@
 package com.lfc.consumer.ui.home
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -24,6 +27,7 @@ import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -33,7 +37,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -42,6 +53,141 @@ import com.lfc.consumer.ui.theme.XhsTextPrimary
 import com.lfc.consumer.ui.theme.XhsTextSecondary
 
 fun formatXhsTime(iso: String): String = iso.replace("T", " ").take(19)
+
+@Composable
+fun XhsDetailImageCarousel(
+    images: List<String>,
+    contentDescription: String,
+    modifier: Modifier = Modifier,
+    aspectRatio: Float = 1f,
+) {
+    if (images.isEmpty()) return
+
+    val pagerState = rememberPagerState(pageCount = { images.size })
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .aspectRatio(aspectRatio),
+    ) {
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxSize(),
+        ) { page ->
+            AsyncImage(
+                model = images[page],
+                contentDescription = contentDescription,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+
+        if (images.size > 1) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.35f)),
+                        ),
+                    ),
+            )
+
+            Row(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 14.dp),
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
+            ) {
+                repeat(images.size) { index ->
+                    Box(
+                        modifier = Modifier
+                            .size(if (pagerState.currentPage == index) 6.dp else 5.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (pagerState.currentPage == index) Color.White
+                                else Color.White.copy(alpha = 0.45f),
+                            ),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun XhsDetailAuthorHeader(
+    authorLabel: String,
+    authorId: Int,
+    onBack: () -> Unit,
+    onAuthorClick: (Int) -> Unit,
+    actions: @Composable RowScope.() -> Unit,
+) {
+    Column {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color.White)
+                .statusBarsPadding()
+                .padding(horizontal = 4.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(onClick = onBack, modifier = Modifier.size(40.dp)) {
+                Icon(
+                    Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "返回",
+                    tint = XhsTextPrimary,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(20.dp))
+                    .clickable { onAuthorClick(authorId) }
+                    .padding(horizontal = 4.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                XhsProfileAvatar(label = authorLabel, size = 32)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = authorLabel,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp,
+                    color = XhsTextPrimary,
+                    maxLines = 1,
+                )
+            }
+
+            actions()
+        }
+        HorizontalDivider(color = Color(0xFFF0F0F0))
+    }
+}
+
+@Composable
+fun XhsDetailFollowButton(
+    isFollowing: Boolean,
+    onClick: () -> Unit,
+) {
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = if (isFollowing) Color.Transparent else XhsRed,
+        border = if (isFollowing) BorderStroke(1.dp, Color(0xFFDDDDDD)) else null,
+        modifier = Modifier.clickable(onClick = onClick),
+    ) {
+        Text(
+            text = if (isFollowing) "已关注" else "关注",
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 5.dp),
+            color = if (isFollowing) XhsTextSecondary else Color.White,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Medium,
+        )
+    }
+}
 
 @Composable
 fun XhsDetailBackButton(onBack: () -> Unit, modifier: Modifier = Modifier) {

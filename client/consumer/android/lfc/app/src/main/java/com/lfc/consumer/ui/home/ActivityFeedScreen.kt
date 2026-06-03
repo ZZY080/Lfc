@@ -12,44 +12,71 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.lfc.consumer.data.model.ActivityDto
+import com.lfc.consumer.data.model.ActivityFeedUiState
+import com.lfc.consumer.ui.theme.XhsBackground
 import com.lfc.consumer.ui.theme.XhsRed
-import com.lfc.consumer.ui.theme.XhsRedContainer
+import com.lfc.consumer.ui.theme.XhsTextPrimary
 import com.lfc.consumer.ui.theme.XhsTextSecondary
+import kotlinx.coroutines.flow.distinctUntilChanged
+
+private val activityCoverHeight = 168.dp
 
 @Composable
 fun ActivityFeedScreen(
-    activities: List<ActivityDto>,
+    feedState: ActivityFeedUiState,
+    onRefresh: () -> Unit,
+    onLoadMore: () -> Unit,
     onJoin: (Int) -> Unit,
     onActivityClick: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier = modifier.fillMaxSize()) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(XhsBackground),
+    ) {
         XhsPageTitle("校园活动")
         ActivityFeedContent(
-            activities = activities,
+            feedState = feedState,
+            onRefresh = onRefresh,
+            onLoadMore = onLoadMore,
             onJoin = onJoin,
             onActivityClick = onActivityClick,
             modifier = Modifier.fillMaxSize(),
@@ -57,31 +84,138 @@ fun ActivityFeedScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ActivityFeedContent(
-    activities: List<ActivityDto>,
+    feedState: ActivityFeedUiState,
+    onRefresh: () -> Unit,
+    onLoadMore: () -> Unit,
     onJoin: (Int) -> Unit,
     onActivityClick: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    if (activities.isEmpty()) {
-        Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("暂无活动，点击 + 发布第一个活动吧", color = MaterialTheme.colorScheme.onSurfaceVariant)
+    val listState = rememberLazyListState()
+    val pullRefreshState = rememberPullToRefreshState()
+    var pendingRefresh by remember { mutableStateOf(false) }
+    val isRefreshing = feedState.isRefreshing || pendingRefresh
+
+    LaunchedEffect(feedState.isRefreshing) {
+        if (!feedState.isRefreshing) {
+            pendingRefresh = false
+        } else {
+            listState.animateScrollToItem(0)
         }
-        return
     }
 
-    LazyColumn(
+    LaunchedEffect(listState, feedState.hasMore, feedState.isLoadingMore, isRefreshing) {
+        snapshotFlow {
+            val info = listState.layoutInfo
+            val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: -1
+            lastVisible to info.totalItemsCount
+        }
+            .distinctUntilChanged()
+            .collect { (lastVisible, total) ->
+                if (
+                    total > 0 &&
+                    lastVisible >= total - 2 &&
+                    feedState.hasMore &&
+                    !feedState.isLoadingMore &&
+                    !isRefreshing
+                ) {
+                    onLoadMore()
+                }
+            }
+    }
+
+    PullToRefreshBox(
+        state = pullRefreshState,
+        isRefreshing = isRefreshing,
+        onRefresh = {
+            pendingRefresh = true
+            onRefresh()
+        },
         modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        indicator = {
+            if (isRefreshing) {
+                CircularProgressIndicator(
+                    color = XhsRed,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 12.dp)
+                        .size(28.dp),
+                    strokeWidth = 2.5.dp,
+                )
+            }
+        },
     ) {
-        items(activities, key = { it.id }) { activity ->
-            ActivityCard(
-                activity = activity,
-                onClick = { onActivityClick(activity.id) },
-                onJoin = { onJoin(activity.id) },
-            )
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            when {
+                feedState.isInitialLoading && feedState.activities.isEmpty() -> {
+                    item(key = "loading") {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(240.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            CircularProgressIndicator(color = XhsRed)
+                        }
+                    }
+                }
+                feedState.activities.isEmpty() -> {
+                    item(key = "empty") {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(240.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text("暂无活动，点击 + 发布第一个活动吧", color = XhsTextSecondary)
+                        }
+                    }
+                }
+                else -> {
+                    items(feedState.activities, key = { it.id }) { activity ->
+                        ActivityCard(
+                            activity = activity,
+                            onClick = { onActivityClick(activity.id) },
+                            onJoin = { onJoin(activity.id) },
+                        )
+                    }
+                    if (feedState.isLoadingMore) {
+                        item(key = "loading-more") {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                CircularProgressIndicator(
+                                    color = XhsRed,
+                                    modifier = Modifier.size(24.dp),
+                                )
+                            }
+                        }
+                    } else if (!feedState.hasMore) {
+                        item(key = "end") {
+                            Text(
+                                "— 已经到底了 —",
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 16.dp),
+                                color = XhsTextSecondary,
+                                fontSize = 13.sp,
+                                textAlign = TextAlign.Center,
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -92,23 +226,24 @@ private fun ActivityCard(
     onClick: () -> Unit,
     onJoin: () -> Unit,
 ) {
+    val coverUrl = activity.images?.firstOrNull()
+    val imageCount = activity.images?.size ?: 0
+
     Surface(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surface,
+        color = Color.White,
         shadowElevation = 1.dp,
     ) {
         Column {
-            val coverUrl = activity.images?.firstOrNull()
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(120.dp)
+                    .height(activityCoverHeight)
                     .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
                     .background(coverGradientForId(activity.id)),
-                contentAlignment = Alignment.BottomStart,
             ) {
                 if (coverUrl != null) {
                     AsyncImage(
@@ -118,43 +253,100 @@ private fun ActivityCard(
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    Color.Transparent,
+                                    Color.Black.copy(alpha = 0.08f),
+                                    Color.Black.copy(alpha = 0.55f),
+                                ),
+                            ),
+                        ),
+                )
+                if (imageCount > 1) {
+                    Text(
+                        text = "${imageCount}图",
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(10.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color.Black.copy(alpha = 0.45f))
+                            .padding(horizontal = 8.dp, vertical = 3.dp),
+                        color = Color.White,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                    )
+                }
                 Text(
                     text = activity.title,
-                    modifier = Modifier.padding(16.dp),
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(horizontal = 14.dp, vertical = 14.dp),
                     color = Color.White,
                     fontWeight = FontWeight.Bold,
-                    style = MaterialTheme.typography.titleLarge,
+                    fontSize = 18.sp,
+                    lineHeight = 24.sp,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    text = activity.description,
-                    style = MaterialTheme.typography.bodyMedium,
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.LocationOn, contentDescription = null, tint = XhsTextSecondary)
+
+            Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+                if (activity.description.isNotBlank()) {
+                    Text(
+                        text = activity.description,
+                        fontSize = 14.sp,
+                        lineHeight = 21.sp,
+                        color = XhsTextPrimary,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        Icons.Default.LocationOn,
+                        contentDescription = null,
+                        tint = XhsTextSecondary,
+                        modifier = Modifier.size(15.dp),
+                    )
                     Text(
                         text = activity.location,
-                        style = MaterialTheme.typography.bodySmall,
+                        fontSize = 13.sp,
                         color = XhsTextSecondary,
                         modifier = Modifier.padding(start = 4.dp),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
-                Spacer(modifier = Modifier.height(4.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Schedule, contentDescription = null, tint = XhsTextSecondary)
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        Icons.Default.Schedule,
+                        contentDescription = null,
+                        tint = XhsTextSecondary,
+                        modifier = Modifier.size(15.dp),
+                    )
                     Text(
                         text = formatActivityTime(activity.startTime, activity.endTime),
-                        style = MaterialTheme.typography.bodySmall,
+                        fontSize = 13.sp,
                         color = XhsTextSecondary,
                         modifier = Modifier.padding(start = 4.dp),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
+
                 Spacer(modifier = Modifier.height(12.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -162,17 +354,28 @@ private fun ActivityCard(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     val count = activity.participants?.size ?: 0
-                    Text(
-                        text = "$count 人已报名${if (activity.maxParticipants > 0) " / ${activity.maxParticipants}" else ""}",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = XhsRed,
-                    )
+                    Column {
+                        Text(
+                            text = "$count 人已报名",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            color = XhsRed,
+                        )
+                        if (activity.maxParticipants > 0) {
+                            Text(
+                                text = "限额 ${activity.maxParticipants} 人",
+                                fontSize = 12.sp,
+                                color = XhsTextSecondary,
+                            )
+                        }
+                    }
                     Button(
                         onClick = onJoin,
                         colors = ButtonDefaults.buttonColors(containerColor = XhsRed),
                         shape = RoundedCornerShape(20.dp),
+                        modifier = Modifier.height(38.dp),
                     ) {
-                        Text("立即报名")
+                        Text("立即报名", fontSize = 14.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }

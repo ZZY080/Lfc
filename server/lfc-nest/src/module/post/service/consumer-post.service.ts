@@ -16,6 +16,10 @@ import {
   UpdatePostBodyDto,
 } from '@module/post/dto/consumer-post.dto';
 import { ConsumerPostSocialService } from '@module/post/service/consumer-post-social.service';
+import {
+  createPaginatedResult,
+  normalizePagination,
+} from '@shared/dto/paginated-result.dto';
 
 @Injectable()
 export class ConsumerPostService {
@@ -118,6 +122,25 @@ export class ConsumerPostService {
       order: { createdAt: 'DESC' },
     });
     return this.postSocialService.enrichPosts(posts, viewerId);
+  }
+
+  async findByAuthorPaginated(
+    authorId: number,
+    page?: number,
+    limit?: number,
+    viewerId?: number,
+  ) {
+    const { page: normalizedPage, limit: normalizedLimit, skip } =
+      normalizePagination(page, limit);
+    const [posts, total] = await this.postRepository.findAndCount({
+      where: { authorId },
+      relations: ['author'],
+      order: { createdAt: 'DESC' },
+      skip,
+      take: normalizedLimit,
+    });
+    const items = await this.postSocialService.enrichPosts(posts, viewerId);
+    return createPaginatedResult(items, total, normalizedPage, normalizedLimit);
   }
 
   async findOne(id: number, userId?: number) {

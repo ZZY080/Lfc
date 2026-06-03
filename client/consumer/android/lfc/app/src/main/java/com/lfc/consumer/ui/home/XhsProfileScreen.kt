@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -32,11 +33,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.QrCode2
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.PersonAddAlt1
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -53,24 +57,40 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
+import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridItemScope
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.runtime.snapshotFlow
+import com.lfc.consumer.data.model.ProfileTabUiState
+import kotlinx.coroutines.flow.distinctUntilChanged
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.unit.Constraints
 import androidx.core.view.WindowCompat
 import coil.compose.AsyncImage
 import com.lfc.consumer.data.model.ActivityDto
 import com.lfc.consumer.data.model.PostDto
 import com.lfc.consumer.data.model.ProfileCommentDto
+import com.lfc.consumer.data.model.displayName
 import com.lfc.consumer.ui.theme.XhsRed
 import com.lfc.consumer.ui.theme.XhsTextPrimary
 import com.lfc.consumer.ui.theme.XhsTextSecondary
@@ -99,6 +119,19 @@ data class XhsProfileData(
 
 private val profileTabLabels = listOf("笔记", "活动", "评论", "收藏", "赞")
 
+private data class ProfileTabItem(val label: String, val contentIndex: Int)
+
+private fun profileTabsFor(mode: XhsProfileMode): List<ProfileTabItem> = when (mode) {
+    XhsProfileMode.Self -> profileTabLabels.mapIndexed { index, label ->
+        ProfileTabItem(label, index)
+    }
+    XhsProfileMode.Other -> listOf(
+        ProfileTabItem("笔记", 0),
+        ProfileTabItem("活动", 1),
+        ProfileTabItem("收藏", 3),
+    )
+}
+
 private fun XhsProfileData.isTabLocked(tabIndex: Int): Boolean = when (tabIndex) {
     2 -> !showCommentsPublic
     3 -> !showFavoritesPublic
@@ -116,24 +149,72 @@ private fun XhsProfileData.isTabAccessible(mode: XhsProfileMode, tabIndex: Int):
     }
 }
 
+private fun profileTabEmptyMessage(tabIndex: Int): String = when (tabIndex) {
+    0 -> "还没有发布笔记"
+    1 -> "还没有发布活动"
+    2 -> "还没有发表评论"
+    3 -> "还没有收藏内容"
+    4 -> "还没有赞过内容"
+    else -> ""
+}
+
+private fun isProfileTabContentEmpty(
+    tabIndex: Int,
+    profileNotes: List<PostDto>,
+    profileActivities: List<ActivityDto>,
+    profileComments: List<ProfileCommentDto>,
+    profileFavoritePosts: List<PostDto>,
+    profileLikedPosts: List<PostDto>,
+): Boolean = when (tabIndex) {
+    0 -> profileNotes.isEmpty()
+    1 -> profileActivities.isEmpty()
+    2 -> profileComments.isEmpty()
+    3 -> profileFavoritePosts.isEmpty()
+    4 -> profileLikedPosts.isEmpty()
+    else -> true
+}
+
 private val profileCoverDark = Color(0xFF1A2329)
+private val profileGridHorizontalPadding = 8.dp
+private val profileGridItemSpacing = 8.dp
 private val topBarHeight = 48.dp
+
+private fun Modifier.breakOutHorizontalPadding(padding: Dp): Modifier = layout { measurable, constraints ->
+    val paddingPx = padding.roundToPx()
+    val extraWidth = paddingPx * 2
+    val placeable = measurable.measure(
+        Constraints(
+            minWidth = 0,
+            maxWidth = constraints.maxWidth + extraWidth,
+            minHeight = 0,
+            maxHeight = constraints.maxHeight,
+        ),
+    )
+    layout(constraints.maxWidth, placeable.height) {
+        placeable.placeRelative(-paddingPx, 0)
+    }
+}
 
 fun formatProfileDate(iso: String): String {
     val normalized = iso.replace("T", " ").take(10)
     return if (normalized.length >= 10) normalized else iso
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun XhsProfileScreen(
     profile: XhsProfileData?,
     mode: XhsProfileMode,
     isLoading: Boolean,
     modifier: Modifier = Modifier,
+    profileNotes: List<PostDto> = emptyList(),
+    profileActivities: List<ActivityDto> = emptyList(),
     profileFavoritePosts: List<PostDto> = emptyList(),
     profileLikedPosts: List<PostDto> = emptyList(),
     profileComments: List<ProfileCommentDto> = emptyList(),
-    isLibraryLoading: Boolean = false,
+    tabUiState: ProfileTabUiState = ProfileTabUiState(),
+    onRefresh: () -> Unit = {},
+    onLoadMore: () -> Unit = {},
     onBack: (() -> Unit)? = null,
     onPostClick: (Int) -> Unit,
     onActivityClick: (Int) -> Unit = {},
@@ -159,11 +240,12 @@ fun XhsProfileScreen(
 ) {
     var internalTab by remember { mutableIntStateOf(0) }
     val selectedTab = selectedContentTab ?: internalTab
-    fun updateSelectedTab(tab: Int) {
+    fun selectTab(tab: Int) {
         if (onContentTabChange != null) {
             onContentTabChange(tab)
         } else {
             internalTab = tab
+            onTabSelected?.invoke(tab)
         }
     }
     val view = LocalView.current
@@ -189,6 +271,18 @@ fun XhsProfileScreen(
             isLoading -> XhsDetailLoading(Modifier.fillMaxSize())
             profile == null -> XhsDetailEmpty("用户不存在", Modifier.fillMaxSize())
             else -> {
+                val tabLocked = selectedTab in 2..4 && !profile.isTabAccessible(mode, selectedTab)
+                val isTabEmpty = isProfileTabContentEmpty(
+                    tabIndex = selectedTab,
+                    profileNotes = profileNotes,
+                    profileActivities = profileActivities,
+                    profileComments = profileComments,
+                    profileFavoritePosts = profileFavoritePosts,
+                    profileLikedPosts = profileLikedPosts,
+                )
+                val showTabPlaceholder = tabLocked ||
+                    tabUiState.isInitialLoading ||
+                    (isTabEmpty && !tabUiState.isLoadingMore)
                 val gridState = rememberLazyStaggeredGridState()
                 val isCollapsed by remember {
                     derivedStateOf {
@@ -201,76 +295,135 @@ fun XhsProfileScreen(
                     derivedStateOf { gridState.firstVisibleItemIndex >= 1 }
                 }
 
-                LazyVerticalStaggeredGrid(
-                    state = gridState,
-                    columns = StaggeredGridCells.Fixed(2),
-                    contentPadding = PaddingValues(bottom = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(2.dp),
-                    verticalItemSpacing = 2.dp,
-                    modifier = Modifier.fillMaxSize(),
-                ) {
-                    item(span = StaggeredGridItemSpan.FullLine) {
-                        XhsProfileHeaderBlock(
-                            profile = profile,
-                            mode = mode,
-                            onMessage = onMessage,
-                            onFollowToggle = onFollowToggle,
-                            selectedTab = selectedTab,
-                            onTabSelected = {
-                                updateSelectedTab(it)
-                                onTabSelected?.invoke(it)
-                            },
-                            onSearch = onSearch,
-                            showInlineTabs = !showStickyTabs,
-                            onShowMyQr = if (mode == XhsProfileMode.Self) onShowQr else null,
-                        )
-                    }
+                LaunchedEffect(selectedTab) {
+                    gridState.scrollToItem(0)
+                }
 
-                    when (selectedTab) {
-                        0 -> renderNotesTab(
-                            posts = profile.posts,
-                            authorLabel = profile.displayName,
-                            avatarUrl = profile.avatarUrl,
-                            isSelf = mode == XhsProfileMode.Self,
-                            onPostClick = onPostClick,
-                            onEditPost = onEditPost,
-                            onDeletePost = onDeletePost,
+                LaunchedEffect(gridState, tabUiState.hasMore, tabUiState.isLoadingMore, selectedTab) {
+                    snapshotFlow {
+                        val info = gridState.layoutInfo
+                        val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: -1
+                        lastVisible to info.totalItemsCount
+                    }
+                        .distinctUntilChanged()
+                        .collect { (lastVisible, total) ->
+                            if (
+                                !tabLocked &&
+                                total > 0 &&
+                                lastVisible >= total - 3 &&
+                                tabUiState.hasMore &&
+                                !tabUiState.isLoadingMore &&
+                                !tabUiState.isRefreshing
+                            ) {
+                                onLoadMore()
+                            }
+                        }
+                }
+
+                val pullRefreshState = rememberPullToRefreshState()
+
+                PullToRefreshBox(
+                    state = pullRefreshState,
+                    isRefreshing = tabUiState.isRefreshing,
+                    onRefresh = onRefresh,
+                    modifier = Modifier.fillMaxSize(),
+                    indicator = {
+                        PullToRefreshDefaults.Indicator(
+                            isRefreshing = tabUiState.isRefreshing,
+                            state = pullRefreshState,
+                            modifier = Modifier.align(Alignment.TopCenter),
+                            color = XhsRed,
                         )
-                        1 -> renderActivitiesTab(
-                            activities = profile.activities,
-                            isSelf = mode == XhsProfileMode.Self,
-                            onActivityClick = onActivityClick,
-                            onEditActivity = onEditActivity,
-                            onDeleteActivity = onDeleteActivity,
-                        )
-                        2, 3, 4 -> {
-                            if (profile.isTabAccessible(mode, selectedTab)) {
-                                when (selectedTab) {
-                                    2 -> renderCommentsTab(
-                                        comments = profileComments,
-                                        isLoading = isLibraryLoading,
-                                        onPostClick = onPostClick,
+                    },
+                ) {
+                    LazyVerticalStaggeredGrid(
+                        state = gridState,
+                        columns = StaggeredGridCells.Fixed(2),
+                        contentPadding = PaddingValues(
+                            start = profileGridHorizontalPadding,
+                            end = profileGridHorizontalPadding,
+                            bottom = 16.dp,
+                        ),
+                        horizontalArrangement = Arrangement.spacedBy(profileGridItemSpacing),
+                        verticalItemSpacing = profileGridItemSpacing,
+                        modifier = Modifier.fillMaxSize(),
+                    ) {
+                        item(span = StaggeredGridItemSpan.FullLine) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .breakOutHorizontalPadding(profileGridHorizontalPadding),
+                            ) {
+                                XhsProfileHeaderBlock(
+                                    profile = profile,
+                                    mode = mode,
+                                    onMessage = onMessage,
+                                    onFollowToggle = onFollowToggle,
+                                    onShare = onShare,
+                                    selectedTab = selectedTab,
+                                    onTabSelected = { selectTab(it) },
+                                    onSearch = onSearch,
+                                    showInlineTabs = showTabPlaceholder || !showStickyTabs,
+                                    onShowMyQr = if (mode == XhsProfileMode.Self) onShowQr else null,
+                                )
+                            }
+                        }
+
+                        if (showTabPlaceholder) {
+                            item(span = StaggeredGridItemSpan.FullLine) {
+                                ProfileTabPlaceholderItem(
+                                    tabLocked = tabLocked,
+                                    isInitialLoading = tabUiState.isInitialLoading,
+                                    emptyMessage = profileTabEmptyMessage(selectedTab),
+                                )
+                            }
+                        } else when (selectedTab) {
+                            0 -> renderNotesTab(
+                                posts = profileNotes,
+                                authorLabel = profile.displayName,
+                                avatarUrl = profile.avatarUrl,
+                                isSelf = mode == XhsProfileMode.Self,
+                                onPostClick = onPostClick,
+                                onEditPost = onEditPost,
+                                onDeletePost = onDeletePost,
+                            )
+                            1 -> renderActivitiesTab(
+                                activities = profileActivities,
+                                isSelf = mode == XhsProfileMode.Self,
+                                onActivityClick = onActivityClick,
+                                onEditActivity = onEditActivity,
+                                onDeleteActivity = onDeleteActivity,
+                            )
+                            2 -> renderCommentsTab(
+                                comments = profileComments,
+                                onPostClick = onPostClick,
+                            )
+                            3 -> renderPostLibraryTab(
+                                posts = profileFavoritePosts,
+                                authorLabel = profile.displayName,
+                                avatarUrl = profile.avatarUrl,
+                                onPostClick = onPostClick,
+                            )
+                            else -> renderPostLibraryTab(
+                                posts = profileLikedPosts,
+                                authorLabel = profile.displayName,
+                                avatarUrl = profile.avatarUrl,
+                                onPostClick = onPostClick,
+                            )
+                        }
+
+                        if (tabUiState.isLoadingMore) {
+                            item(span = StaggeredGridItemSpan.FullLine) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    CircularProgressIndicator(
+                                        color = XhsRed,
+                                        modifier = Modifier.size(24.dp),
                                     )
-                                    3 -> renderPostLibraryTab(
-                                        posts = profileFavoritePosts,
-                                        authorLabel = profile.displayName,
-                                        avatarUrl = profile.avatarUrl,
-                                        emptyHint = "还没有收藏内容",
-                                        isLoading = isLibraryLoading,
-                                        onPostClick = onPostClick,
-                                    )
-                                    else -> renderPostLibraryTab(
-                                        posts = profileLikedPosts,
-                                        authorLabel = profile.displayName,
-                                        avatarUrl = profile.avatarUrl,
-                                        emptyHint = "还没有赞过内容",
-                                        isLoading = isLibraryLoading,
-                                        onPostClick = onPostClick,
-                                    )
-                                }
-                            } else {
-                                item(span = StaggeredGridItemSpan.FullLine) {
-                                    XhsProfileLockedHint(isSelf = false)
                                 }
                             }
                         }
@@ -280,7 +433,7 @@ fun XhsProfileScreen(
                 XhsProfileTopOverlay(
                     profile = profile,
                     mode = mode,
-                    isCollapsed = isCollapsed || showStickyTabs,
+                    isCollapsed = !showTabPlaceholder && (isCollapsed || showStickyTabs),
                     onBack = onBack,
                     onMessage = onMessage,
                     onEditProfile = onEditProfile,
@@ -289,7 +442,7 @@ fun XhsProfileScreen(
                     onMenuClick = if (mode == XhsProfileMode.Self) onOpenSideMenu else null,
                 )
 
-                if (showStickyTabs) {
+                if (!showTabPlaceholder && showStickyTabs) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -301,12 +454,10 @@ fun XhsProfileScreen(
                                 .height(topBarHeight),
                         )
                         XhsProfileTabBar(
+                            tabs = profileTabsFor(mode),
                             profile = profile,
                             selectedTab = selectedTab,
-                            onTabSelected = {
-                                updateSelectedTab(it)
-                                onTabSelected?.invoke(it)
-                            },
+                            onTabSelected = { selectTab(it) },
                             onSearch = onSearch,
                             modifier = Modifier.background(Color.White),
                         )
@@ -366,6 +517,32 @@ fun ProfileSideMenuOverlay(
     }
 }
 
+@Composable
+private fun LazyStaggeredGridItemScope.ProfileTabPlaceholderItem(
+    tabLocked: Boolean,
+    isInitialLoading: Boolean,
+    emptyMessage: String,
+) {
+    val minHeight = (LocalConfiguration.current.screenHeightDp * 0.42f).dp
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = minHeight)
+            .background(Color.White),
+        contentAlignment = Alignment.Center,
+    ) {
+        when {
+            isInitialLoading -> CircularProgressIndicator(color = XhsRed)
+            tabLocked -> XhsProfileLockedHint(isSelf = false)
+            else -> Text(
+                text = emptyMessage,
+                color = XhsTextSecondary,
+                fontSize = 14.sp,
+            )
+        }
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 private fun androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridScope.renderNotesTab(
     posts: List<PostDto>,
@@ -376,54 +553,41 @@ private fun androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridScop
     onEditPost: ((PostDto) -> Unit)?,
     onDeletePost: ((Int) -> Unit)?,
 ) {
-    if (posts.isEmpty()) {
-        item(span = StaggeredGridItemSpan.FullLine) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color.White)
-                    .padding(vertical = 56.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text("还没有发布笔记", color = XhsTextSecondary, fontSize = 14.sp)
-            }
-        }
-    } else {
-        items(posts, key = { it.id }) { post ->
-            var showMenu by remember(post.id) { mutableStateOf(false) }
+    items(posts, key = { it.id }) { post ->
+        var showMenu by remember(post.id) { mutableStateOf(false) }
 
-            Box(
-                modifier = if (isSelf && onEditPost != null && onDeletePost != null) {
-                    Modifier.combinedClickable(
-                        onClick = { onPostClick(post.id) },
-                        onLongClick = { showMenu = true },
-                    )
-                } else {
-                    Modifier.clickable { onPostClick(post.id) }
-                },
-            ) {
-                XhsProfileFeedCard(
-                    post = post,
-                    authorLabel = authorLabel,
-                    isPinned = isSelf && post.id == posts.firstOrNull()?.id,
+        Box(
+            modifier = if (isSelf && onEditPost != null && onDeletePost != null) {
+                Modifier.combinedClickable(
+                    onClick = { onPostClick(post.id) },
+                    onLongClick = { showMenu = true },
                 )
-                if (isSelf && onEditPost != null && onDeletePost != null) {
-                    DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-                        DropdownMenuItem(
-                            text = { Text("编辑") },
-                            onClick = {
-                                showMenu = false
-                                onEditPost(post)
-                            },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("删除") },
-                            onClick = {
-                                showMenu = false
-                                onDeletePost(post.id)
-                            },
-                        )
-                    }
+            } else {
+                Modifier.clickable { onPostClick(post.id) }
+            },
+        ) {
+            XhsProfileFeedCard(
+                post = post,
+                authorLabel = post.author?.displayName() ?: authorLabel,
+                avatarUrl = post.author?.avatarUrl ?: avatarUrl,
+                isPinned = isSelf && post.id == posts.firstOrNull()?.id,
+            )
+            if (isSelf && onEditPost != null && onDeletePost != null) {
+                DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                    DropdownMenuItem(
+                        text = { Text("编辑") },
+                        onClick = {
+                            showMenu = false
+                            onEditPost(post)
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("删除") },
+                        onClick = {
+                            showMenu = false
+                            onDeletePost(post.id)
+                        },
+                    )
                 }
             }
         }
@@ -434,107 +598,54 @@ private fun androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridScop
     posts: List<PostDto>,
     authorLabel: String,
     avatarUrl: String?,
-    emptyHint: String,
-    isLoading: Boolean,
     onPostClick: (Int) -> Unit,
 ) {
-    if (isLoading) {
-        item(span = StaggeredGridItemSpan.FullLine) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color.White)
-                    .padding(vertical = 48.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                androidx.compose.material3.CircularProgressIndicator(color = XhsRed)
-            }
-        }
-    } else if (posts.isEmpty()) {
-        item(span = StaggeredGridItemSpan.FullLine) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color.White)
-                    .padding(vertical = 56.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(emptyHint, color = XhsTextSecondary, fontSize = 14.sp)
-            }
-        }
-    } else {
-        items(posts, key = { it.id }) { post ->
-            Box(modifier = Modifier.clickable { onPostClick(post.id) }) {
-                XhsProfileFeedCard(
-                    post = post,
-                    authorLabel = post.author?.studentId ?: authorLabel,
-                )
-            }
+    items(posts, key = { it.id }) { post ->
+        Box(modifier = Modifier.clickable { onPostClick(post.id) }) {
+            XhsProfileFeedCard(
+                post = post,
+                authorLabel = post.author?.displayName() ?: authorLabel,
+                avatarUrl = post.author?.avatarUrl ?: avatarUrl,
+            )
         }
     }
 }
 
 private fun androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridScope.renderCommentsTab(
     comments: List<ProfileCommentDto>,
-    isLoading: Boolean,
     onPostClick: (Int) -> Unit,
 ) {
-    if (isLoading) {
-        item(span = StaggeredGridItemSpan.FullLine) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color.White)
-                    .padding(vertical = 48.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                androidx.compose.material3.CircularProgressIndicator(color = XhsRed)
-            }
-        }
-    } else if (comments.isEmpty()) {
-        item(span = StaggeredGridItemSpan.FullLine) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color.White)
-                    .padding(vertical = 56.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text("还没有发表评论", color = XhsTextSecondary, fontSize = 14.sp)
-            }
-        }
-    } else {
-        items(comments, key = { it.id }) { comment ->
-            val post = comment.post
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onPostClick(comment.postId) },
-                color = Color.White,
-            ) {
-                Column(modifier = Modifier.padding(12.dp)) {
-                    Text(
-                        comment.content,
-                        fontSize = 14.sp,
-                        color = XhsTextPrimary,
-                        maxLines = 3,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = post?.title ?: "查看原笔记",
-                        fontSize = 12.sp,
-                        color = XhsTextSecondary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        text = formatProfileDate(comment.createdAt),
-                        fontSize = 11.sp,
-                        color = XhsTextSecondary,
-                        modifier = Modifier.padding(top = 4.dp),
-                    )
-                }
+    items(comments, key = { it.id }) { comment ->
+        val post = comment.post
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onPostClick(comment.postId) },
+            shape = RoundedCornerShape(10.dp),
+            color = Color.White,
+        ) {
+            Column(modifier = Modifier.padding(12.dp)) {
+                Text(
+                    comment.content,
+                    fontSize = 14.sp,
+                    color = XhsTextPrimary,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = post?.title ?: "查看原笔记",
+                    fontSize = 12.sp,
+                    color = XhsTextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = formatProfileDate(comment.createdAt),
+                    fontSize = 11.sp,
+                    color = XhsTextSecondary,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
             }
         }
     }
@@ -547,57 +658,43 @@ private fun androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridScop
     onEditActivity: ((ActivityDto) -> Unit)?,
     onDeleteActivity: ((Int) -> Unit)?,
 ) {
-    if (activities.isEmpty()) {
-        item(span = StaggeredGridItemSpan.FullLine) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color.White)
-                    .padding(vertical = 56.dp),
-                contentAlignment = Alignment.Center,
+    items(activities, key = { it.id }, span = { StaggeredGridItemSpan.FullLine }) { activity ->
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onActivityClick(activity.id) },
+            shape = RoundedCornerShape(10.dp),
+            color = Color.White,
+        ) {
+            Row(
+                modifier = Modifier.padding(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("还没有发布活动", color = XhsTextSecondary, fontSize = 14.sp)
-            }
-        }
-    } else {
-        items(activities, key = { it.id }, span = { StaggeredGridItemSpan.FullLine }) { activity ->
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onActivityClick(activity.id) },
-                shape = RoundedCornerShape(8.dp),
-                color = Color.White,
-            ) {
-                Row(
-                    modifier = Modifier.padding(10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                Box(
+                    modifier = Modifier
+                        .size(width = 72.dp, height = 64.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(coverGradientForId(activity.id)),
+                )
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(start = 10.dp),
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(width = 72.dp, height = 64.dp)
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(coverGradientForId(activity.id)),
+                    Text(
+                        activity.title,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        fontSize = 14.sp,
                     )
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(start = 10.dp),
-                    ) {
-                        Text(
-                            activity.title,
-                            fontWeight = FontWeight.Medium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            fontSize = 14.sp,
-                        )
-                        Text(
-                            activity.location,
-                            fontSize = 12.sp,
-                            color = XhsTextSecondary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
+                    Text(
+                        activity.location,
+                        fontSize = 12.sp,
+                        color = XhsTextSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
             }
         }
@@ -610,17 +707,21 @@ private fun XhsProfileHeaderBlock(
     mode: XhsProfileMode,
     onMessage: (() -> Unit)?,
     onFollowToggle: (() -> Unit)?,
+    onShare: (() -> Unit)?,
     selectedTab: Int,
     onTabSelected: (Int) -> Unit,
     onSearch: (() -> Unit)?,
     showInlineTabs: Boolean,
     onShowMyQr: (() -> Unit)? = null,
 ) {
+    val context = LocalContext.current
     val coverUrl = profile.coverUrl ?: profile.posts.firstNotNullOfOrNull { it.images?.firstOrNull() }
+    val coverHeight = if (mode == XhsProfileMode.Other) 300.dp else 248.dp
+    val sheetCorner = if (mode == XhsProfileMode.Other) 18.dp else 14.dp
     val coverOverlay = Brush.verticalGradient(
         colors = listOf(
-            Color.Black.copy(alpha = 0.15f),
-            Color.Black.copy(alpha = 0.35f),
+            Color.Black.copy(alpha = 0.08f),
+            Color.Black.copy(alpha = 0.28f),
             Color.Black.copy(alpha = 0.72f),
         ),
     )
@@ -629,7 +730,7 @@ private fun XhsProfileHeaderBlock(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(248.dp),
+                .height(coverHeight),
         ) {
             if (coverUrl != null) {
                 AsyncImage(
@@ -665,7 +766,7 @@ private fun XhsProfileHeaderBlock(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     XhsProfileAvatar(
                         label = profile.displayName,
-                        size = 68,
+                        size = if (mode == XhsProfileMode.Other) 72 else 68,
                         avatarUrl = profile.avatarUrl,
                     )
                     Column(modifier = Modifier.padding(start = 14.dp)) {
@@ -673,7 +774,7 @@ private fun XhsProfileHeaderBlock(
                             text = profile.displayName,
                             color = Color.White,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 20.sp,
+                            fontSize = if (mode == XhsProfileMode.Other) 22.sp else 20.sp,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
@@ -681,10 +782,22 @@ private fun XhsProfileHeaderBlock(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 text = "莲峰号：${profile.lfcNo}",
-                                color = Color.White.copy(alpha = 0.75f),
+                                color = Color.White.copy(alpha = 0.78f),
                                 fontSize = 12.sp,
                             )
-                            if (onShowMyQr != null) {
+                            if (mode == XhsProfileMode.Other) {
+                                IconButton(
+                                    onClick = { copyLfcNo(context, profile.lfcNo) },
+                                    modifier = Modifier.size(24.dp),
+                                ) {
+                                    Icon(
+                                        Icons.Outlined.ContentCopy,
+                                        contentDescription = "复制莲峰号",
+                                        tint = Color.White.copy(alpha = 0.85f),
+                                        modifier = Modifier.size(13.dp),
+                                    )
+                                }
+                            } else if (onShowMyQr != null) {
                                 IconButton(
                                     onClick = onShowMyQr,
                                     modifier = Modifier.size(24.dp),
@@ -720,24 +833,13 @@ private fun XhsProfileHeaderBlock(
                 )
 
                 if (mode == XhsProfileMode.Other && onFollowToggle != null) {
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Surface(
-                        onClick = onFollowToggle,
-                        shape = RoundedCornerShape(16.dp),
-                        color = if (profile.isFollowing) {
-                            Color.White.copy(alpha = 0.18f)
-                        } else {
-                            XhsRed
-                        },
-                    ) {
-                        Text(
-                            text = if (profile.isFollowing) "已关注" else "+ 关注",
-                            modifier = Modifier.padding(horizontal = 18.dp, vertical = 6.dp),
-                            color = Color.White,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp,
-                        )
-                    }
+                    Spacer(modifier = Modifier.height(14.dp))
+                    XhsOtherProfileActionRow(
+                        isFollowing = profile.isFollowing,
+                        onFollowToggle = onFollowToggle,
+                        onMessage = onMessage,
+                        onShare = onShare,
+                    )
                 } else if (mode == XhsProfileMode.Self) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -750,32 +852,24 @@ private fun XhsProfileHeaderBlock(
             }
         }
 
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(profileCoverDark)
-                .padding(vertical = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            XhsProfileSummaryCard(
-                title = "笔记",
-                value = "${profile.postCount}",
-                modifier = Modifier.weight(1f),
-            )
-            XhsProfileSummaryCard(
-                title = "活动",
-                value = "${profile.activities.size}",
-                modifier = Modifier.weight(1f),
-            )
-            if (mode == XhsProfileMode.Other && onMessage != null) {
+        if (mode == XhsProfileMode.Self) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(profileCoverDark)
+                    .padding(vertical = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
                 XhsProfileSummaryCard(
-                    title = "私信",
-                    value = "联系",
-                    modifier = Modifier
-                        .weight(1f)
-                        .clickable(onClick = onMessage),
+                    title = "笔记",
+                    value = "${profile.postCount}",
+                    modifier = Modifier.weight(1f),
                 )
-            } else {
+                XhsProfileSummaryCard(
+                    title = "活动",
+                    value = "${profile.activities.size}",
+                    modifier = Modifier.weight(1f),
+                )
                 XhsProfileSummaryCard(
                     title = "报名",
                     value = "${profile.participationCount}",
@@ -784,15 +878,20 @@ private fun XhsProfileHeaderBlock(
             }
         }
 
+        if (mode == XhsProfileMode.Other) {
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .offset(y = (-10).dp)
-                .clip(RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp))
+                .offset(y = if (mode == XhsProfileMode.Other) 0.dp else (-10).dp)
+                .clip(RoundedCornerShape(topStart = sheetCorner, topEnd = sheetCorner))
                 .background(Color.White),
         ) {
             if (showInlineTabs) {
                 XhsProfileTabBar(
+                    tabs = profileTabsFor(mode),
                     profile = profile,
                     selectedTab = selectedTab,
                     onTabSelected = onTabSelected,
@@ -803,6 +902,79 @@ private fun XhsProfileHeaderBlock(
             }
         }
     }
+}
+
+@Composable
+private fun XhsOtherProfileActionRow(
+    isFollowing: Boolean,
+    onFollowToggle: () -> Unit,
+    onMessage: (() -> Unit)?,
+    onShare: (() -> Unit)?,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Surface(
+            onClick = onFollowToggle,
+            shape = RoundedCornerShape(20.dp),
+            color = if (isFollowing) Color.White.copy(alpha = 0.2f) else XhsRed,
+            modifier = Modifier
+                .weight(1f)
+                .height(38.dp),
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Text(
+                    text = if (isFollowing) "已关注" else "关注",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp,
+                )
+            }
+        }
+
+        if (onMessage != null) {
+            Surface(
+                onClick = onMessage,
+                shape = RoundedCornerShape(20.dp),
+                color = Color.White.copy(alpha = 0.18f),
+                modifier = Modifier
+                    .weight(1f)
+                    .height(38.dp),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(
+                        text = "发私信",
+                        color = Color.White,
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 14.sp,
+                    )
+                }
+            }
+        }
+
+        Surface(
+            onClick = { onShare?.invoke() },
+            shape = RoundedCornerShape(12.dp),
+            color = Color.White.copy(alpha = 0.18f),
+            modifier = Modifier.size(38.dp),
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    Icons.Outlined.PersonAddAlt1,
+                    contentDescription = "分享主页",
+                    tint = Color.White,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+        }
+    }
+}
+
+private fun copyLfcNo(context: Context, lfcNo: String) {
+    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    clipboard.setPrimaryClip(ClipData.newPlainText("莲峰号", lfcNo))
 }
 
 @Composable
@@ -817,6 +989,8 @@ private fun XhsProfileTopOverlay(
     onScanProfile: (() -> Unit)? = null,
     onMenuClick: (() -> Unit)? = null,
 ) {
+    var showMoreMenu by remember { mutableStateOf(false) }
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -830,7 +1004,7 @@ private fun XhsProfileTopOverlay(
                 .padding(horizontal = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (mode == XhsProfileMode.Other && onBack != null) {
+            if (onBack != null) {
                 IconButton(onClick = onBack) {
                     Icon(
                         Icons.AutoMirrored.Filled.ArrowBack,
@@ -839,8 +1013,8 @@ private fun XhsProfileTopOverlay(
                         modifier = Modifier.size(22.dp),
                     )
                 }
-            } else {
-                IconButton(onClick = { onMenuClick?.invoke() }) {
+            } else if (onMenuClick != null) {
+                IconButton(onClick = onMenuClick) {
                     Icon(
                         Icons.Default.Menu,
                         contentDescription = "菜单",
@@ -848,6 +1022,8 @@ private fun XhsProfileTopOverlay(
                         modifier = Modifier.size(22.dp),
                     )
                 }
+            } else {
+                Spacer(modifier = Modifier.size(48.dp))
             }
 
             if (isCollapsed) {
@@ -898,24 +1074,41 @@ private fun XhsProfileTopOverlay(
                         modifier = Modifier.size(19.dp),
                     )
                 }
-            } else if (onMessage != null) {
-                Surface(
-                    onClick = onMessage,
-                    shape = RoundedCornerShape(14.dp),
-                    color = Color.Black.copy(alpha = 0.28f),
-                ) {
-                    Text(
-                        text = "私信",
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                        color = Color.White,
-                        fontWeight = FontWeight.Medium,
-                        fontSize = 12.sp,
-                    )
+                IconButton(onClick = { onShare?.invoke() }, modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.Default.Share, contentDescription = "分享", tint = Color.White, modifier = Modifier.size(19.dp))
                 }
-            }
-
-            IconButton(onClick = { onShare?.invoke() }, modifier = Modifier.size(36.dp)) {
-                Icon(Icons.Default.Share, contentDescription = "分享", tint = Color.White, modifier = Modifier.size(19.dp))
+            } else {
+                Box {
+                    IconButton(onClick = { showMoreMenu = true }, modifier = Modifier.size(36.dp)) {
+                        Icon(
+                            Icons.Default.MoreHoriz,
+                            contentDescription = "更多",
+                            tint = Color.White,
+                            modifier = Modifier.size(22.dp),
+                        )
+                    }
+                    DropdownMenu(
+                        expanded = showMoreMenu,
+                        onDismissRequest = { showMoreMenu = false },
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("分享主页") },
+                            onClick = {
+                                showMoreMenu = false
+                                onShare?.invoke()
+                            },
+                        )
+                        if (onMessage != null) {
+                            DropdownMenuItem(
+                                text = { Text("发私信") },
+                                onClick = {
+                                    showMoreMenu = false
+                                    onMessage()
+                                },
+                            )
+                        }
+                    }
+                }
             }
         }
     }
@@ -923,6 +1116,7 @@ private fun XhsProfileTopOverlay(
 
 @Composable
 private fun XhsProfileTabBar(
+    tabs: List<ProfileTabItem>,
     profile: XhsProfileData,
     selectedTab: Int,
     onTabSelected: (Int) -> Unit,
@@ -937,18 +1131,16 @@ private fun XhsProfileTabBar(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Row(
-                modifier = Modifier
-                    .weight(1f)
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                modifier = Modifier.weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                profileTabLabels.forEachIndexed { index, label ->
-                    val selected = selectedTab == index
-                    val locked = profile.isTabLocked(index)
+                tabs.forEach { tab ->
+                    val selected = selectedTab == tab.contentIndex
+                    val locked = profile.isTabLocked(tab.contentIndex)
                     Column(
                         modifier = Modifier
-                            .clickable { onTabSelected(index) }
+                            .clickable { onTabSelected(tab.contentIndex) }
                             .padding(horizontal = 12.dp, vertical = 10.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
@@ -964,8 +1156,8 @@ private fun XhsProfileTabBar(
                                 )
                             }
                             Text(
-                                text = label,
-                                fontSize = 14.sp,
+                                text = tab.label,
+                                fontSize = 15.sp,
                                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
                                 color = if (selected) XhsTextPrimary else XhsTextSecondary,
                             )
@@ -973,9 +1165,9 @@ private fun XhsProfileTabBar(
                         Spacer(modifier = Modifier.height(5.dp))
                         Box(
                             modifier = Modifier
-                                .width(if (selected) 22.dp else 0.dp)
-                                .height(2.dp)
-                                .clip(RoundedCornerShape(1.dp))
+                                .width(if (selected) 24.dp else 0.dp)
+                                .height(3.dp)
+                                .clip(RoundedCornerShape(1.5.dp))
                                 .background(if (selected) XhsRed else Color.Transparent),
                         )
                     }
@@ -990,12 +1182,33 @@ private fun XhsProfileTabBar(
 }
 
 @Composable
-private fun XhsProfileLockedHint(isSelf: Boolean = true) {
+private fun XhsProfileTabEmptyHint(text: String) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color.White)
-            .padding(vertical = 56.dp),
+            .background(Color.White),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(text, color = XhsTextSecondary, fontSize = 14.sp)
+    }
+}
+
+@Composable
+private fun XhsProfileTabLoadingHint() {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color.White),
+        contentAlignment = Alignment.Center,
+    ) {
+        androidx.compose.material3.CircularProgressIndicator(color = XhsRed)
+    }
+}
+
+@Composable
+private fun XhsProfileLockedHint(isSelf: Boolean = true) {
+    Box(
+        modifier = Modifier.fillMaxWidth(),
         contentAlignment = Alignment.Center,
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {

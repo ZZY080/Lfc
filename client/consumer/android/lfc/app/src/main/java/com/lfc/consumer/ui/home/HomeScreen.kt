@@ -36,6 +36,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.lfc.consumer.data.model.ActivityDto
 import com.lfc.consumer.data.model.PostDto
+import com.lfc.consumer.data.model.ProfileTabUiState
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.lfc.consumer.ui.theme.XhsRed
 import androidx.compose.ui.unit.sp
@@ -57,6 +58,7 @@ fun HomeScreen(
     var showProfileSearch by remember { mutableStateOf(false) }
     var showProfileSideMenu by remember { mutableStateOf(false) }
     var profileContentTab by remember { mutableIntStateOf(0) }
+    var userProfileContentTab by remember { mutableIntStateOf(0) }
 
     val uiState by viewModel.uiState.collectAsState()
     val userSession by viewModel.userSession.collectAsState()
@@ -104,6 +106,13 @@ fun HomeScreen(
         }
     }
 
+    LaunchedEffect(selectedTab, uiState.myProfile?.id, uiState.profileTabs.targetUserId) {
+        val myId = uiState.myProfile?.id ?: return@LaunchedEffect
+        if (selectedTab == 3 && uiState.profileTabs.targetUserId != myId) {
+            viewModel.loadProfileTab(profileContentTab, myId)
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         NavHost(
             navController = navController,
@@ -143,7 +152,9 @@ fun HomeScreen(
                                 .padding(bottom = padding.calculateBottomPadding()),
                         )
                         1 -> ActivityFeedScreen(
-                            activities = uiState.activities,
+                            feedState = uiState.activityFeed,
+                            onRefresh = { viewModel.loadActivityFeed(refresh = true) },
+                            onLoadMore = viewModel::loadMoreActivityFeed,
                             onJoin = viewModel::joinActivity,
                             onActivityClick = { activityId ->
                                 navController.navigate("activity_detail/$activityId")
@@ -169,11 +180,21 @@ fun HomeScreen(
                         )
                         3 -> ProfileScreen(
                             profile = uiState.myProfile,
+                            profileNotes = uiState.profileNotes,
+                            profileActivities = uiState.profileActivities,
                             favoritePosts = uiState.profileFavoritePosts,
                             likedPosts = uiState.profileLikedPosts,
                             comments = uiState.profileComments,
-                            isLibraryLoading = uiState.isProfileLibraryLoading,
+                            tabUiState = uiState.profileTabs.tabs.getOrElse(profileContentTab) {
+                                ProfileTabUiState()
+                            },
                             selectedContentTab = profileContentTab,
+                            onRefresh = {
+                                viewModel.refreshProfileTab(profileContentTab)
+                            },
+                            onLoadMore = {
+                                viewModel.loadMoreProfileTab(profileContentTab)
+                            },
                             onEditPost = { post ->
                                 editingPost = post
                                 navController.navigate("edit_post")
@@ -204,7 +225,7 @@ fun HomeScreen(
                             unreadCount = uiState.unreadCount,
                             onTabSelected = { tab ->
                                 profileContentTab = tab
-                                viewModel.loadProfileLibrary(tab)
+                                viewModel.loadProfileTab(tab)
                             },
                             modifier = Modifier
                                 .fillMaxSize()
@@ -348,13 +369,12 @@ fun HomeScreen(
                     onSubmitComment = { content, parentId ->
                         viewModel.submitPostComment(postId, content, parentId)
                     },
-                    onMessageAuthor = { authorId ->
-                        viewModel.startConversation(authorId) { conversationId ->
-                            navController.navigate("chat/$conversationId")
-                        }
-                    },
                     onAuthorClick = { authorId ->
                         navController.navigate("user_profile/$authorId")
+                    },
+                    isAuthorFollowing = uiState.detailAuthorFollowing ?: false,
+                    onFollowToggle = {
+                        uiState.selectedPost?.authorId?.let { viewModel.toggleDetailAuthorFollow(it) }
                     },
                     currentUserId = userSession?.userId,
                 )
@@ -366,22 +386,33 @@ fun HomeScreen(
             ) { backStackEntry ->
                 val userId = backStackEntry.arguments?.getInt("userId") ?: return@composable
                 LaunchedEffect(userId) {
+                    userProfileContentTab = 0
                     viewModel.loadUserProfile(userId)
                 }
                 UserProfileScreen(
                     profile = uiState.selectedUserProfile,
                     isLoading = uiState.isUserProfileLoading,
                     isSelf = userSession?.userId == userId,
+                    profileNotes = uiState.profileNotes,
+                    profileActivities = uiState.profileActivities,
                     favoritePosts = uiState.profileFavoritePosts,
                     likedPosts = uiState.profileLikedPosts,
                     comments = uiState.profileComments,
-                    isLibraryLoading = uiState.isProfileLibraryLoading,
+                    tabUiState = uiState.profileTabs.tabs.getOrElse(userProfileContentTab) {
+                        ProfileTabUiState()
+                    },
+                    selectedContentTab = userProfileContentTab,
+                    onRefresh = { viewModel.refreshProfileTab(userProfileContentTab, userId) },
+                    onLoadMore = { viewModel.loadMoreProfileTab(userProfileContentTab, userId) },
                     onBack = {
                         viewModel.clearUserProfile()
                         navController.popBackStack()
                     },
                     onPostClick = { postId ->
                         navController.navigate("post_detail/$postId")
+                    },
+                    onActivityClick = { activityId ->
+                        navController.navigate("activity_detail/$activityId")
                     },
                     onMessage = {
                         viewModel.startConversation(userId) { conversationId ->
@@ -392,7 +423,10 @@ fun HomeScreen(
                     onShare = {
                         uiState.selectedUserProfile?.let { ProfileShareHelper.shareProfile(context, it) }
                     },
-                    onTabSelected = { tab -> viewModel.loadProfileLibrary(tab, userId) },
+                    onTabSelected = { tab ->
+                        userProfileContentTab = tab
+                        viewModel.loadProfileTab(tab, userId)
+                    },
                 )
             }
 
@@ -442,11 +476,19 @@ fun HomeScreen(
                     activity = uiState.selectedActivity,
                     isLoading = uiState.isActivityLoading,
                     isJoining = uiState.isJoiningActivity,
+                    currentUserId = uiState.myProfile?.id,
+                    isAuthorFollowing = uiState.detailAuthorFollowing ?: false,
                     onBack = {
                         viewModel.clearSelectedActivity()
                         navController.popBackStack()
                     },
                     onJoin = { viewModel.joinActivity(activityId) },
+                    onAuthorClick = { authorId ->
+                        navController.navigate("user_profile/$authorId")
+                    },
+                    onFollowToggle = {
+                        uiState.selectedActivity?.authorId?.let { viewModel.toggleDetailAuthorFollow(it) }
+                    },
                 )
             }
 
@@ -568,7 +610,7 @@ fun HomeScreen(
             onLogout = onLogout,
             onSelectProfileTab = { tab ->
                 profileContentTab = tab
-                viewModel.loadProfileLibrary(tab)
+                viewModel.loadProfileTab(tab)
             },
             onGoToMessages = { selectedTab = 2 },
             modifier = Modifier.zIndex(200f),

@@ -93,31 +93,99 @@ export class ConsumerUserService {
     return this.buildProfileDetail(user.id, viewerId);
   }
 
-  findMyFavorites(userId: number) {
-    return this.consumerPostSocialService.findFavoritedPosts(userId);
+  findMyFavorites(userId: number, page?: number, limit?: number) {
+    return this.consumerPostSocialService.findFavoritedPostsPaginated(
+      userId,
+      page,
+      limit,
+    );
   }
 
-  findMyLikes(userId: number) {
-    return this.consumerPostSocialService.findLikedPosts(userId);
+  findMyLikes(userId: number, page?: number, limit?: number) {
+    return this.consumerPostSocialService.findLikedPostsPaginated(
+      userId,
+      page,
+      limit,
+    );
   }
 
-  findMyComments(userId: number) {
-    return this.consumerPostSocialService.findMyComments(userId);
+  findMyComments(userId: number, page?: number, limit?: number) {
+    return this.consumerPostSocialService.findMyCommentsPaginated(
+      userId,
+      page,
+      limit,
+    );
   }
 
-  async findUserFavorites(userId: number, viewerId?: number) {
+  findUserPosts(
+    userId: number,
+    viewerId: number | undefined,
+    page?: number,
+    limit?: number,
+  ) {
+    return this.consumerPostService.findByAuthorPaginated(
+      userId,
+      page,
+      limit,
+      viewerId,
+    );
+  }
+
+  findUserActivities(
+    userId: number,
+    viewerId: number | undefined,
+    page?: number,
+    limit?: number,
+  ) {
+    const isSelf = viewerId === userId;
+    return this.consumerActivityService.findByAuthorPaginated(
+      userId,
+      isSelf,
+      page,
+      limit,
+    );
+  }
+
+  async findUserFavorites(
+    userId: number,
+    viewerId: number | undefined,
+    page?: number,
+    limit?: number,
+  ) {
     await this.assertLibraryAccess(userId, viewerId, 'favorites');
-    return this.consumerPostSocialService.findFavoritedPosts(userId);
+    return this.consumerPostSocialService.findFavoritedPostsPaginated(
+      userId,
+      page,
+      limit,
+    );
   }
 
-  async findUserLikes(userId: number, viewerId?: number) {
+  async findUserLikes(
+    userId: number,
+    viewerId: number | undefined,
+    page?: number,
+    limit?: number,
+  ) {
     await this.assertLibraryAccess(userId, viewerId, 'likes');
-    return this.consumerPostSocialService.findLikedPosts(userId);
+    return this.consumerPostSocialService.findLikedPostsPaginated(
+      userId,
+      page,
+      limit,
+    );
   }
 
-  async findUserComments(userId: number, viewerId?: number) {
+  async findUserComments(
+    userId: number,
+    viewerId: number | undefined,
+    page?: number,
+    limit?: number,
+  ) {
     await this.assertLibraryAccess(userId, viewerId, 'comments');
-    return this.consumerPostSocialService.findMyComments(userId);
+    return this.consumerPostSocialService.findMyCommentsPaginated(
+      userId,
+      page,
+      limit,
+    );
   }
 
   async toggleFollow(followerId: number, followingId: number) {

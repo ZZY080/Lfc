@@ -13,6 +13,10 @@ import { PostCommentEntity } from '@module/post/entity/post-comment.entity';
 import { RoleAuthzService } from '@shared/auth/role-authz.service';
 import { UserRole } from '@shared/enum/user-role.enum';
 import { CreatePostCommentBodyDto } from '@module/post/dto/post-social.dto';
+import {
+  createPaginatedResult,
+  normalizePagination,
+} from '@shared/dto/paginated-result.dto';
 
 @Injectable()
 export class ConsumerPostSocialService {
@@ -194,26 +198,21 @@ export class ConsumerPostSocialService {
       relations: ['author'],
       order: { createdAt: 'DESC' },
     });
-    if (comments.length === 0) {
-      return [];
-    }
+    return this.attachPostsToComments(comments, userId);
+  }
 
-    const postIds = [...new Set(comments.map((item) => item.postId))];
-    const posts = await this.postRepository.find({
-      where: { id: In(postIds) },
+  async findMyCommentsPaginated(userId: number, page?: number, limit?: number) {
+    const { page: normalizedPage, limit: normalizedLimit, skip } =
+      normalizePagination(page, limit);
+    const [comments, total] = await this.commentRepository.findAndCount({
+      where: { userId },
       relations: ['author'],
+      order: { createdAt: 'DESC' },
+      skip,
+      take: normalizedLimit,
     });
-    const postMap = new Map(posts.map((post) => [post.id, post]));
-    const enrichedPosts = await this.enrichPosts(
-      posts,
-      userId,
-    );
-    const enrichedMap = new Map(enrichedPosts.map((post) => [post.id, post]));
-
-    return comments.map((comment) => ({
-      ...comment,
-      post: enrichedMap.get(comment.postId) ?? postMap.get(comment.postId) ?? null,
-    }));
+    const items = await this.attachPostsToComments(comments, userId);
+    return createPaginatedResult(items, total, normalizedPage, normalizedLimit);
   }
 
   async findLikedPosts(userId: number) {
@@ -227,6 +226,22 @@ export class ConsumerPostSocialService {
     );
   }
 
+  async findLikedPostsPaginated(userId: number, page?: number, limit?: number) {
+    const { page: normalizedPage, limit: normalizedLimit, skip } =
+      normalizePagination(page, limit);
+    const [likes, total] = await this.likeRepository.findAndCount({
+      where: { userId },
+      order: { createdAt: 'DESC' },
+      skip,
+      take: normalizedLimit,
+    });
+    const items = await this.findPostsByIds(
+      likes.map((item) => item.postId),
+      userId,
+    );
+    return createPaginatedResult(items, total, normalizedPage, normalizedLimit);
+  }
+
   async findFavoritedPosts(userId: number) {
     const favorites = await this.favoriteRepository.find({
       where: { userId },
@@ -236,6 +251,48 @@ export class ConsumerPostSocialService {
       favorites.map((item) => item.postId),
       userId,
     );
+  }
+
+  async findFavoritedPostsPaginated(
+    userId: number,
+    page?: number,
+    limit?: number,
+  ) {
+    const { page: normalizedPage, limit: normalizedLimit, skip } =
+      normalizePagination(page, limit);
+    const [favorites, total] = await this.favoriteRepository.findAndCount({
+      where: { userId },
+      order: { createdAt: 'DESC' },
+      skip,
+      take: normalizedLimit,
+    });
+    const items = await this.findPostsByIds(
+      favorites.map((item) => item.postId),
+      userId,
+    );
+    return createPaginatedResult(items, total, normalizedPage, normalizedLimit);
+  }
+
+  private async attachPostsToComments(
+    comments: PostCommentEntity[],
+    userId: number,
+  ) {
+    if (comments.length === 0) {
+      return [];
+    }
+
+    const postIds = [...new Set(comments.map((item) => item.postId))];
+    const posts = await this.postRepository.find({
+      where: { id: In(postIds) },
+      relations: ['author'],
+    });
+    const enrichedPosts = await this.enrichPosts(posts, userId);
+    const enrichedMap = new Map(enrichedPosts.map((post) => [post.id, post]));
+
+    return comments.map((comment) => ({
+      ...comment,
+      post: enrichedMap.get(comment.postId) ?? null,
+    }));
   }
 
   private async findPostsByIds(postIds: number[], userId: number) {

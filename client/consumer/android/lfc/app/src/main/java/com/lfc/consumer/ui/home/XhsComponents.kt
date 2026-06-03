@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.lfc.consumer.data.model.PostDto
+import com.lfc.consumer.data.model.displayName
 import com.lfc.consumer.ui.theme.XhsRed
 import com.lfc.consumer.ui.theme.XhsTextPrimary
 import com.lfc.consumer.ui.theme.XhsTextSecondary
@@ -75,12 +76,13 @@ fun XhsFeedCard(
     onClick: () -> Unit = {},
 ) {
     val coverUrl = post.images?.firstOrNull()
-    val authorLabel = post.author?.studentId ?: "同学${post.authorId}"
+    val authorLabel = post.author?.displayName() ?: "同学${post.authorId}"
     XhsFeedCard(
         title = post.title,
         content = post.content,
         coverImageUrl = coverUrl,
         authorLabel = authorLabel,
+        authorAvatarUrl = post.author?.avatarUrl,
         likeCount = post.likeCount,
         isLiked = post.isLiked,
         id = post.id,
@@ -95,6 +97,7 @@ fun XhsFeedCard(
     content: String,
     coverImageUrl: String?,
     authorLabel: String,
+    authorAvatarUrl: String? = null,
     likeCount: Int,
     isLiked: Boolean = false,
     id: Int,
@@ -142,11 +145,10 @@ fun XhsFeedCard(
                     .padding(start = 10.dp, end = 10.dp, bottom = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(20.dp)
-                        .clip(CircleShape)
-                        .background(coverGradientForId(id.hashCode())),
+                XhsProfileAvatar(
+                    label = authorLabel,
+                    size = 20,
+                    avatarUrl = authorAvatarUrl,
                 )
                 Text(
                     text = authorLabel,
@@ -179,6 +181,7 @@ fun XhsFeedCard(
 fun XhsProfileFeedCard(
     post: PostDto,
     authorLabel: String,
+    avatarUrl: String? = null,
     isPinned: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
@@ -188,12 +191,14 @@ fun XhsProfileFeedCard(
 
     Surface(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(0.dp),
+        shape = RoundedCornerShape(10.dp),
         color = Color.White,
         shadowElevation = 0.dp,
     ) {
         Column {
-            Box {
+            Box(
+                modifier = Modifier.clip(RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp)),
+            ) {
                 if (coverUrl != null) {
                     AsyncImage(
                         model = coverUrl,
@@ -266,9 +271,15 @@ fun XhsProfileFeedCard(
                     .padding(start = 8.dp, end = 8.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                XhsProfileAvatar(label = authorLabel, size = 16)
+                val footerAuthor = post.author?.displayName() ?: authorLabel
+                val footerAvatar = post.author?.avatarUrl ?: avatarUrl
+                XhsProfileAvatar(
+                    label = footerAuthor,
+                    size = 16,
+                    avatarUrl = footerAvatar,
+                )
                 Text(
-                    text = "$authorLabel  ${formatProfileDate(post.createdAt)}",
+                    text = "$footerAuthor  ${formatProfileDate(post.createdAt)}",
                     modifier = Modifier
                         .weight(1f)
                         .padding(start = 4.dp),

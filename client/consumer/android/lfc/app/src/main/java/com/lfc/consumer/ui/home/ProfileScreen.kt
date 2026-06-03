@@ -5,16 +5,21 @@ import androidx.compose.ui.Modifier
 import com.lfc.consumer.data.model.ActivityDto
 import com.lfc.consumer.data.model.PostDto
 import com.lfc.consumer.data.model.ProfileCommentDto
+import com.lfc.consumer.data.model.ProfileTabUiState
 import com.lfc.consumer.data.model.UserProfileDto
 
 @Composable
 fun ProfileScreen(
     profile: UserProfileDto?,
+    profileNotes: List<PostDto>,
+    profileActivities: List<ActivityDto>,
     favoritePosts: List<PostDto>,
     likedPosts: List<PostDto>,
     comments: List<ProfileCommentDto>,
-    isLibraryLoading: Boolean,
+    tabUiState: ProfileTabUiState,
     selectedContentTab: Int,
+    onRefresh: () -> Unit,
+    onLoadMore: () -> Unit,
     onEditPost: (PostDto) -> Unit,
     onViewPost: (Int) -> Unit,
     onDeletePost: (Int) -> Unit,
@@ -38,10 +43,14 @@ fun ProfileScreen(
         profile = profile?.toXhsProfileData(),
         mode = XhsProfileMode.Self,
         isLoading = profile == null,
+        profileNotes = profileNotes,
+        profileActivities = profileActivities,
         profileFavoritePosts = favoritePosts,
         profileLikedPosts = likedPosts,
         profileComments = comments,
-        isLibraryLoading = isLibraryLoading,
+        tabUiState = tabUiState,
+        onRefresh = onRefresh,
+        onLoadMore = onLoadMore,
         selectedContentTab = selectedContentTab,
         onContentTabChange = onTabSelected,
         onPostClick = onViewPost,

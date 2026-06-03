@@ -5,6 +5,8 @@ data class UserDto(
     val email: String,
     val studentId: String,
     val role: String,
+    val nickname: String? = null,
+    val avatarUrl: String? = null,
 )
 
 data class AuthResponse(
@@ -60,9 +62,39 @@ data class PostFeedResponse(
     val hasMore: Boolean,
 )
 
+data class PaginatedResponse<T>(
+    val items: List<T>,
+    val total: Int,
+    val page: Int,
+    val limit: Int,
+    val hasMore: Boolean,
+)
+
+data class ProfileTabUiState(
+    val page: Int = 1,
+    val hasMore: Boolean = true,
+    val isRefreshing: Boolean = false,
+    val isLoadingMore: Boolean = false,
+    val isInitialLoading: Boolean = false,
+)
+
+data class ProfileTabsUiState(
+    val targetUserId: Int? = null,
+    val tabs: List<ProfileTabUiState> = List(5) { ProfileTabUiState() },
+)
+
 data class FeedUiState(
     val posts: List<PostDto> = emptyList(),
     val selectedTab: String = "推荐",
+    val page: Int = 1,
+    val hasMore: Boolean = true,
+    val isRefreshing: Boolean = false,
+    val isLoadingMore: Boolean = false,
+    val isInitialLoading: Boolean = false,
+)
+
+data class ActivityFeedUiState(
+    val activities: List<ActivityDto> = emptyList(),
     val page: Int = 1,
     val hasMore: Boolean = true,
     val isRefreshing: Boolean = false,
@@ -189,6 +221,8 @@ data class ProfileCommentDto(
     val createdAt: String,
     val post: PostDto? = null,
 )
+
+fun UserDto.displayName(): String = nickname?.takeIf { it.isNotBlank() } ?: studentId
 
 fun UserProfileDto.displayName(): String = nickname?.takeIf { it.isNotBlank() } ?: studentId
 
