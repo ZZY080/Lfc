@@ -46,11 +46,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import coil.compose.AsyncImage
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lfc.consumer.ui.theme.XhsRed
 import com.lfc.consumer.ui.theme.XhsTextPrimary
 import com.lfc.consumer.ui.theme.XhsTextSecondary
+
+enum class CarouselIndicatorStyle {
+    Dots,
+    Counter,
+}
 
 fun formatXhsTime(iso: String): String = iso.replace("T", " ").take(19)
 
@@ -60,6 +66,8 @@ fun XhsDetailImageCarousel(
     contentDescription: String,
     modifier: Modifier = Modifier,
     aspectRatio: Float = 1f,
+    indicatorStyle: CarouselIndicatorStyle = CarouselIndicatorStyle.Dots,
+    indicatorBottomPadding: Dp = 14.dp,
 ) {
     if (images.isEmpty()) return
 
@@ -83,34 +91,55 @@ fun XhsDetailImageCarousel(
         }
 
         if (images.size > 1) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .height(48.dp)
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.35f)),
-                        ),
-                    ),
-            )
-
-            Row(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 14.dp),
-                horizontalArrangement = Arrangement.spacedBy(5.dp),
-            ) {
-                repeat(images.size) { index ->
+            when (indicatorStyle) {
+                CarouselIndicatorStyle.Counter -> {
                     Box(
                         modifier = Modifier
-                            .size(if (pagerState.currentPage == index) 6.dp else 5.dp)
-                            .clip(CircleShape)
+                            .align(Alignment.BottomEnd)
+                            .padding(end = 14.dp, bottom = indicatorBottomPadding)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color.Black.copy(alpha = 0.42f))
+                            .padding(horizontal = 10.dp, vertical = 5.dp),
+                    ) {
+                        Text(
+                            text = "${pagerState.currentPage + 1}/${images.size}",
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                        )
+                    }
+                }
+                CarouselIndicatorStyle.Dots -> {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .height(48.dp)
                             .background(
-                                if (pagerState.currentPage == index) Color.White
-                                else Color.White.copy(alpha = 0.45f),
+                                Brush.verticalGradient(
+                                    colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.35f)),
+                                ),
                             ),
                     )
+
+                    Row(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = indicatorBottomPadding),
+                        horizontalArrangement = Arrangement.spacedBy(5.dp),
+                    ) {
+                        repeat(images.size) { index ->
+                            Box(
+                                modifier = Modifier
+                                    .size(if (pagerState.currentPage == index) 6.dp else 5.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        if (pagerState.currentPage == index) Color.White
+                                        else Color.White.copy(alpha = 0.45f),
+                                    ),
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -123,6 +152,7 @@ fun XhsDetailAuthorHeader(
     authorId: Int,
     onBack: () -> Unit,
     onAuthorClick: (Int) -> Unit,
+    authorAvatarUrl: String? = null,
     actions: @Composable RowScope.() -> Unit,
 ) {
     Column {
@@ -151,7 +181,7 @@ fun XhsDetailAuthorHeader(
                     .padding(horizontal = 4.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                XhsProfileAvatar(label = authorLabel, size = 32)
+                XhsProfileAvatar(label = authorLabel, size = 32, avatarUrl = authorAvatarUrl)
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = authorLabel,
@@ -268,10 +298,21 @@ fun XhsDetailAuthorRow(
 fun XhsActivityDetailBottomBar(
     participantCount: Int,
     maxParticipants: Int,
+    fee: String? = "0",
+    isJoined: Boolean = false,
+    isSelf: Boolean = false,
     isJoining: Boolean,
     onJoin: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val feeLabel = formatActivityFeeLabel(fee)
+    val joinLabel = when {
+        isSelf -> "我的活动"
+        isJoined -> "已报名"
+        fee?.toDoubleOrNull()?.let { it > 0 } == true -> "支付 $feeLabel"
+        else -> "免费报名"
+    }
+
     Surface(
         modifier = modifier.fillMaxWidth(),
         shadowElevation = 8.dp,
@@ -292,17 +333,18 @@ fun XhsActivityDetailBottomBar(
                     color = XhsRed,
                     fontSize = 15.sp,
                 )
-                if (maxParticipants > 0) {
-                    Text(
-                        text = "限额 $maxParticipants 人",
-                        fontSize = 12.sp,
-                        color = XhsTextSecondary,
-                    )
-                }
+                Text(
+                    text = buildString {
+                        if (maxParticipants > 0) append("限额 $maxParticipants 人 · ")
+                        append(if (fee?.toDoubleOrNull()?.let { it > 0 } == true) feeLabel else "免费")
+                    },
+                    fontSize = 12.sp,
+                    color = XhsTextSecondary,
+                )
             }
             Button(
                 onClick = onJoin,
-                enabled = !isJoining,
+                enabled = !isJoining && !isSelf && !isJoined,
                 colors = ButtonDefaults.buttonColors(containerColor = XhsRed),
                 shape = RoundedCornerShape(20.dp),
                 modifier = Modifier.height(40.dp),
@@ -314,42 +356,49 @@ fun XhsActivityDetailBottomBar(
                         strokeWidth = 2.dp,
                     )
                 } else {
-                    Text("立即报名", fontWeight = FontWeight.Bold)
+                    Text(joinLabel, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                 }
             }
         }
     }
 }
 
+data class ParticipantAvatarItem(
+    val label: String,
+    val avatarUrl: String? = null,
+)
+
 @Composable
 fun XhsParticipantAvatars(
-    labels: List<String>,
+    participants: List<ParticipantAvatarItem>,
     modifier: Modifier = Modifier,
+    avatarSize: Int = 32,
+    maxVisible: Int = 5,
 ) {
-    if (labels.isEmpty()) return
+    if (participants.isEmpty()) return
     Row(modifier = modifier) {
-        labels.take(5).forEachIndexed { index, label ->
+        participants.take(maxVisible).forEachIndexed { index, participant ->
             Box(
                 modifier = Modifier
                     .offset(x = (-8 * index).dp)
-                    .size(32.dp)
+                    .size(avatarSize.dp)
                     .clip(CircleShape)
-                    .background(coverGradientForId(label.hashCode())),
+                    .background(Color.White),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(
-                    text = label.take(1).uppercase(),
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 12.sp,
+                XhsProfileAvatar(
+                    label = participant.label,
+                    size = avatarSize,
+                    avatarUrl = participant.avatarUrl,
+                    modifier = Modifier.fillMaxSize(),
                 )
             }
         }
-        if (labels.size > 5) {
+        if (participants.size > maxVisible) {
             Text(
-                text = "+${labels.size - 5}",
+                text = "+${participants.size - maxVisible}",
                 modifier = Modifier
-                    .offset(x = (-8 * 5 + 8).dp)
+                    .offset(x = (-8 * maxVisible + 8).dp)
                     .padding(start = 4.dp)
                     .align(Alignment.CenterVertically),
                 color = XhsTextSecondary,
@@ -377,4 +426,37 @@ fun XhsDetailInfoRow(
             color = XhsTextSecondary,
         )
     }
+}
+
+@Composable
+fun XhsDetailSocialChip(
+    icon: @Composable () -> Unit,
+    count: Int,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 6.dp),
+    ) {
+        icon()
+        if (count > 0) {
+            Spacer(modifier = Modifier.width(2.dp))
+            Text(
+                text = formatDetailSocialCount(count),
+                fontSize = 13.sp,
+                color = XhsTextPrimary,
+                fontWeight = FontWeight.Medium,
+            )
+        }
+    }
+}
+
+private fun formatDetailSocialCount(count: Int): String = when {
+    count <= 0 -> "0"
+    count < 10000 -> count.toString()
+    else -> String.format("%.1fw", count / 10000f)
 }

@@ -65,6 +65,7 @@ fun PostDetailScreen(
     post: PostDto?,
     comments: List<PostCommentDto>,
     currentUserLabel: String,
+    currentUserAvatarUrl: String? = null,
     isLoading: Boolean,
     isCommentsLoading: Boolean,
     isSocialSubmitting: Boolean,
@@ -76,6 +77,7 @@ fun PostDetailScreen(
     onFollowToggle: () -> Unit = {},
     isAuthorFollowing: Boolean = false,
     currentUserId: Int? = null,
+    onProductClick: (Int) -> Unit = {},
 ) {
     var commentInput by remember { mutableStateOf("") }
     var replyToCommentId by remember { mutableStateOf<Int?>(null) }
@@ -91,13 +93,16 @@ fun PostDetailScreen(
             post == null -> XhsDetailEmpty("笔记不存在或已删除", Modifier.fillMaxSize())
             else -> {
                 val authorLabel = post.author?.displayName() ?: "同学${post.authorId}"
+                val authorAvatarUrl = post.author?.avatarUrl
                 val images = post.images.orEmpty()
                 val displayTitle = postDisplayTitle(post)
                 val displayBody = postDisplayBody(post)
+                val product = post.product
 
                 Column(modifier = Modifier.fillMaxSize()) {
                     PostDetailHeader(
                         authorLabel = authorLabel,
+                        authorAvatarUrl = authorAvatarUrl,
                         authorId = post.authorId,
                         currentUserId = currentUserId,
                         isAuthorFollowing = isAuthorFollowing,
@@ -129,6 +134,16 @@ fun PostDetailScreen(
                             )
                         }
 
+                        if (product != null) {
+                            item {
+                                PostProductLinkCard(
+                                    post = post,
+                                    product = product,
+                                    onClick = { onProductClick(post.id) },
+                                )
+                            }
+                        }
+
                         item {
                             PostCommentsHeader(commentCount = post.commentCount)
                         }
@@ -136,6 +151,7 @@ fun PostDetailScreen(
                         item {
                             PostQuickCommentRow(
                                 userLabel = currentUserLabel,
+                                userAvatarUrl = currentUserAvatarUrl,
                                 onClick = { /* focus handled by bottom bar */ },
                             )
                         }
@@ -175,7 +191,7 @@ fun PostDetailScreen(
                                     replies = comments.filter { it.parentId == comment.id },
                                     onReply = {
                                         replyToCommentId = comment.id
-                                        replyToLabel = comment.author?.studentId ?: "同学${comment.userId}"
+                                        replyToLabel = comment.author?.displayName() ?: "同学${comment.userId}"
                                     },
                                 )
                             }
@@ -252,6 +268,7 @@ private fun postDisplayBody(post: PostDto): String {
 @Composable
 private fun PostDetailHeader(
     authorLabel: String,
+    authorAvatarUrl: String?,
     authorId: Int,
     currentUserId: Int?,
     isAuthorFollowing: Boolean,
@@ -263,6 +280,7 @@ private fun PostDetailHeader(
     XhsDetailAuthorHeader(
         authorLabel = authorLabel,
         authorId = authorId,
+        authorAvatarUrl = authorAvatarUrl,
         onBack = onBack,
         onAuthorClick = onAuthorClick,
     ) {
@@ -354,6 +372,7 @@ private fun PostCommentsHeader(commentCount: Int) {
 @Composable
 private fun PostQuickCommentRow(
     userLabel: String,
+    userAvatarUrl: String? = null,
     onClick: () -> Unit,
 ) {
     Row(
@@ -362,7 +381,7 @@ private fun PostQuickCommentRow(
             .padding(horizontal = 16.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        XhsProfileAvatar(label = userLabel, size = 32)
+        XhsProfileAvatar(label = userLabel, size = 32, avatarUrl = userAvatarUrl)
         Spacer(modifier = Modifier.width(10.dp))
         Box(
             modifier = Modifier
@@ -394,7 +413,8 @@ private fun PostCommentItem(
     replies: List<PostCommentDto>,
     onReply: () -> Unit,
 ) {
-    val authorLabel = comment.author?.studentId ?: "同学${comment.userId}"
+    val authorLabel = comment.author?.displayName() ?: "同学${comment.userId}"
+    val authorAvatarUrl = comment.author?.avatarUrl
     val isAuthor = comment.userId == postAuthorId
 
     Column(
@@ -403,7 +423,7 @@ private fun PostCommentItem(
             .padding(horizontal = 16.dp, vertical = 12.dp),
     ) {
         Row(verticalAlignment = Alignment.Top) {
-            XhsProfileAvatar(label = authorLabel, size = 34)
+            XhsProfileAvatar(label = authorLabel, size = 34, avatarUrl = authorAvatarUrl)
             Spacer(modifier = Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -488,11 +508,12 @@ private fun PostReplyItem(
     reply: PostCommentDto,
     postAuthorId: Int,
 ) {
-    val replyLabel = reply.author?.studentId ?: "同学${reply.userId}"
+    val replyLabel = reply.author?.displayName() ?: "同学${reply.userId}"
+    val replyAvatarUrl = reply.author?.avatarUrl
     val isAuthor = reply.userId == postAuthorId
 
     Row {
-        XhsProfileAvatar(label = replyLabel, size = 22)
+        XhsProfileAvatar(label = replyLabel, size = 22, avatarUrl = replyAvatarUrl)
         Spacer(modifier = Modifier.width(8.dp))
         Column {
             Row(verticalAlignment = Alignment.CenterVertically) {

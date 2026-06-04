@@ -1,0 +1,20 @@
+-- 商家分账 + 确认收货后结算（在 migrate-payment-schema.sql 之后执行）
+
+ALTER TABLE `payment_order`
+  MODIFY `status` ENUM(
+    'PENDING',
+    'PAID',
+    'CONFIRMED',
+    'SETTLED',
+    'CLOSED',
+    'FAILED'
+  ) NOT NULL DEFAULT 'PENDING';
+
+ALTER TABLE `payment_order`
+  ADD COLUMN IF NOT EXISTS `confirmed_at` DATETIME NULL COMMENT '买家确认收货时间' AFTER `paid_at`,
+  ADD COLUMN IF NOT EXISTS `settled_at` DATETIME NULL COMMENT '分账完成时间' AFTER `confirmed_at`,
+  ADD COLUMN IF NOT EXISTS `auto_confirm_at` DATETIME NULL COMMENT '自动确认收货截止时间' AFTER `settled_at`;
+
+ALTER TABLE `user`
+  ADD COLUMN IF NOT EXISTS `alipay_royalty_bound_at` DATETIME NULL COMMENT '分账关系绑定时间' AFTER `alipay_bound_at`,
+  ADD COLUMN IF NOT EXISTS `alipay_user_id` VARCHAR(32) NULL COMMENT '支付宝 userId（OAuth 授权）' AFTER `alipay_login_id`;

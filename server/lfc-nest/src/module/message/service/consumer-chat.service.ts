@@ -15,6 +15,10 @@ import {
   CreateConversationBodyDto,
   SendChatMessageBodyDto,
 } from '@module/message/dto/chat.dto';
+import {
+  formatChatProductPreview,
+  parseChatProductPayload,
+} from '@module/message/util/chat-product.util';
 
 @Injectable()
 export class ConsumerChatService {
@@ -124,6 +128,13 @@ export class ConsumerChatService {
     const content = body.content.trim();
     const messageType = body.messageType ?? ChatMessageType.TEXT;
 
+    if (messageType === ChatMessageType.PRODUCT) {
+      const payload = parseChatProductPayload(content);
+      if (!payload) {
+        throw new BadRequestException('商品消息格式不正确');
+      }
+    }
+
     const saved = await this.messageRepository.save(
       this.messageRepository.create({
         conversationId,
@@ -134,7 +145,14 @@ export class ConsumerChatService {
       }),
     );
 
-    conversation.lastMessageContent = content.slice(0, 500);
+    conversation.lastMessageContent =
+      messageType === ChatMessageType.IMAGE
+        ? '[图片]'
+        : messageType === ChatMessageType.VIDEO
+          ? '[视频]'
+          : messageType === ChatMessageType.PRODUCT
+            ? formatChatProductPreview(parseChatProductPayload(content)!)
+            : content.slice(0, 500);
     conversation.lastMessageAt = saved.createdAt;
 
     const peerUserId = this.getPeerUserId(conversation, userId);
@@ -189,6 +207,8 @@ export class ConsumerChatService {
       id: conversation.id,
       peerUserId: peer?.id ?? this.getPeerUserId(conversation, userId),
       peerStudentId: peer?.studentId ?? `同学${this.getPeerUserId(conversation, userId)}`,
+      peerNickname: peer?.nickname ?? null,
+      peerAvatarUrl: peer?.avatarUrl ?? null,
       lastMessageContent: conversation.lastMessageContent,
       lastMessageAt: conversation.lastMessageAt,
       unreadCount: this.getUnreadCountForUser(conversation, userId),

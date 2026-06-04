@@ -45,6 +45,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.lfc.consumer.data.model.ActivityDto
+import com.lfc.consumer.data.model.hasOnSaleProduct
 import com.lfc.consumer.data.model.PostDto
 import com.lfc.consumer.data.model.displayName
 import com.lfc.consumer.ui.theme.XhsRed
@@ -77,6 +79,7 @@ fun XhsFeedCard(
 ) {
     val coverUrl = post.images?.firstOrNull()
     val authorLabel = post.author?.displayName() ?: "同学${post.authorId}"
+    val productPrice = post.product?.takeIf { post.hasOnSaleProduct() }?.price
     XhsFeedCard(
         title = post.title,
         content = post.content,
@@ -86,6 +89,7 @@ fun XhsFeedCard(
         likeCount = post.likeCount,
         isLiked = post.isLiked,
         id = post.id,
+        productPrice = productPrice,
         modifier = modifier,
         onClick = onClick,
     )
@@ -101,6 +105,7 @@ fun XhsFeedCard(
     likeCount: Int,
     isLiked: Boolean = false,
     id: Int,
+    productPrice: String? = null,
     modifier: Modifier = Modifier,
     onClick: () -> Unit = {},
 ) {
@@ -113,21 +118,37 @@ fun XhsFeedCard(
         shadowElevation = 1.dp,
     ) {
         Column {
-            if (coverImageUrl != null) {
-                AsyncImage(
-                    model = coverImageUrl,
-                    contentDescription = title,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(0.75f)
-                        .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp)),
-                )
-            } else {
-                TextNoteCover(
-                    content = content,
-                    id = id,
-                )
+            Box {
+                if (coverImageUrl != null) {
+                    AsyncImage(
+                        model = coverImageUrl,
+                        contentDescription = title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(0.75f)
+                            .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp)),
+                    )
+                } else {
+                    TextNoteCover(
+                        content = content,
+                        id = id,
+                    )
+                }
+                if (productPrice != null) {
+                    Text(
+                        text = formatPriceYuan(productPrice),
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(8.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color.Black.copy(alpha = 0.55f))
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
             }
             Text(
                 text = title,
@@ -279,7 +300,7 @@ fun XhsProfileFeedCard(
                     avatarUrl = footerAvatar,
                 )
                 Text(
-                    text = "$footerAuthor  ${formatProfileDate(post.createdAt)}",
+                    text = footerAuthor,
                     modifier = Modifier
                         .weight(1f)
                         .padding(start = 4.dp),
@@ -305,6 +326,143 @@ fun XhsProfileFeedCard(
             }
         }
     }
+}
+
+@Composable
+fun XhsProfileActivityCard(
+    activity: ActivityDto,
+    authorLabel: String,
+    avatarUrl: String? = null,
+    modifier: Modifier = Modifier,
+) {
+    val coverUrl = activity.images?.firstOrNull()
+    val aspectRatio = 0.68f + gradientIndexForId(activity.id, 4) * 0.06f
+    val participantCount = activity.participants?.size ?: 0
+
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(10.dp),
+        color = Color.White,
+        shadowElevation = 0.dp,
+    ) {
+        Column {
+            Box(
+                modifier = Modifier.clip(RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp)),
+            ) {
+                if (coverUrl != null) {
+                    AsyncImage(
+                        model = coverUrl,
+                        contentDescription = activity.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(aspectRatio),
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(aspectRatio)
+                            .background(coverGradientForId(activity.id)),
+                    )
+                }
+
+                Text(
+                    text = profileActivityStatusLabel(activity.status),
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(6.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color.Black.copy(alpha = 0.42f))
+                        .padding(horizontal = 5.dp, vertical = 2.dp),
+                    color = Color.White,
+                    fontSize = 9.sp,
+                )
+
+                if (participantCount > 0) {
+                    Row(
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(6.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color.Black.copy(alpha = 0.42f))
+                            .padding(horizontal = 5.dp, vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            Icons.Default.Event,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(10.dp),
+                        )
+                        Text(
+                            text = formatLikeCount(participantCount),
+                            color = Color.White,
+                            fontSize = 9.sp,
+                            modifier = Modifier.padding(start = 2.dp),
+                        )
+                    }
+                }
+            }
+
+            Text(
+                text = activity.title,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 7.dp),
+                color = XhsTextPrimary,
+                fontWeight = FontWeight.Medium,
+                fontSize = 12.sp,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                lineHeight = 17.sp,
+            )
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 8.dp, end = 8.dp, bottom = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                val footerAuthor = activity.author?.displayName() ?: authorLabel
+                val footerAvatar = activity.author?.avatarUrl ?: avatarUrl
+                XhsProfileAvatar(
+                    label = footerAuthor,
+                    size = 16,
+                    avatarUrl = footerAvatar,
+                )
+                Text(
+                    text = footerAuthor,
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(start = 4.dp),
+                    fontSize = 9.sp,
+                    color = XhsTextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Icon(
+                    if (activity.isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                    contentDescription = null,
+                    tint = if (activity.isLiked) XhsRed else XhsTextSecondary.copy(alpha = 0.7f),
+                    modifier = Modifier.size(11.dp),
+                )
+                if (activity.likeCount > 0) {
+                    Text(
+                        text = formatLikeCount(activity.likeCount),
+                        modifier = Modifier.padding(start = 2.dp),
+                        fontSize = 9.sp,
+                        color = if (activity.isLiked) XhsRed else XhsTextSecondary,
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun profileActivityStatusLabel(status: String): String = when (status.uppercase()) {
+    "PENDING" -> "待审核"
+    "APPROVED" -> "进行中"
+    "REJECTED" -> "已拒绝"
+    else -> status
 }
 
 @Composable

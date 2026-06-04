@@ -30,7 +30,10 @@ import com.lfc.consumer.ui.theme.XhsTextSecondary
 fun PublishActivityScreen(
     initial: ActivityDto? = null,
     isSubmitting: Boolean = false,
+    platformFeeRateLabel: String? = null,
+    alipayBound: Boolean = false,
     onBack: () -> Unit,
+    onBindAlipay: () -> Unit = {},
     onSubmit: (
         title: String,
         description: String,
@@ -38,6 +41,7 @@ fun PublishActivityScreen(
         startTime: String,
         endTime: String,
         maxParticipants: Int,
+        fee: Double,
         imageUris: List<Uri>,
     ) -> Unit,
 ) {
@@ -49,11 +53,14 @@ fun PublishActivityScreen(
     var showStartPicker by remember { mutableStateOf(false) }
     var showEndPicker by remember { mutableStateOf(false) }
     var maxParticipants by remember { mutableStateOf((initial?.maxParticipants ?: 0).toString()) }
+    var fee by remember { mutableStateOf(initial?.fee?.toDoubleOrNull()?.let { if (it > 0) it.toString() else "" } ?: "") }
     val selectedImages = rememberPublishImageSelection()
     val existingImages = initial?.images.orEmpty()
 
     val isValid = location.isNotBlank() && startTime.isNotBlank() && endTime.isNotBlank() &&
         (description.isNotBlank() || selectedImages.isNotEmpty() || existingImages.isNotEmpty())
+    val activityFee = fee.toDoubleOrNull() ?: 0.0
+    val needsAlipay = activityFee > 0 && !alipayBound
 
     XhsPublishScreenContainer(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -69,13 +76,23 @@ fun PublishActivityScreen(
                         startTime.trim(),
                         endTime.trim(),
                         maxParticipants.toIntOrNull() ?: 0,
+                        fee.toDoubleOrNull() ?: 0.0,
                         selectedImages.toList(),
                     )
                 },
-                actionEnabled = isValid,
+                actionEnabled = isValid && !needsAlipay,
                 isSubmitting = isSubmitting,
             )
             HorizontalDivider(color = Color(0xFFEEEEEE))
+
+            if (needsAlipay) {
+                AlipaySetupBanner(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                    title = "绑定支付宝后才能收取活动费用",
+                    description = "参与者通过支付宝报名付款，款项会分账到你的支付宝。请先绑定收款账号。",
+                    onBindClick = onBindAlipay,
+                )
+            }
 
             Column(
                 modifier = Modifier
@@ -146,6 +163,21 @@ fun PublishActivityScreen(
                         placeholder = "人数上限，0 表示不限",
                         singleLine = true,
                     )
+                    Spacer(modifier = Modifier.height(14.dp))
+                    XhsPublishTextField(
+                        value = fee,
+                        onValueChange = { fee = it.filter { c -> c.isDigit() || c == '.' } },
+                        placeholder = "向参与者收取费用（元），留空或 0 表示免费",
+                        singleLine = true,
+                    )
+                    formatPayeeReceiveHint(fee, platformFeeRateLabel)?.let { hint ->
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = hint,
+                            fontSize = 12.sp,
+                            color = XhsTextSecondary,
+                        )
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))

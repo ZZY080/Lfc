@@ -27,11 +27,13 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.automirrored.filled.Message
+import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.QrCode2
 import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.outlined.Edit
@@ -77,6 +79,8 @@ fun ProfileSideMenu(
     onScan: () -> Unit,
     onShowMyQr: () -> Unit,
     onSettings: () -> Unit,
+    onOrders: () -> Unit,
+    onBindAlipay: () -> Unit,
     onEditProfile: () -> Unit,
     onShare: () -> Unit,
     onSearch: () -> Unit,
@@ -204,6 +208,26 @@ fun ProfileSideMenu(
                 )
 
                 ProfileSideMenuSectionGap()
+
+                ProfileSideMenuRow(
+                    icon = Icons.Default.ReceiptLong,
+                    title = "我的订单",
+                    onClick = {
+                        onOrders()
+                        onDismiss()
+                    },
+                )
+                ProfileSideMenuDivider()
+
+                ProfileSideMenuRow(
+                    icon = Icons.Default.AccountBalanceWallet,
+                    title = "收款账号",
+                    onClick = {
+                        onBindAlipay()
+                        onDismiss()
+                    },
+                )
+                ProfileSideMenuDivider()
 
                 ProfileSideMenuRow(
                     icon = Icons.Outlined.Edit,

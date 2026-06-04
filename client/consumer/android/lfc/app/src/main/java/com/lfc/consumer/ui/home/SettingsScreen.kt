@@ -1,6 +1,7 @@
 package com.lfc.consumer.ui.home
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -8,19 +9,23 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ReceiptLong
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -42,16 +47,24 @@ import com.lfc.consumer.ui.theme.XhsTextSecondary
 fun SettingsScreen(
     profile: UserProfileDto?,
     isUpdating: Boolean,
+    platformFeeRateLabel: String? = null,
     onBack: () -> Unit,
+    onOpenOrders: () -> Unit,
     onPrivacyChange: (
         showCommentsPublic: Boolean,
         showFavoritesPublic: Boolean,
         showLikesPublic: Boolean,
     ) -> Unit,
+    onAuthorizeAlipay: () -> Unit,
+    onBindAlipay: (loginId: String, realName: String?) -> Unit,
+    onUnbindAlipay: () -> Unit,
 ) {
     var showCommentsPublic by remember(profile?.id) { mutableStateOf(profile?.showCommentsPublic ?: false) }
     var showFavoritesPublic by remember(profile?.id) { mutableStateOf(profile?.showFavoritesPublic ?: false) }
     var showLikesPublic by remember(profile?.id) { mutableStateOf(profile?.showLikesPublic ?: false) }
+    var showManualAlipayEntry by remember { mutableStateOf(false) }
+    var alipayLoginId by remember(profile?.id) { mutableStateOf("") }
+    var alipayRealName by remember(profile?.id) { mutableStateOf("") }
 
     LaunchedEffect(
         profile?.showCommentsPublic,
@@ -93,6 +106,131 @@ fun SettingsScreen(
                     .verticalScroll(rememberScrollState())
                     .padding(16.dp),
             ) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color.White,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = onOpenOrders),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            Icons.Default.ReceiptLong,
+                            contentDescription = null,
+                            tint = XhsRed,
+                            modifier = Modifier.size(22.dp),
+                        )
+                        Text(
+                            text = "我的订单",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
+                            color = XhsTextPrimary,
+                            modifier = Modifier.padding(start = 12.dp),
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                Text(
+                    text = "收款账号",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp,
+                    color = XhsTextPrimary,
+                )
+                AlipayBoundStatusChip(
+                    alipayBound = profile?.alipayBound == true,
+                    alipayLoginIdMasked = profile?.alipayLoginIdMasked,
+                    modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
+                )
+                Text(
+                    text = buildString {
+                        append("发布闲置或收取活动费时需绑定。点击授权将跳转支付宝完成身份验证，")
+                        append("买家支付后平台托管，确认收货后通过商家分账转给你（扣除")
+                        append(platformFeeRateLabel?.takeIf { it.isNotBlank() } ?: "服务费")
+                        append("）。")
+                    },
+                    fontSize = 12.sp,
+                    color = XhsTextSecondary,
+                    modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
+                )
+
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color.White,
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        if (profile?.alipayBound == true) {
+                            Text(
+                                text = "已绑定 ${profile.alipayLoginIdMasked ?: "支付宝账号"}",
+                                fontSize = 15.sp,
+                                color = XhsTextPrimary,
+                                fontWeight = FontWeight.Medium,
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            TextButton(
+                                onClick = onUnbindAlipay,
+                                enabled = !isUpdating,
+                            ) {
+                                Text("解绑收款账号", color = XhsTextSecondary)
+                            }
+                        } else {
+                            Button(
+                                onClick = onAuthorizeAlipay,
+                                enabled = !isUpdating,
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(containerColor = XhsRed),
+                            ) {
+                                Text("跳转支付宝授权绑定")
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            TextButton(
+                                onClick = { showManualAlipayEntry = !showManualAlipayEntry },
+                                enabled = !isUpdating,
+                            ) {
+                                Text(
+                                    text = if (showManualAlipayEntry) "收起手动填写" else "无法授权？手动填写账号",
+                                    color = XhsTextSecondary,
+                                )
+                            }
+                            if (showManualAlipayEntry) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                OutlinedTextField(
+                                    value = alipayLoginId,
+                                    onValueChange = { alipayLoginId = it },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    label = { Text("支付宝手机号或邮箱") },
+                                    singleLine = true,
+                                    enabled = !isUpdating,
+                                )
+                                Spacer(modifier = Modifier.height(10.dp))
+                                OutlinedTextField(
+                                    value = alipayRealName,
+                                    onValueChange = { alipayRealName = it },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    label = { Text("支付宝实名（建议填写）") },
+                                    singleLine = true,
+                                    enabled = !isUpdating,
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Button(
+                                    onClick = { onBindAlipay(alipayLoginId, alipayRealName) },
+                                    enabled = !isUpdating && alipayLoginId.isNotBlank(),
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = ButtonDefaults.buttonColors(containerColor = XhsRed),
+                                ) {
+                                    Text("手动绑定收款账号")
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
                 Text(
                     text = "隐私设置",
                     fontWeight = FontWeight.Bold,
@@ -145,13 +283,6 @@ fun SettingsScreen(
                         )
                     }
                 }
-
-                Spacer(modifier = Modifier.height(24.dp))
-                Text(
-                    text = "主页 Tab 上的锁图标表示该内容仅自己可见",
-                    fontSize = 12.sp,
-                    color = XhsTextSecondary,
-                )
             }
         }
     }
@@ -175,11 +306,11 @@ private fun PrivacySwitchRow(
             Text(title, fontSize = 15.sp, color = XhsTextPrimary, fontWeight = FontWeight.Medium)
             Text(subtitle, fontSize = 12.sp, color = XhsTextSecondary, modifier = Modifier.padding(top = 2.dp))
         }
-        Switch(
+        androidx.compose.material3.Switch(
             checked = checked,
             onCheckedChange = onCheckedChange,
             enabled = enabled,
-            colors = SwitchDefaults.colors(
+            colors = androidx.compose.material3.SwitchDefaults.colors(
                 checkedTrackColor = XhsRed,
                 checkedThumbColor = Color.White,
             ),

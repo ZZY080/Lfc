@@ -55,9 +55,14 @@ class AuthViewModel(
     fun register(
         email: String,
         password: String,
+        realName: String,
         studentId: String,
         studentCardUri: Uri?,
     ) {
+        if (realName.length < 2) {
+            _uiState.value = AuthUiState(error = "请填写真实姓名")
+            return
+        }
         if (studentCardUri == null) {
             _uiState.value = AuthUiState(error = "请上传学生证照片")
             return
@@ -82,6 +87,7 @@ class AuthViewModel(
                     email = email.toRequestBody("text/plain".toMediaTypeOrNull()),
                     password = password.toRequestBody("text/plain".toMediaTypeOrNull()),
                     studentId = studentId.toRequestBody("text/plain".toMediaTypeOrNull()),
+                    realName = realName.toRequestBody("text/plain".toMediaTypeOrNull()),
                     studentCard = part,
                 )
                 tokenManager.saveSession(

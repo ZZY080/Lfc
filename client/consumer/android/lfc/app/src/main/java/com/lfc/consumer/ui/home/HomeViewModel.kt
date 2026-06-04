@@ -15,6 +15,7 @@ import com.lfc.consumer.data.model.ActivityParticipantDto
 import com.lfc.consumer.data.model.CreateActivityRequest
 import com.lfc.consumer.data.model.CreatePostCommentRequest
 import com.lfc.consumer.data.model.CreatePostRequest
+import com.lfc.consumer.data.model.PostProductRequest
 import com.lfc.consumer.data.model.PostCommentDto
 import com.lfc.consumer.data.model.FeedUiState
 import com.lfc.consumer.data.model.ActivityFeedUiState
@@ -23,16 +24,34 @@ import com.lfc.consumer.data.model.ChatMessageDto
 import com.lfc.consumer.data.model.ConversationDto
 import com.lfc.consumer.data.model.CreateConversationRequest
 import com.lfc.consumer.data.model.NotificationDto
-import com.lfc.consumer.data.model.SendChatMessageRequest
+import com.lfc.consumer.data.model.ChatProductPayload
 import com.lfc.consumer.data.model.PostDto
+import com.lfc.consumer.data.model.toChatProductPayload
+import com.lfc.consumer.data.model.toJson
+import com.lfc.consumer.data.model.isPaidActivity
 import com.lfc.consumer.data.model.UpdateActivityRequest
 import com.lfc.consumer.data.model.UpdatePostRequest
+import com.lfc.consumer.data.model.ActivitySocialStateDto
 import com.lfc.consumer.data.model.PostSocialStateDto
 import com.lfc.consumer.data.model.ProfileCommentDto
 import com.lfc.consumer.data.model.ProfileTabUiState
 import com.lfc.consumer.data.model.ProfileTabsUiState
 import com.lfc.consumer.data.model.UpdateProfileRequest
+import com.lfc.consumer.data.model.PaymentConfigDto
+import com.lfc.consumer.data.model.PaymentOrderDetailDto
+import com.lfc.consumer.data.model.PaymentOrderListItemDto
+import com.lfc.consumer.data.model.OrderCenterUiState
+import com.lfc.consumer.data.model.ProfileSearchUiState
+import com.lfc.consumer.data.model.CreateOrderReviewRequest
+import com.lfc.consumer.data.model.ApplyAfterSalesRequest
+import com.lfc.consumer.data.model.BindAlipayAccountRequest
+import com.lfc.consumer.data.model.BindAlipayOAuthRequest
+import com.lfc.consumer.data.model.SendChatMessageRequest
 import com.lfc.consumer.data.model.UserProfileDto
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -43,6 +62,9 @@ import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.asRequestBody
 import retrofit2.HttpException
+import com.lfc.consumer.payment.AlipayAuthResult
+import com.lfc.consumer.payment.AlipayHelper
+import com.lfc.consumer.payment.AlipayPayResult
 import com.google.gson.JsonParser
 
 data class HomeUiState(
@@ -70,6 +92,10 @@ data class HomeUiState(
     val selectedActivity: ActivityDto? = null,
     val isActivityLoading: Boolean = false,
     val isJoiningActivity: Boolean = false,
+    val isActivitySocialSubmitting: Boolean = false,
+    val isPurchasingProduct: Boolean = false,
+    val productPurchaseOrder: PaymentOrderDetailDto? = null,
+    val isConfirmingReceipt: Boolean = false,
     val search: SearchUiState = SearchUiState(),
     val searchInput: String = "",
     val isLoading: Boolean = false,
@@ -81,13 +107,17 @@ data class HomeUiState(
     val profileNotes: List<PostDto> = emptyList(),
     val profileActivities: List<ActivityDto> = emptyList(),
     val profileFavoritePosts: List<PostDto> = emptyList(),
+    val profileFavoriteActivities: List<ActivityDto> = emptyList(),
     val profileLikedPosts: List<PostDto> = emptyList(),
+    val profileLikedActivities: List<ActivityDto> = emptyList(),
     val profileComments: List<ProfileCommentDto> = emptyList(),
     val profileTabs: ProfileTabsUiState = ProfileTabsUiState(),
-    val profileSearchKeyword: String = "",
+    val profileSearch: ProfileSearchUiState = ProfileSearchUiState(),
     val isProfileUpdating: Boolean = false,
     val isPrivacyUpdating: Boolean = false,
     val detailAuthorFollowing: Boolean? = null,
+    val paymentConfig: PaymentConfigDto? = null,
+    val orderCenter: OrderCenterUiState = OrderCenterUiState(),
 )
 
 class HomeViewModel(
@@ -100,6 +130,17 @@ class HomeViewModel(
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
+    private var alipayPayHandler: (suspend (String) -> AlipayPayResult)? = null
+    private var alipayAuthHandler: (suspend (String) -> AlipayAuthResult)? = null
+
+    fun setAlipayPayHandler(handler: (suspend (String) -> AlipayPayResult)?) {
+        alipayPayHandler = handler
+    }
+
+    fun setAlipayAuthHandler(handler: (suspend (String) -> AlipayAuthResult)?) {
+        alipayAuthHandler = handler
+    }
+
     val userSession: StateFlow<UserSession?> = tokenManager.userSessionFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
@@ -107,15 +148,26 @@ class HomeViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     init {
+        loadPaymentConfig()
         loadFeed(refresh = true)
         loadActivityFeed(refresh = true)
         refreshProfileData()
     }
 
     fun refreshAll() {
+        loadPaymentConfig()
         loadFeed(refresh = true)
         loadActivityFeed(refresh = true)
         refreshProfileData()
+    }
+
+    private fun loadPaymentConfig() {
+        viewModelScope.launch {
+            runCatching { api.getPaymentConfig() }
+                .onSuccess { config ->
+                    _uiState.value = _uiState.value.copy(paymentConfig = config)
+                }
+        }
     }
 
     private fun refreshProfileData() {
@@ -140,7 +192,9 @@ class HomeViewModel(
                     profileActivities = emptyList(),
                     profileComments = emptyList(),
                     profileFavoritePosts = emptyList(),
+                    profileFavoriteActivities = emptyList(),
                     profileLikedPosts = emptyList(),
+                    profileLikedActivities = emptyList(),
                     profileTabs = ProfileTabsUiState(targetUserId = myId),
                 )
                 loadProfileTab(tab = 0, userId = myId)
@@ -237,11 +291,18 @@ class HomeViewModel(
             try {
                 val response = api.getActivityFeed(page = page, limit = ACTIVITY_FEED_PAGE_SIZE)
                 val current = _uiState.value.activityFeed
+                val joinedIds = _uiState.value.myParticipations.map { it.activityId }.toSet()
                 val merged = if (refresh) {
                     response.items
                 } else {
                     current.activities + response.items.filter { new ->
                         current.activities.none { it.id == new.id }
+                    }
+                }.map { activity ->
+                    if (activity.isJoined || activity.id in joinedIds) {
+                        activity.copy(isJoined = true)
+                    } else {
+                        activity
                     }
                 }
                 _uiState.value = _uiState.value.copy(
@@ -396,17 +457,25 @@ class HomeViewModel(
         title: String,
         content: String,
         imageUris: List<Uri> = emptyList(),
+        product: PostProductRequest? = null,
         onSuccess: () -> Unit = {},
         onComplete: () -> Unit = {},
     ) {
         viewModelScope.launch {
             try {
+                val price = product?.price ?: 0.0
+                if (price > 0 && _uiState.value.myProfile?.alipayBound != true) {
+                    _uiState.value = _uiState.value.copy(error = ALIPAY_BIND_REQUIRED_MESSAGE)
+                    onComplete()
+                    return@launch
+                }
                 val imageUrls = imageUris.map { uri -> uploadImage(uri) }
                 api.createPost(
                     CreatePostRequest(
                         title = title.ifBlank { null },
                         content = content.ifBlank { null },
                         images = imageUrls.ifEmpty { null },
+                        product = product,
                     ),
                 )
                 _uiState.value = _uiState.value.copy(message = "信息发布成功")
@@ -459,6 +528,13 @@ class HomeViewModel(
         return api.uploadImage(part, scope).url
     }
 
+    private suspend fun uploadVideo(uri: Uri, scope: String = "chat"): String {
+        val uploadFile = MediaUploadHelper.uriToUploadFile(appContext, uri, scope)
+        val requestBody = uploadFile.file.asRequestBody(uploadFile.mimeType.toMediaTypeOrNull())
+        val part = MultipartBody.Part.createFormData("file", uploadFile.fileName, requestBody)
+        return api.uploadVideo(part, scope).url
+    }
+
     fun deletePost(id: Int) {
         viewModelScope.launch {
             try {
@@ -478,12 +554,18 @@ class HomeViewModel(
         startTime: String,
         endTime: String,
         maxParticipants: Int,
+        fee: Double = 0.0,
         imageUris: List<Uri> = emptyList(),
         onSuccess: () -> Unit = {},
         onComplete: () -> Unit = {},
     ) {
         viewModelScope.launch {
             try {
+                if (fee > 0 && _uiState.value.myProfile?.alipayBound != true) {
+                    _uiState.value = _uiState.value.copy(error = ALIPAY_BIND_REQUIRED_MESSAGE)
+                    onComplete()
+                    return@launch
+                }
                 val imageUrls = imageUris.map { uri -> uploadImage(uri, "activity") }
                 api.createActivity(
                     CreateActivityRequest(
@@ -494,6 +576,7 @@ class HomeViewModel(
                         startTime = normalizeDateTime(startTime),
                         endTime = normalizeDateTime(endTime),
                         maxParticipants = maxParticipants,
+                        fee = if (fee > 0) fee else null,
                     ),
                 )
                 _uiState.value = _uiState.value.copy(message = "活动已提交，等待审核")
@@ -563,17 +646,145 @@ class HomeViewModel(
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isJoiningActivity = true)
             try {
-                api.joinActivity(id)
+                val activity = _uiState.value.selectedActivity?.takeIf { it.id == id }
+                    ?: api.getActivity(id)
+                if (activity.isPaidActivity()) {
+                    val order = api.createActivityPaymentOrder(id)
+                    if (order.status.equals("PAID", ignoreCase = true)) {
+                        refreshAll()
+                        if (_uiState.value.selectedActivity?.id == id) {
+                            _uiState.value = _uiState.value.copy(selectedActivity = api.getActivity(id))
+                        }
+                    _uiState.value = _uiState.value.copy(message = "支付成功，已完成报名")
+                    return@launch
+                }
+                val paid = payWithAlipay(order.outTradeNo, order.alipay.orderStr)
+                if (!paid) return@launch
                 refreshAll()
                 if (_uiState.value.selectedActivity?.id == id) {
-                    val activity = api.getActivity(id)
-                    _uiState.value = _uiState.value.copy(selectedActivity = activity)
+                    _uiState.value = _uiState.value.copy(selectedActivity = api.getActivity(id))
                 }
-                _uiState.value = _uiState.value.copy(message = "报名成功")
+                _uiState.value = _uiState.value.copy(message = "已向发起人支付，报名成功")
+                } else {
+                    api.joinActivity(id)
+                    refreshAll()
+                    if (_uiState.value.selectedActivity?.id == id) {
+                        _uiState.value = _uiState.value.copy(selectedActivity = api.getActivity(id))
+                    }
+                    _uiState.value = _uiState.value.copy(message = "报名成功")
+                }
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(error = parseError(e, "报名失败"))
             } finally {
                 _uiState.value = _uiState.value.copy(isJoiningActivity = false)
+            }
+        }
+    }
+
+    fun purchasePostProduct(postId: Int) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isPurchasingProduct = true)
+            try {
+                val order = api.createPostProductOrder(postId)
+                if (order.status.equals("PAID", ignoreCase = true)) {
+                    loadProductDetail(postId)
+                    refreshAll()
+                    _uiState.value = _uiState.value.copy(message = "支付成功，商品已标记为已售")
+                    return@launch
+                }
+                val paid = payWithAlipay(order.outTradeNo, order.alipay.orderStr)
+                if (!paid) return@launch
+                loadProductDetail(postId)
+                refreshAll()
+                _uiState.value = _uiState.value.copy(message = "支付成功，请面交/收货后确认，卖家才会收到款项")
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(error = parseError(e, "购买失败"))
+            } finally {
+                _uiState.value = _uiState.value.copy(isPurchasingProduct = false)
+            }
+        }
+    }
+
+    private suspend fun payWithAlipay(outTradeNo: String, orderStr: String): Boolean {
+        if (orderStr.isBlank()) {
+            _uiState.value = _uiState.value.copy(error = "支付宝下单失败，请稍后重试")
+            return false
+        }
+        val handler = alipayPayHandler
+        if (handler == null) {
+            _uiState.value = _uiState.value.copy(error = "无法调起支付宝，请重试")
+            return false
+        }
+        val result = try {
+            handler(orderStr)
+        } catch (e: Exception) {
+            _uiState.value = _uiState.value.copy(
+                error = e.message?.takeIf { it.isNotBlank() } ?: "支付宝调起失败",
+            )
+            return false
+        }
+        val shouldPoll = result.resultStatus == "9000" || result.resultStatus == "8000"
+        val paid = shouldPoll && waitForPayment(outTradeNo)
+        if (!paid) {
+            val hint = AlipayHelper.resultMessage(result).ifBlank { "支付未完成，可稍后重试" }
+            _uiState.value = _uiState.value.copy(message = hint)
+        }
+        return paid
+    }
+
+    private suspend fun waitForPayment(outTradeNo: String): Boolean {
+        repeat(20) {
+            val order = api.getPaymentOrder(outTradeNo)
+            if (order.status.equals("PAID", ignoreCase = true)) {
+                return true
+            }
+            delay(1500)
+        }
+        return false
+    }
+
+    fun loadProductDetail(id: Int) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(
+                isPostLoading = true,
+                selectedPost = null,
+                productPurchaseOrder = null,
+            )
+            try {
+                val post = api.getPost(id)
+                val purchaseOrder = runCatching { api.getPostProductOrder(id) }.getOrNull()
+                _uiState.value = _uiState.value.copy(
+                    selectedPost = post,
+                    productPurchaseOrder = purchaseOrder,
+                    isPostLoading = false,
+                )
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isPostLoading = false,
+                    error = parseError(e, "加载商品失败"),
+                )
+            }
+        }
+    }
+
+    fun confirmProductReceipt(outTradeNo: String, postId: Int) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isConfirmingReceipt = true)
+            try {
+                val order = api.confirmPaymentReceipt(outTradeNo)
+                loadProductDetail(postId)
+                refreshAll()
+                _uiState.value = _uiState.value.copy(
+                    message = if (order.status.equals("SETTLED", ignoreCase = true)) {
+                        "已确认收货，款项已分账给卖家"
+                    } else {
+                        "已确认收货，分账处理中"
+                    },
+                )
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(error = parseError(e, "确认收货失败"))
+            } finally {
+                _uiState.value = _uiState.value.copy(isConfirmingReceipt = false)
             }
         }
     }
@@ -661,10 +872,17 @@ class HomeViewModel(
     }
 
     private fun updatePostSocialState(postId: Int, state: PostSocialStateDto) {
-        val post = _uiState.value.selectedPost
-        if (post?.id == postId) {
+        val current = _uiState.value
+        val post = current.selectedPost?.takeIf { it.id == postId }
+            ?: current.feed.posts.find { it.id == postId }
+            ?: current.profileNotes.find { it.id == postId }
+            ?: current.profileFavoritePosts.find { it.id == postId }
+            ?: current.profileLikedPosts.find { it.id == postId }
+            ?: current.myPosts.find { it.id == postId }
+
+        if (current.selectedPost?.id == postId) {
             _uiState.value = _uiState.value.copy(
-                selectedPost = post.copy(
+                selectedPost = current.selectedPost.copy(
                     likeCount = state.likeCount,
                     favoriteCount = state.favoriteCount,
                     commentCount = state.commentCount,
@@ -673,24 +891,47 @@ class HomeViewModel(
                 ),
             )
         }
-        val feed = _uiState.value.feed
-        _uiState.value = _uiState.value.copy(
-            feed = feed.copy(
-                posts = feed.posts.map { item ->
-                    if (item.id == postId) {
-                        item.copy(
-                            likeCount = state.likeCount,
-                            favoriteCount = state.favoriteCount,
-                            commentCount = state.commentCount,
-                            isLiked = state.isLiked,
-                            isFavorited = state.isFavorited,
-                        )
-                    } else {
-                        item
-                    }
-                },
-            ),
+
+        fun PostDto.withSocialState() = copy(
+            likeCount = state.likeCount,
+            favoriteCount = state.favoriteCount,
+            commentCount = state.commentCount,
+            isLiked = state.isLiked,
+            isFavorited = state.isFavorited,
         )
+
+        fun mapPost(item: PostDto) = if (item.id == postId) item.withSocialState() else item
+
+        val updatedPost = post?.withSocialState()
+        val next = _uiState.value.copy(
+            feed = current.feed.copy(posts = current.feed.posts.map(::mapPost)),
+            profileNotes = current.profileNotes.map(::mapPost),
+            myPosts = current.myPosts.map(::mapPost),
+            profileFavoritePosts = if (updatedPost != null) {
+                syncPostLibraryList(current.profileFavoritePosts, updatedPost, state.isFavorited)
+            } else {
+                current.profileFavoritePosts.map(::mapPost)
+            },
+            profileLikedPosts = if (updatedPost != null) {
+                syncPostLibraryList(current.profileLikedPosts, updatedPost, state.isLiked)
+            } else {
+                current.profileLikedPosts.map(::mapPost)
+            },
+        )
+        _uiState.value = next
+    }
+
+    private fun syncPostLibraryList(
+        list: List<PostDto>,
+        post: PostDto,
+        include: Boolean,
+    ): List<PostDto> = when {
+        include -> if (list.any { it.id == post.id }) {
+            list.map { if (it.id == post.id) post else it }
+        } else {
+            listOf(post) + list
+        }
+        else -> list.filter { it.id != post.id }
     }
 
     fun loadActivityDetail(id: Int) {
@@ -715,6 +956,98 @@ class HomeViewModel(
                 )
             }
         }
+    }
+
+    fun toggleActivityLike(activityId: Int) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isActivitySocialSubmitting = true)
+            try {
+                val state = api.toggleActivityLike(activityId)
+                updateActivitySocialState(activityId, state)
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(error = parseError(e, "操作失败"))
+            } finally {
+                _uiState.value = _uiState.value.copy(isActivitySocialSubmitting = false)
+            }
+        }
+    }
+
+    fun toggleActivityFavorite(activityId: Int) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isActivitySocialSubmitting = true)
+            try {
+                val state = api.toggleActivityFavorite(activityId)
+                updateActivitySocialState(activityId, state)
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(error = parseError(e, "操作失败"))
+            } finally {
+                _uiState.value = _uiState.value.copy(isActivitySocialSubmitting = false)
+            }
+        }
+    }
+
+    private fun updateActivitySocialState(activityId: Int, state: ActivitySocialStateDto) {
+        val current = _uiState.value
+        val activity = current.selectedActivity?.takeIf { it.id == activityId }
+            ?: current.activities.find { it.id == activityId }
+            ?: current.activityFeed.activities.find { it.id == activityId }
+            ?: current.profileActivities.find { it.id == activityId }
+            ?: current.profileFavoriteActivities.find { it.id == activityId }
+            ?: current.profileLikedActivities.find { it.id == activityId }
+            ?: current.myActivities.find { it.id == activityId }
+
+        if (current.selectedActivity?.id == activityId) {
+            _uiState.value = _uiState.value.copy(
+                selectedActivity = current.selectedActivity.copy(
+                    likeCount = state.likeCount,
+                    favoriteCount = state.favoriteCount,
+                    isLiked = state.isLiked,
+                    isFavorited = state.isFavorited,
+                ),
+            )
+        }
+
+        fun ActivityDto.withSocialState() = copy(
+            likeCount = state.likeCount,
+            favoriteCount = state.favoriteCount,
+            isLiked = state.isLiked,
+            isFavorited = state.isFavorited,
+        )
+
+        fun mapActivity(item: ActivityDto) = if (item.id == activityId) item.withSocialState() else item
+
+        val updatedActivity = activity?.withSocialState()
+        _uiState.value = _uiState.value.copy(
+            activities = current.activities.map(::mapActivity),
+            myActivities = current.myActivities.map(::mapActivity),
+            activityFeed = current.activityFeed.copy(
+                activities = current.activityFeed.activities.map(::mapActivity),
+            ),
+            profileActivities = current.profileActivities.map(::mapActivity),
+            profileFavoriteActivities = if (updatedActivity != null) {
+                syncActivityLibraryList(current.profileFavoriteActivities, updatedActivity, state.isFavorited)
+            } else {
+                current.profileFavoriteActivities.map(::mapActivity)
+            },
+            profileLikedActivities = if (updatedActivity != null) {
+                syncActivityLibraryList(current.profileLikedActivities, updatedActivity, state.isLiked)
+            } else {
+                current.profileLikedActivities.map(::mapActivity)
+            },
+        )
+    }
+
+    private fun syncActivityLibraryList(
+        list: List<ActivityDto>,
+        activity: ActivityDto,
+        include: Boolean,
+    ): List<ActivityDto> = when {
+        include -> if (list.any { it.id == activity.id }) {
+            list.map { if (it.id == activity.id) activity else it }
+        } else {
+            listOf(activity) + list
+        }
+        else -> list.filter { it.id != activity.id }
     }
 
     fun clearSelectedPost() {
@@ -818,25 +1151,53 @@ class HomeViewModel(
     fun sendChatMessage(conversationId: Int, content: String) {
         if (content.isBlank()) return
         viewModelScope.launch {
+            sendChatPayloadInternal(conversationId, content.trim(), "TEXT")
+        }
+    }
+
+    fun sendChatMedia(conversationId: Int, uri: Uri, messageType: String) {
+        viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isChatSending = true)
             try {
-                val message = api.sendChatMessage(
-                    conversationId,
-                    SendChatMessageRequest(content = content.trim()),
-                )
-                val conversations = api.getConversations()
-                _uiState.value = _uiState.value.copy(
-                    chatMessages = _uiState.value.chatMessages + message,
-                    conversations = conversations,
-                    selectedConversation = conversations.find { it.id == conversationId },
-                    isChatSending = false,
-                )
+                val type = messageType.uppercase()
+                val url = when (type) {
+                    "VIDEO" -> uploadVideo(uri, "chat")
+                    else -> uploadImage(uri, "chat")
+                }
+                sendChatPayloadInternal(conversationId, url, type)
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isChatSending = false,
                     error = parseError(e, "发送失败"),
                 )
             }
+        }
+    }
+
+    private suspend fun sendChatPayloadInternal(
+        conversationId: Int,
+        content: String,
+        messageType: String,
+    ) {
+        if (content.isBlank()) return
+        _uiState.value = _uiState.value.copy(isChatSending = true)
+        try {
+            val message = api.sendChatMessage(
+                conversationId,
+                SendChatMessageRequest(content = content, messageType = messageType),
+            )
+            val conversations = api.getConversations()
+            _uiState.value = _uiState.value.copy(
+                chatMessages = _uiState.value.chatMessages + message,
+                conversations = conversations,
+                selectedConversation = conversations.find { it.id == conversationId },
+                isChatSending = false,
+            )
+        } catch (e: Exception) {
+            _uiState.value = _uiState.value.copy(
+                isChatSending = false,
+                error = parseError(e, "发送失败"),
+            )
         }
     }
 
@@ -850,6 +1211,35 @@ class HomeViewModel(
                 _uiState.value = _uiState.value.copy(error = parseError(e, "发起私信失败"))
             }
         }
+    }
+
+    fun startConversationWithProduct(
+        peerUserId: Int,
+        product: ChatProductPayload,
+        onSuccess: (Int) -> Unit = {},
+    ) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isChatSending = true)
+            try {
+                val conversation = api.createConversation(CreateConversationRequest(peerUserId))
+                sendChatPayloadInternal(conversation.id, product.toJson(), "PRODUCT")
+                refreshMessages()
+                onSuccess(conversation.id)
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isChatSending = false,
+                    error = parseError(e, "发起私信失败"),
+                )
+            }
+        }
+    }
+
+    fun startConversationWithProductFromPost(
+        post: PostDto,
+        onSuccess: (Int) -> Unit = {},
+    ) {
+        val payload = post.toChatProductPayload() ?: return
+        startConversationWithProduct(post.authorId, payload, onSuccess)
     }
 
     fun clearChat() {
@@ -870,7 +1260,9 @@ class HomeViewModel(
                 profileActivities = emptyList(),
                 profileComments = emptyList(),
                 profileFavoritePosts = emptyList(),
+                profileFavoriteActivities = emptyList(),
                 profileLikedPosts = emptyList(),
+                profileLikedActivities = emptyList(),
                 profileTabs = ProfileTabsUiState(targetUserId = userId),
             )
             try {
@@ -905,7 +1297,9 @@ class HomeViewModel(
             profileActivities = emptyList(),
             profileComments = emptyList(),
             profileFavoritePosts = emptyList(),
+            profileFavoriteActivities = emptyList(),
             profileLikedPosts = emptyList(),
+            profileLikedActivities = emptyList(),
             profileTabs = ProfileTabsUiState(),
         )
     }
@@ -916,21 +1310,20 @@ class HomeViewModel(
         refresh: Boolean = false,
         loadMore: Boolean = false,
     ) {
-        if (tab !in 0..4) return
+        if (tab !in 0..PROFILE_LIKES_TAB) return
+        if (tab == PROFILE_FAVORITES_TAB || tab == PROFILE_LIKES_TAB) {
+            loadProfileLibraryTab(tab, userId, refresh, loadMore)
+            return
+        }
+
         val myId = _uiState.value.myProfile?.id
         val targetId = userId ?: myId ?: return
         val isSelf = targetId == myId
 
-        if (!isSelf && tab in 2..4) {
+        if (!isSelf && tab == 2) {
             val profile = _uiState.value.selectedUserProfile
             if (profile?.id != targetId) return
-            val allowed = when (tab) {
-                2 -> profile.showCommentsPublic
-                3 -> profile.showFavoritesPublic
-                4 -> profile.showLikesPublic
-                else -> true
-            }
-            if (!allowed) return
+            if (!profile.showCommentsPublic) return
         }
 
         val state = _uiState.value
@@ -948,8 +1341,6 @@ class HomeViewModel(
                 0 -> state.profileNotes.isNotEmpty()
                 1 -> state.profileActivities.isNotEmpty()
                 2 -> state.profileComments.isNotEmpty()
-                3 -> state.profileFavoritePosts.isNotEmpty()
-                4 -> state.profileLikedPosts.isNotEmpty()
                 else -> false
             }
             if (hasData || tabState.isInitialLoading || tabState.isRefreshing) return
@@ -1011,38 +1402,6 @@ class HomeViewModel(
                             )
                         }
                     }
-                    3 -> {
-                        val response = if (isSelf) {
-                            api.getMyFavoritePosts(page, PROFILE_TAB_PAGE_SIZE)
-                        } else {
-                            api.getUserFavoritePosts(targetId, page, PROFILE_TAB_PAGE_SIZE)
-                        }
-                        applyProfileTabResult(tab, page, response.hasMore, replace) { current ->
-                            current.copy(
-                                profileFavoritePosts = mergePosts(
-                                    current.profileFavoritePosts,
-                                    response.items,
-                                    replace,
-                                ),
-                            )
-                        }
-                    }
-                    else -> {
-                        val response = if (isSelf) {
-                            api.getMyLikedPosts(page, PROFILE_TAB_PAGE_SIZE)
-                        } else {
-                            api.getUserLikedPosts(targetId, page, PROFILE_TAB_PAGE_SIZE)
-                        }
-                        applyProfileTabResult(tab, page, response.hasMore, replace) { current ->
-                            current.copy(
-                                profileLikedPosts = mergePosts(
-                                    current.profileLikedPosts,
-                                    response.items,
-                                    replace,
-                                ),
-                            )
-                        }
-                    }
                 }
             } catch (e: Exception) {
                 val current = _uiState.value
@@ -1060,6 +1419,386 @@ class HomeViewModel(
                 )
             }
         }
+    }
+
+    private enum class ProfileLibrarySource {
+        FAVORITE_POSTS,
+        FAVORITE_ACTIVITIES,
+        LIKED_POSTS,
+        LIKED_ACTIVITIES,
+    }
+
+    private fun loadProfileLibraryTab(
+        tab: Int,
+        userId: Int? = null,
+        refresh: Boolean = false,
+        loadMore: Boolean = false,
+    ) {
+        val myId = _uiState.value.myProfile?.id
+        val targetId = userId ?: myId ?: return
+        val isSelf = targetId == myId
+        val profile = if (isSelf) _uiState.value.myProfile else _uiState.value.selectedUserProfile
+        val isFavoritesTab = tab == PROFILE_FAVORITES_TAB
+        val canLoad = when {
+            isSelf -> true
+            isFavoritesTab -> profile?.showFavoritesPublic == true
+            else -> profile?.showLikesPublic == true
+        }
+        if (!canLoad) return
+
+        val state = _uiState.value
+        val tabsState = if (state.profileTabs.targetUserId == targetId) {
+            state.profileTabs
+        } else {
+            ProfileTabsUiState(targetUserId = targetId)
+        }
+        val postsState = tabsState.tabs[tab]
+        val activitiesState = if (isFavoritesTab) {
+            tabsState.favoriteActivities
+        } else {
+            tabsState.likedActivities
+        }
+
+        if (loadMore) {
+            val loading = postsState.isLoadingMore || activitiesState.isLoadingMore ||
+                postsState.isRefreshing || activitiesState.isRefreshing
+            if (loading) return
+
+            viewModelScope.launch {
+                try {
+                    when {
+                        postsState.hasMore -> loadProfileLibrarySource(
+                            targetId = targetId,
+                            isSelf = isSelf,
+                            source = if (isFavoritesTab) {
+                                ProfileLibrarySource.FAVORITE_POSTS
+                            } else {
+                                ProfileLibrarySource.LIKED_POSTS
+                            },
+                            page = postsState.page,
+                            replace = false,
+                        )
+                        activitiesState.hasMore -> loadProfileLibrarySource(
+                            targetId = targetId,
+                            isSelf = isSelf,
+                            source = if (isFavoritesTab) {
+                                ProfileLibrarySource.FAVORITE_ACTIVITIES
+                            } else {
+                                ProfileLibrarySource.LIKED_ACTIVITIES
+                            },
+                            page = activitiesState.page,
+                            replace = false,
+                        )
+                    }
+                } catch (e: Exception) {
+                    resetProfileLibraryLoading(tab)
+                    _uiState.value = _uiState.value.copy(
+                        error = parseError(e, "加载内容失败"),
+                    )
+                }
+            }
+            return
+        }
+
+        if (!refresh && !loadMore) {
+            val busy = postsState.isInitialLoading || postsState.isRefreshing ||
+                postsState.isLoadingMore || activitiesState.isInitialLoading ||
+                activitiesState.isRefreshing || activitiesState.isLoadingMore
+            if (busy) return
+            if (postsState.hasLoadedOnce && activitiesState.hasLoadedOnce) return
+        }
+
+        _uiState.value = state.copy(
+            profileTabs = tabsState
+                .withTab(
+                    tab,
+                    postsState.copy(
+                        isRefreshing = refresh,
+                        isInitialLoading = !refresh,
+                        isLoadingMore = false,
+                    ),
+                )
+                .let { updated ->
+                    if (isFavoritesTab) {
+                        updated.withFavoriteActivities(
+                            activitiesState.copy(
+                                isRefreshing = refresh,
+                                isInitialLoading = !refresh,
+                                isLoadingMore = false,
+                            ),
+                        )
+                    } else {
+                        updated.withLikedActivities(
+                            activitiesState.copy(
+                                isRefreshing = refresh,
+                                isInitialLoading = !refresh,
+                                isLoadingMore = false,
+                            ),
+                        )
+                    }
+                },
+        )
+
+        viewModelScope.launch {
+            try {
+                coroutineScope {
+                    val loadPosts = refresh || !postsState.hasLoadedOnce
+                    val loadActivities = refresh || !activitiesState.hasLoadedOnce
+                    awaitAll(
+                        *(buildList {
+                            if (loadPosts) {
+                                add(
+                                    async {
+                                        loadProfileLibrarySource(
+                                            targetId = targetId,
+                                            isSelf = isSelf,
+                                            source = if (isFavoritesTab) {
+                                                ProfileLibrarySource.FAVORITE_POSTS
+                                            } else {
+                                                ProfileLibrarySource.LIKED_POSTS
+                                            },
+                                            page = 1,
+                                            replace = true,
+                                        )
+                                    },
+                                )
+                            }
+                            if (loadActivities) {
+                                add(
+                                    async {
+                                        loadProfileLibrarySource(
+                                            targetId = targetId,
+                                            isSelf = isSelf,
+                                            source = if (isFavoritesTab) {
+                                                ProfileLibrarySource.FAVORITE_ACTIVITIES
+                                            } else {
+                                                ProfileLibrarySource.LIKED_ACTIVITIES
+                                            },
+                                            page = 1,
+                                            replace = true,
+                                        )
+                                    },
+                                )
+                            }
+                        }.toTypedArray()),
+                    )
+                }
+            } catch (e: Exception) {
+                resetProfileLibraryLoading(tab)
+                _uiState.value = _uiState.value.copy(
+                    error = parseError(e, "加载内容失败"),
+                )
+            }
+        }
+    }
+
+    private fun resetProfileLibraryLoading(tab: Int) {
+        val current = _uiState.value
+        val cleared = ProfileTabUiState(
+            page = current.profileTabs.tabs[tab].page,
+            hasMore = current.profileTabs.tabs[tab].hasMore,
+        )
+        val clearedActivities = ProfileTabUiState(
+            page = if (tab == PROFILE_FAVORITES_TAB) {
+                current.profileTabs.favoriteActivities.page
+            } else {
+                current.profileTabs.likedActivities.page
+            },
+            hasMore = if (tab == PROFILE_FAVORITES_TAB) {
+                current.profileTabs.favoriteActivities.hasMore
+            } else {
+                current.profileTabs.likedActivities.hasMore
+            },
+        )
+        _uiState.value = current.copy(
+            profileTabs = current.profileTabs
+                .withTab(tab, cleared)
+                .let { updated ->
+                    if (tab == PROFILE_FAVORITES_TAB) {
+                        updated.withFavoriteActivities(clearedActivities)
+                    } else {
+                        updated.withLikedActivities(clearedActivities)
+                    }
+                },
+        )
+    }
+
+    private suspend fun loadProfileLibrarySource(
+        targetId: Int,
+        isSelf: Boolean,
+        source: ProfileLibrarySource,
+        page: Int,
+        replace: Boolean,
+    ) {
+        val state = _uiState.value
+        val tabsState = state.profileTabs
+        if (!replace) {
+            _uiState.value = when (source) {
+                ProfileLibrarySource.FAVORITE_POSTS -> state.copy(
+                    profileTabs = tabsState.withTab(
+                        PROFILE_FAVORITES_TAB,
+                        tabsState.tabs[PROFILE_FAVORITES_TAB].copy(isLoadingMore = true),
+                    ),
+                )
+                ProfileLibrarySource.LIKED_POSTS -> state.copy(
+                    profileTabs = tabsState.withTab(
+                        PROFILE_LIKES_TAB,
+                        tabsState.tabs[PROFILE_LIKES_TAB].copy(isLoadingMore = true),
+                    ),
+                )
+                ProfileLibrarySource.FAVORITE_ACTIVITIES -> state.copy(
+                    profileTabs = tabsState.withFavoriteActivities(
+                        tabsState.favoriteActivities.copy(isLoadingMore = true),
+                    ),
+                )
+                ProfileLibrarySource.LIKED_ACTIVITIES -> state.copy(
+                    profileTabs = tabsState.withLikedActivities(
+                        tabsState.likedActivities.copy(isLoadingMore = true),
+                    ),
+                )
+            }
+        }
+
+        when (source) {
+            ProfileLibrarySource.FAVORITE_POSTS -> {
+                val response = if (isSelf) {
+                    api.getMyFavoritePosts(page, PROFILE_TAB_PAGE_SIZE)
+                } else {
+                    api.getUserFavoritePosts(targetId, page, PROFILE_TAB_PAGE_SIZE)
+                }
+                applyProfileLibraryResult(
+                    postsTab = PROFILE_FAVORITES_TAB,
+                    page = page,
+                    hasMore = response.hasMore,
+                    replace = replace,
+                ) { current ->
+                    current.copy(
+                        profileFavoritePosts = mergePosts(
+                            current.profileFavoritePosts,
+                            response.items,
+                            replace,
+                        ),
+                    )
+                }
+            }
+            ProfileLibrarySource.LIKED_POSTS -> {
+                val response = if (isSelf) {
+                    api.getMyLikedPosts(page, PROFILE_TAB_PAGE_SIZE)
+                } else {
+                    api.getUserLikedPosts(targetId, page, PROFILE_TAB_PAGE_SIZE)
+                }
+                applyProfileLibraryResult(
+                    postsTab = PROFILE_LIKES_TAB,
+                    page = page,
+                    hasMore = response.hasMore,
+                    replace = replace,
+                ) { current ->
+                    current.copy(
+                        profileLikedPosts = mergePosts(
+                            current.profileLikedPosts,
+                            response.items,
+                            replace,
+                        ),
+                    )
+                }
+            }
+            ProfileLibrarySource.FAVORITE_ACTIVITIES -> {
+                val response = if (isSelf) {
+                    api.getMyFavoriteActivities(page, PROFILE_TAB_PAGE_SIZE)
+                } else {
+                    api.getUserFavoriteActivities(targetId, page, PROFILE_TAB_PAGE_SIZE)
+                }
+                applyProfileLibraryActivitiesResult(
+                    isFavorites = true,
+                    page = page,
+                    hasMore = response.hasMore,
+                    replace = replace,
+                ) { current ->
+                    current.copy(
+                        profileFavoriteActivities = mergeActivities(
+                            current.profileFavoriteActivities,
+                            response.items,
+                            replace,
+                        ),
+                    )
+                }
+            }
+            ProfileLibrarySource.LIKED_ACTIVITIES -> {
+                val response = if (isSelf) {
+                    api.getMyLikedActivities(page, PROFILE_TAB_PAGE_SIZE)
+                } else {
+                    api.getUserLikedActivities(targetId, page, PROFILE_TAB_PAGE_SIZE)
+                }
+                applyProfileLibraryActivitiesResult(
+                    isFavorites = false,
+                    page = page,
+                    hasMore = response.hasMore,
+                    replace = replace,
+                ) { current ->
+                    current.copy(
+                        profileLikedActivities = mergeActivities(
+                            current.profileLikedActivities,
+                            response.items,
+                            replace,
+                        ),
+                    )
+                }
+            }
+        }
+    }
+
+    private fun applyProfileLibraryResult(
+        postsTab: Int,
+        page: Int,
+        hasMore: Boolean,
+        @Suppress("UNUSED_PARAMETER") replace: Boolean,
+        update: (HomeUiState) -> HomeUiState,
+    ) {
+        val current = _uiState.value
+        val currentTabState = current.profileTabs.tabs[postsTab]
+        _uiState.value = update(current).copy(
+            profileTabs = current.profileTabs.withTab(
+                postsTab,
+                currentTabState.copy(
+                    page = page + 1,
+                    hasMore = hasMore,
+                    isRefreshing = false,
+                    isInitialLoading = false,
+                    isLoadingMore = false,
+                    hasLoadedOnce = true,
+                ),
+            ),
+        )
+    }
+
+    private fun applyProfileLibraryActivitiesResult(
+        isFavorites: Boolean,
+        page: Int,
+        hasMore: Boolean,
+        @Suppress("UNUSED_PARAMETER") replace: Boolean,
+        update: (HomeUiState) -> HomeUiState,
+    ) {
+        val current = _uiState.value
+        val currentTabState = if (isFavorites) {
+            current.profileTabs.favoriteActivities
+        } else {
+            current.profileTabs.likedActivities
+        }
+        val nextState = currentTabState.copy(
+            page = page + 1,
+            hasMore = hasMore,
+            isRefreshing = false,
+            isInitialLoading = false,
+            isLoadingMore = false,
+            hasLoadedOnce = true,
+        )
+        _uiState.value = update(current).copy(
+            profileTabs = if (isFavorites) {
+                current.profileTabs.withFavoriteActivities(nextState)
+            } else {
+                current.profileTabs.withLikedActivities(nextState)
+            },
+        )
     }
 
     fun refreshProfileTab(tab: Int, userId: Int? = null) {
@@ -1088,6 +1827,7 @@ class HomeViewModel(
                     isRefreshing = false,
                     isInitialLoading = false,
                     isLoadingMore = false,
+                    hasLoadedOnce = true,
                 ),
             ),
         )
@@ -1126,28 +1866,268 @@ class HomeViewModel(
         return copy(tabs = updated)
     }
 
-    companion object {
-        private const val PROFILE_TAB_PAGE_SIZE = 10
-        private const val ACTIVITY_FEED_PAGE_SIZE = 10
+    private fun ProfileTabsUiState.withFavoriteActivities(
+        tabState: ProfileTabUiState,
+    ): ProfileTabsUiState = copy(favoriteActivities = tabState)
+
+    private fun ProfileTabsUiState.withLikedActivities(
+        tabState: ProfileTabUiState,
+    ): ProfileTabsUiState = copy(likedActivities = tabState)
+
+    fun refreshOrderCenter() {
+        loadOrderTabCounts()
+        loadOrders(refresh = true)
     }
 
-    fun searchMyPosts(keyword: String) {
+    fun selectOrderTab(tab: String) {
+        if (_uiState.value.orderCenter.selectedTab == tab) return
+        _uiState.value = _uiState.value.copy(
+            orderCenter = OrderCenterUiState(selectedTab = tab),
+        )
+        loadOrders(refresh = true)
+    }
+
+    private fun loadOrderTabCounts() {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(profileSearchKeyword = keyword)
+            runCatching { api.getPaymentOrderTabCounts() }
+                .onSuccess { counts ->
+                    _uiState.value = _uiState.value.copy(
+                        orderCenter = _uiState.value.orderCenter.copy(tabCounts = counts),
+                    )
+                }
+        }
+    }
+
+    fun loadOrders(refresh: Boolean = false) {
+        val center = _uiState.value.orderCenter
+        if (refresh && center.isRefreshing) return
+        if (!refresh && center.isLoadingMore) return
+
+        val page = if (refresh) 1 else center.page
+        _uiState.value = _uiState.value.copy(
+            orderCenter = center.copy(
+                isRefreshing = refresh,
+                isInitialLoading = refresh && center.orders.isEmpty(),
+                isLoadingMore = !refresh && center.hasMore,
+                page = page,
+            ),
+        )
+
+        viewModelScope.launch {
             try {
-                val posts = api.getMyPosts(keyword.takeIf { it.isNotBlank() })
-                val profile = _uiState.value.myProfile
+                if (refresh) {
+                    loadOrderTabCounts()
+                }
+                val response = api.getPaymentOrders(
+                    tab = _uiState.value.orderCenter.selectedTab,
+                    page = page,
+                    limit = ORDER_PAGE_SIZE,
+                )
+                val current = _uiState.value.orderCenter
+                val merged = if (refresh) {
+                    response.items
+                } else {
+                    current.orders + response.items.filter { new ->
+                        current.orders.none { it.outTradeNo == new.outTradeNo }
+                    }
+                }
                 _uiState.value = _uiState.value.copy(
-                    myPosts = posts,
-                    myProfile = profile?.copy(posts = posts, postCount = posts.size),
-                    profileNotes = posts,
+                    orderCenter = current.copy(
+                        orders = merged,
+                        page = page + 1,
+                        hasMore = response.hasMore,
+                        isRefreshing = false,
+                        isInitialLoading = false,
+                        isLoadingMore = false,
+                    ),
                 )
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
+                    orderCenter = _uiState.value.orderCenter.copy(
+                        isRefreshing = false,
+                        isInitialLoading = false,
+                        isLoadingMore = false,
+                    ),
+                    error = parseError(e, "加载订单失败"),
+                )
+            }
+        }
+    }
+
+    fun loadMoreOrders() {
+        val center = _uiState.value.orderCenter
+        if (!center.hasMore || center.isLoadingMore || center.isRefreshing) return
+        loadOrders(refresh = false)
+    }
+
+    fun payOrderFromList(order: PaymentOrderListItemDto) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(
+                orderCenter = _uiState.value.orderCenter.copy(actingOutTradeNo = order.outTradeNo),
+            )
+            try {
+                val payment = api.repayPaymentOrder(order.outTradeNo)
+                if (payment.status.equals("PAID", ignoreCase = true)) {
+                    refreshOrderCenter()
+                    refreshAll()
+                    _uiState.value = _uiState.value.copy(message = "支付成功")
+                    return@launch
+                }
+                val paid = payWithAlipay(payment.outTradeNo, payment.alipay.orderStr)
+                if (paid) {
+                    refreshOrderCenter()
+                    refreshAll()
+                    _uiState.value = _uiState.value.copy(message = "支付成功")
+                }
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(error = parseError(e, "支付失败"))
+            } finally {
+                _uiState.value = _uiState.value.copy(
+                    orderCenter = _uiState.value.orderCenter.copy(actingOutTradeNo = null),
+                )
+            }
+        }
+    }
+
+    fun cancelOrderFromList(order: PaymentOrderListItemDto) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(
+                orderCenter = _uiState.value.orderCenter.copy(actingOutTradeNo = order.outTradeNo),
+            )
+            try {
+                api.cancelPaymentOrder(order.outTradeNo)
+                refreshOrderCenter()
+                _uiState.value = _uiState.value.copy(message = "订单已取消")
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(error = parseError(e, "取消失败"))
+            } finally {
+                _uiState.value = _uiState.value.copy(
+                    orderCenter = _uiState.value.orderCenter.copy(actingOutTradeNo = null),
+                )
+            }
+        }
+    }
+
+    fun confirmReceiptFromList(order: PaymentOrderListItemDto) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(
+                orderCenter = _uiState.value.orderCenter.copy(actingOutTradeNo = order.outTradeNo),
+            )
+            try {
+                api.confirmPaymentReceipt(order.outTradeNo)
+                refreshOrderCenter()
+                refreshAll()
+                _uiState.value = _uiState.value.copy(message = "已确认收货")
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(error = parseError(e, "确认收货失败"))
+            } finally {
+                _uiState.value = _uiState.value.copy(
+                    orderCenter = _uiState.value.orderCenter.copy(actingOutTradeNo = null),
+                )
+            }
+        }
+    }
+
+    fun submitOrderReview(order: PaymentOrderListItemDto, rating: Int, content: String?) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(
+                orderCenter = _uiState.value.orderCenter.copy(actingOutTradeNo = order.outTradeNo),
+            )
+            try {
+                api.createPaymentOrderReview(
+                    order.outTradeNo,
+                    CreateOrderReviewRequest(rating = rating, content = content),
+                )
+                refreshOrderCenter()
+                _uiState.value = _uiState.value.copy(message = "评价成功")
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(error = parseError(e, "评价失败"))
+            } finally {
+                _uiState.value = _uiState.value.copy(
+                    orderCenter = _uiState.value.orderCenter.copy(actingOutTradeNo = null),
+                )
+            }
+        }
+    }
+
+    fun applyOrderAfterSales(order: PaymentOrderListItemDto, reason: String) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(
+                orderCenter = _uiState.value.orderCenter.copy(actingOutTradeNo = order.outTradeNo),
+            )
+            try {
+                api.applyPaymentAfterSales(
+                    order.outTradeNo,
+                    ApplyAfterSalesRequest(reason = reason),
+                )
+                refreshOrderCenter()
+                refreshAll()
+                _uiState.value = _uiState.value.copy(message = "售后申请已提交")
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(error = parseError(e, "申请售后失败"))
+            } finally {
+                _uiState.value = _uiState.value.copy(
+                    orderCenter = _uiState.value.orderCenter.copy(actingOutTradeNo = null),
+                )
+            }
+        }
+    }
+
+    companion object {
+        private const val PROFILE_TAB_PAGE_SIZE = 10
+        private const val PROFILE_FAVORITES_TAB = 3
+        private const val PROFILE_LIKES_TAB = 4
+        private const val ACTIVITY_FEED_PAGE_SIZE = 10
+        private const val ORDER_PAGE_SIZE = 10
+    }
+
+    fun openProfileSearch() {
+        _uiState.value = _uiState.value.copy(
+            profileSearch = ProfileSearchUiState(),
+        )
+    }
+
+    fun updateProfileSearchKeyword(keyword: String) {
+        _uiState.value = _uiState.value.copy(
+            profileSearch = _uiState.value.profileSearch.copy(keyword = keyword),
+        )
+    }
+
+    fun clearProfileSearchKeyword() {
+        _uiState.value = _uiState.value.copy(
+            profileSearch = ProfileSearchUiState(),
+        )
+    }
+
+    fun searchProfileNotes(keyword: String) {
+        viewModelScope.launch {
+            val trimmed = keyword.trim()
+            _uiState.value = _uiState.value.copy(
+                profileSearch = _uiState.value.profileSearch.copy(
+                    keyword = trimmed,
+                    isLoading = true,
+                ),
+            )
+            try {
+                val posts = api.getMyPosts(trimmed.takeIf { it.isNotBlank() })
+                _uiState.value = _uiState.value.copy(
+                    profileSearch = _uiState.value.profileSearch.copy(
+                        results = posts,
+                        isLoading = false,
+                        hasSearched = true,
+                    ),
+                )
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    profileSearch = _uiState.value.profileSearch.copy(isLoading = false),
                     error = parseError(e, "搜索失败"),
                 )
             }
         }
+    }
+
+    fun searchMyPosts(keyword: String) {
+        searchProfileNotes(keyword)
     }
 
     fun updateProfile(
@@ -1209,6 +2189,88 @@ class HomeViewModel(
                 )
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(error = parseError(e, "保存隐私设置失败"))
+            } finally {
+                _uiState.value = _uiState.value.copy(isPrivacyUpdating = false)
+            }
+        }
+    }
+
+    fun authorizeAlipayAccount() {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isPrivacyUpdating = true)
+            try {
+                val authInfo = api.getAlipayOAuthAuthInfo().authInfo
+                if (authInfo.isBlank()) {
+                    _uiState.value = _uiState.value.copy(error = "获取支付宝授权信息失败")
+                    return@launch
+                }
+                val handler = alipayAuthHandler
+                if (handler == null) {
+                    _uiState.value = _uiState.value.copy(error = "无法调起支付宝，请重试")
+                    return@launch
+                }
+                val result = try {
+                    handler(authInfo)
+                } catch (e: Exception) {
+                    _uiState.value = _uiState.value.copy(
+                        error = e.message?.takeIf { it.isNotBlank() } ?: "支付宝调起失败",
+                    )
+                    return@launch
+                }
+                if (!result.success || result.authCode.isNullOrBlank()) {
+                    val hint = AlipayHelper.authMessage(result).ifBlank { "授权未完成" }
+                    _uiState.value = _uiState.value.copy(message = hint)
+                    return@launch
+                }
+                api.bindMyAlipayByOAuth(BindAlipayOAuthRequest(authCode = result.authCode))
+                val updated = api.getMyProfile()
+                _uiState.value = _uiState.value.copy(
+                    myProfile = updated,
+                    message = "支付宝授权绑定成功",
+                )
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(error = parseError(e, "支付宝授权失败"))
+            } finally {
+                _uiState.value = _uiState.value.copy(isPrivacyUpdating = false)
+            }
+        }
+    }
+
+    fun bindAlipayAccount(alipayLoginId: String, alipayRealName: String?) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isPrivacyUpdating = true)
+            try {
+                api.bindMyAlipayAccount(
+                    BindAlipayAccountRequest(
+                        alipayLoginId = alipayLoginId.trim(),
+                        alipayRealName = alipayRealName?.trim()?.takeIf { it.isNotBlank() },
+                    ),
+                )
+                val updated = api.getMyProfile()
+                _uiState.value = _uiState.value.copy(
+                    myProfile = updated,
+                    message = "支付宝收款账号已绑定",
+                )
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(error = parseError(e, "绑定失败"))
+            } finally {
+                _uiState.value = _uiState.value.copy(isPrivacyUpdating = false)
+            }
+        }
+    }
+
+    fun unbindAlipayAccount() {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isPrivacyUpdating = true)
+            try {
+                api.unbindMyAlipayAccount()
+                val updated = api.getMyProfile()
+                _uiState.value = _uiState.value.copy(
+                    myProfile = updated,
+                    message = "已解绑支付宝收款账号",
+                )
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(error = parseError(e, "解绑失败"))
             } finally {
                 _uiState.value = _uiState.value.copy(isPrivacyUpdating = false)
             }

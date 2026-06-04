@@ -88,4 +88,6 @@ fun UserProfileDto.toXhsProfileData(): XhsProfileData = XhsProfileData(
     showCommentsPublic = showCommentsPublic,
     showFavoritesPublic = showFavoritesPublic,
     showLikesPublic = showLikesPublic,
+    alipayBound = alipayBound,
+    alipayLoginIdMasked = alipayLoginIdMasked,
 )

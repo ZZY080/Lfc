@@ -7,6 +7,7 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Put,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -15,6 +16,8 @@ import { OptionalJwtAuthGuard } from '@shared/guard/optional-jwt-auth.guard';
 import { JwtAuthGuard } from '@shared/guard/jwt-auth.guard';
 import { CurrentUser } from '@shared/decorator/user.decorator';
 import { UpdateUserProfileBodySchema } from '@module/user/schema/update-user.schema';
+import { BindAlipayAccountBodySchema } from '@module/user/schema/alipay-account.schema';
+import { BindAlipayOAuthBodySchema } from '@module/user/schema/alipay-oauth.schema';
 import { PaginationQuerySchema } from '@shared/schema/pagination.schema';
 
 @Controller('consumer/user')
@@ -34,6 +37,42 @@ export class ConsumerUserController {
     @Body() body: UpdateUserProfileBodySchema,
   ) {
     return this.consumerUserService.updateMe(userId, body);
+  }
+
+  @Get('me/alipay')
+  @UseGuards(JwtAuthGuard)
+  getAlipayAccount(@CurrentUser('userId') userId: number) {
+    return this.consumerUserService.getAlipayAccount(userId);
+  }
+
+  @Get('me/alipay/auth-info')
+  @UseGuards(JwtAuthGuard)
+  getAlipayOAuthAuthInfo(@CurrentUser('userId') userId: number) {
+    return this.consumerUserService.getAlipayOAuthAuthInfo(userId);
+  }
+
+  @Post('me/alipay/oauth')
+  @UseGuards(JwtAuthGuard)
+  bindAlipayByOAuth(
+    @CurrentUser('userId') userId: number,
+    @Body() body: BindAlipayOAuthBodySchema,
+  ) {
+    return this.consumerUserService.bindAlipayByOAuth(userId, body.authCode);
+  }
+
+  @Put('me/alipay')
+  @UseGuards(JwtAuthGuard)
+  bindAlipayAccount(
+    @CurrentUser('userId') userId: number,
+    @Body() body: BindAlipayAccountBodySchema,
+  ) {
+    return this.consumerUserService.bindAlipayAccount(userId, body);
+  }
+
+  @Delete('me/alipay')
+  @UseGuards(JwtAuthGuard)
+  unbindAlipayAccount(@CurrentUser('userId') userId: number) {
+    return this.consumerUserService.unbindAlipayAccount(userId);
   }
 
   @Get('me/favorites')
@@ -56,6 +95,32 @@ export class ConsumerUserController {
     @Query() query: PaginationQuerySchema,
   ) {
     return this.consumerUserService.findMyLikes(userId, query.page, query.limit);
+  }
+
+  @Get('me/favorite-activities')
+  @UseGuards(JwtAuthGuard)
+  getMyFavoriteActivities(
+    @CurrentUser('userId') userId: number,
+    @Query() query: PaginationQuerySchema,
+  ) {
+    return this.consumerUserService.findMyFavoriteActivities(
+      userId,
+      query.page,
+      query.limit,
+    );
+  }
+
+  @Get('me/liked-activities')
+  @UseGuards(JwtAuthGuard)
+  getMyLikedActivities(
+    @CurrentUser('userId') userId: number,
+    @Query() query: PaginationQuerySchema,
+  ) {
+    return this.consumerUserService.findMyLikedActivities(
+      userId,
+      query.page,
+      query.limit,
+    );
   }
 
   @Get('me/comments')
@@ -133,6 +198,36 @@ export class ConsumerUserController {
     @CurrentUser('userId') viewerId?: number,
   ) {
     return this.consumerUserService.findUserLikes(
+      id,
+      viewerId,
+      query.page,
+      query.limit,
+    );
+  }
+
+  @Get(':id/favorite-activities')
+  @UseGuards(OptionalJwtAuthGuard)
+  getUserFavoriteActivities(
+    @Param('id', ParseIntPipe) id: number,
+    @Query() query: PaginationQuerySchema,
+    @CurrentUser('userId') viewerId?: number,
+  ) {
+    return this.consumerUserService.findUserFavoriteActivities(
+      id,
+      viewerId,
+      query.page,
+      query.limit,
+    );
+  }
+
+  @Get(':id/liked-activities')
+  @UseGuards(OptionalJwtAuthGuard)
+  getUserLikedActivities(
+    @Param('id', ParseIntPipe) id: number,
+    @Query() query: PaginationQuerySchema,
+    @CurrentUser('userId') viewerId?: number,
+  ) {
+    return this.consumerUserService.findUserLikedActivities(
       id,
       viewerId,
       query.page,

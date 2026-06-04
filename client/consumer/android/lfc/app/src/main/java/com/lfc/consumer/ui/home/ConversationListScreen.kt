@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lfc.consumer.data.model.ConversationDto
 import com.lfc.consumer.data.model.NotificationDto
+import com.lfc.consumer.data.model.peerDisplayName
 import com.lfc.consumer.ui.theme.XhsRed
 import com.lfc.consumer.ui.theme.XhsRedContainer
 import com.lfc.consumer.ui.theme.XhsTextPrimary
@@ -170,7 +171,11 @@ private fun ConversationListItem(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        XhsProfileAvatar(label = conversation.peerStudentId, size = 48)
+        XhsProfileAvatar(
+            label = conversation.peerDisplayName(),
+            size = 48,
+            avatarUrl = conversation.peerAvatarUrl,
+        )
         Spacer(modifier = Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Row(
@@ -179,7 +184,7 @@ private fun ConversationListItem(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = conversation.peerStudentId,
+                    text = conversation.peerDisplayName(),
                     fontWeight = if (conversation.unreadCount > 0) FontWeight.Bold else FontWeight.Medium,
                     color = XhsTextPrimary,
                     maxLines = 1,

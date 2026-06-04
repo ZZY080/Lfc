@@ -13,6 +13,8 @@ export interface ConversationListItemDto {
   id: number;
   peerUserId: number;
   peerStudentId: string;
+  peerNickname: string | null;
+  peerAvatarUrl: string | null;
   lastMessageContent: string | null;
   lastMessageAt: Date | null;
   unreadCount: number;

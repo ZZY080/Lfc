@@ -15,6 +15,8 @@ export interface UserProfileDto {
   showCommentsPublic: boolean;
   showFavoritesPublic: boolean;
   showLikesPublic: boolean;
+  alipayBound?: boolean;
+  alipayLoginIdMasked?: string | null;
 }
 
 export interface UserProfileDetailDto extends UserProfileDto {

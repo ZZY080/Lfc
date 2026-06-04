@@ -130,4 +130,22 @@ export class ConsumerPostController {
   ) {
     return this.consumerPostService.remove(userId, id);
   }
+
+  @Patch(':id/product/off-shelf')
+  @UseGuards(JwtAuthGuard)
+  offShelfProduct(
+    @CurrentUser('userId') userId: number,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.consumerPostService.offShelfProduct(userId, id);
+  }
+
+  @Patch(':id/product/on-shelf')
+  @UseGuards(JwtAuthGuard)
+  onShelfProduct(
+    @CurrentUser('userId') userId: number,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.consumerPostService.onShelfProduct(userId, id);
+  }
 }

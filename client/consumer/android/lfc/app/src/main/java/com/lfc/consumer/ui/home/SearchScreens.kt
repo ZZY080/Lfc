@@ -32,8 +32,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteOutline
-import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -67,6 +65,7 @@ import androidx.compose.ui.unit.sp
 import com.lfc.consumer.data.model.ActivityDto
 import com.lfc.consumer.data.model.PostDto
 import com.lfc.consumer.data.model.SearchUiState
+import com.lfc.consumer.data.model.displayName
 import com.lfc.consumer.ui.theme.XhsBackground
 import com.lfc.consumer.ui.theme.XhsRed
 import com.lfc.consumer.ui.theme.XhsTextPrimary
@@ -74,6 +73,29 @@ import com.lfc.consumer.ui.theme.XhsTextSecondary
 import kotlinx.coroutines.flow.distinctUntilChanged
 
 val XHS_SEARCH_TABS = listOf("综合", "笔记", "活动")
+
+private sealed interface SearchFeedItem {
+    data class PostItem(val post: PostDto) : SearchFeedItem
+    data class ActivityItem(val activity: ActivityDto) : SearchFeedItem
+}
+
+private fun buildMixedSearchFeed(
+    posts: List<PostDto>,
+    activities: List<ActivityDto>,
+): List<SearchFeedItem> {
+    return (posts.map { SearchFeedItem.PostItem(it) } + activities.map { SearchFeedItem.ActivityItem(it) })
+        .sortedByDescending { item ->
+            when (item) {
+                is SearchFeedItem.PostItem -> item.post.createdAt
+                is SearchFeedItem.ActivityItem -> item.activity.createdAt
+            }
+        }
+}
+
+private fun SearchFeedItem.stableKey(): String = when (this) {
+    is SearchFeedItem.PostItem -> "post-${post.id}"
+    is SearchFeedItem.ActivityItem -> "activity-${activity.id}"
+}
 
 val XHS_HOT_SEARCHES = listOf(
     "校园活动", "食堂推荐", "考研资料", "社团招新",
@@ -189,16 +211,18 @@ fun SearchResultScreen(
 ) {
     val listState = rememberLazyStaggeredGridState()
     val selectedIndex = XHS_SEARCH_TABS.indexOf(searchState.selectedTab).coerceAtLeast(0)
-    val showPosts = searchState.selectedTab in listOf("综合", "笔记")
-    val showActivities = searchState.selectedTab in listOf("综合", "活动")
     val isEmpty = when (searchState.selectedTab) {
         "笔记" -> searchState.posts.isEmpty()
         "活动" -> searchState.activities.isEmpty()
         else -> searchState.posts.isEmpty() && searchState.activities.isEmpty()
     }
+    val mixedFeedItems = remember(searchState.posts, searchState.activities) {
+        buildMixedSearchFeed(searchState.posts, searchState.activities)
+    }
+    val supportsLoadMore = searchState.selectedTab != "活动"
 
     LaunchedEffect(listState, searchState.hasMore, searchState.isLoadingMore, searchState.selectedTab) {
-        if (searchState.selectedTab == "活动") return@LaunchedEffect
+        if (!supportsLoadMore) return@LaunchedEffect
         snapshotFlow {
             val info = listState.layoutInfo
             val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: -1
@@ -281,18 +305,6 @@ fun SearchResultScreen(
                         )
                     }
                 }
-                searchState.selectedTab == "活动" -> {
-                    LazyColumn(
-                        contentPadding = PaddingValues(vertical = 8.dp),
-                    ) {
-                        items(searchState.activities, key = { it.id }) { activity ->
-                            SearchActivityItem(
-                                activity = activity,
-                                onClick = { onActivityClick(activity.id) },
-                            )
-                        }
-                    }
-                }
                 else -> {
                     LazyVerticalStaggeredGrid(
                         state = listState,
@@ -302,47 +314,55 @@ fun SearchResultScreen(
                         verticalItemSpacing = 8.dp,
                         modifier = Modifier.fillMaxSize(),
                     ) {
-                        if (showPosts) {
-                            items(searchState.posts, key = { it.id }) { post ->
-                                XhsFeedCard(
-                                    post = post,
-                                    onClick = { onPostClick(post.id) },
-                                )
-                            }
-                        }
-                        if (searchState.selectedTab == "综合" && showActivities && searchState.activities.isNotEmpty()) {
-                            item(span = StaggeredGridItemSpan.FullLine) {
-                                Text(
-                                    "相关活动",
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
-                                    fontWeight = FontWeight.Bold,
-                                    color = XhsTextPrimary,
-                                )
-                            }
-                            searchState.activities.forEach { activity ->
-                                item(
-                                    key = "activity-${activity.id}",
-                                    span = StaggeredGridItemSpan.FullLine,
-                                ) {
-                                    SearchActivityItem(
-                                        activity = activity,
-                                        onClick = { onActivityClick(activity.id) },
+                        when (searchState.selectedTab) {
+                            "笔记" -> {
+                                items(searchState.posts, key = { it.id }) { post ->
+                                    SearchProfilePostCard(
+                                        post = post,
+                                        onClick = { onPostClick(post.id) },
                                     )
                                 }
                             }
+                            "活动" -> {
+                                items(searchState.activities, key = { it.id }) { activity ->
+                                    XhsProfileActivityCard(
+                                        activity = activity,
+                                        authorLabel = activity.author?.displayName()
+                                            ?: "同学${activity.authorId}",
+                                        avatarUrl = activity.author?.avatarUrl,
+                                        modifier = Modifier.clickable { onActivityClick(activity.id) },
+                                    )
+                                }
+                            }
+                            else -> {
+                                items(mixedFeedItems, key = { it.stableKey() }) { item ->
+                                    when (item) {
+                                        is SearchFeedItem.PostItem -> {
+                                            SearchProfilePostCard(
+                                                post = item.post,
+                                                onClick = { onPostClick(item.post.id) },
+                                            )
+                                        }
+                                        is SearchFeedItem.ActivityItem -> {
+                                            XhsProfileActivityCard(
+                                                activity = item.activity,
+                                                authorLabel = item.activity.author?.displayName()
+                                                    ?: "同学${item.activity.authorId}",
+                                                avatarUrl = item.activity.author?.avatarUrl,
+                                                modifier = Modifier.clickable {
+                                                    onActivityClick(item.activity.id)
+                                                },
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                         }
-                        if (searchState.selectedTab != "活动" && searchState.isLoadingMore) {
+                        if (supportsLoadMore && searchState.isLoadingMore) {
                             item(span = StaggeredGridItemSpan.FullLine) {
                                 SearchLoadingFooter()
                             }
-                        } else if (searchState.selectedTab == "笔记" && !searchState.hasMore && searchState.posts.isNotEmpty()) {
-                            item(span = StaggeredGridItemSpan.FullLine) {
-                                SearchEndFooter()
-                            }
-                        }
-                        if (searchState.selectedTab == "综合" && !searchState.hasMore &&
-                            (searchState.posts.isNotEmpty() || searchState.activities.isNotEmpty())
-                        ) {
+                        } else if ((!supportsLoadMore || !searchState.hasMore) && !isEmpty) {
                             item(span = StaggeredGridItemSpan.FullLine) {
                                 SearchEndFooter()
                             }
@@ -351,6 +371,21 @@ fun SearchResultScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun SearchProfilePostCard(
+    post: PostDto,
+    onClick: () -> Unit,
+) {
+    val authorLabel = post.author?.displayName() ?: "同学${post.authorId}"
+    Box(modifier = Modifier.clickable(onClick = onClick)) {
+        XhsProfileFeedCard(
+            post = post,
+            authorLabel = authorLabel,
+            avatarUrl = post.author?.avatarUrl,
+        )
     }
 }
 
@@ -377,68 +412,6 @@ private fun SearchEndFooter() {
         fontSize = 12.sp,
         textAlign = TextAlign.Center,
     )
-}
-
-@Composable
-private fun SearchActivityItem(
-    activity: ActivityDto,
-    onClick: () -> Unit,
-) {
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 6.dp)
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(12.dp),
-        color = Color.White,
-        shadowElevation = 1.dp,
-    ) {
-        Row(
-            modifier = Modifier.padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(width = 72.dp, height = 72.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(coverGradientForId(activity.id)),
-            )
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(start = 12.dp),
-            ) {
-                Text(
-                    activity.title,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    color = XhsTextPrimary,
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.LocationOn, null, tint = XhsTextSecondary, modifier = Modifier.size(14.dp))
-                    Text(
-                        activity.location,
-                        fontSize = 12.sp,
-                        color = XhsTextSecondary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(start = 2.dp),
-                    )
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Schedule, null, tint = XhsTextSecondary, modifier = Modifier.size(14.dp))
-                    Text(
-                        activity.startTime.replace("T", " ").take(16),
-                        fontSize = 12.sp,
-                        color = XhsTextSecondary,
-                        modifier = Modifier.padding(start = 2.dp),
-                    )
-                }
-            }
-        }
-    }
 }
 
 @Composable

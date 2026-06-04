@@ -7,6 +7,7 @@ export interface RegisterBodyDto {
   email: string;
   password: string;
   studentId: string;
+  realName: string;
 }
 
 export interface AuthTokenDto {

@@ -16,6 +16,10 @@ import {
   UpdatePostBodyDto,
 } from '@module/post/dto/consumer-post.dto';
 import { ConsumerPostSocialService } from '@module/post/service/consumer-post-social.service';
+import { ConsumerPostProductService } from '@module/post/service/consumer-post-product.service';
+import { UserAlipayService } from '@module/user/service/user-alipay.service';
+import { PostProductEntity } from '@module/post/entity/post-product.entity';
+import { PostProductStatus } from '@shared/enum/product.enum';
 import {
   createPaginatedResult,
   normalizePagination,
@@ -24,12 +28,15 @@ import {
 @Injectable()
 export class ConsumerPostService {
   private static readonly MAX_IMAGES = 20;
+  private static readonly MARKETPLACE_TABS = new Set(['二手闲置', '闲置']);
 
   constructor(
     @InjectRepository(PostEntity)
     private readonly postRepository: Repository<PostEntity>,
     private readonly roleAuthzService: RoleAuthzService,
     private readonly postSocialService: ConsumerPostSocialService,
+    private readonly postProductService: ConsumerPostProductService,
+    private readonly userAlipayService: UserAlipayService,
   ) {}
 
   async create(userId: number, body: CreatePostBodyDto) {
@@ -40,7 +47,17 @@ export class ConsumerPostService {
       authorId: userId,
       likeCount: 0,
     });
-    return this.postRepository.save(post);
+    const saved = await this.postRepository.save(post);
+
+    if (body.product) {
+      const price = Number.parseFloat(String(body.product.price ?? 0));
+      if (price > 0) {
+        await this.userAlipayService.assertCanReceive(userId, '卖家');
+      }
+      await this.postProductService.createForPost(saved.id, body.product);
+    }
+
+    return this.findOne(saved.id, userId);
   }
 
   findAll() {
@@ -58,12 +75,21 @@ export class ConsumerPostService {
     const limit = Math.min(query.limit ?? 10, 30);
     const skip = (page - 1) * limit;
     const sort = query.sort ?? (query.tab === '最新' ? 'latest' : 'recommend');
+    const isMarketplaceTab =
+      query.tab != null && ConsumerPostService.MARKETPLACE_TABS.has(query.tab);
 
     const qb = this.postRepository
       .createQueryBuilder('post')
       .leftJoinAndSelect('post.author', 'author');
 
-    if (query.keyword?.trim()) {
+    if (isMarketplaceTab) {
+      qb.innerJoin(
+        PostProductEntity,
+        'product',
+        'product.postId = post.id AND product.status = :onSale',
+        { onSale: PostProductStatus.ON_SALE },
+      );
+    } else if (query.keyword?.trim()) {
       const keyword = `%${query.keyword.trim()}%`;
       qb.andWhere('(post.title LIKE :keyword OR post.content LIKE :keyword)', {
         keyword,
@@ -82,7 +108,7 @@ export class ConsumerPostService {
     }
 
     const [items, total] = await qb.skip(skip).take(limit).getManyAndCount();
-    const enrichedItems = await this.postSocialService.enrichPosts(items, userId);
+    const enrichedItems = await this.enrichPostsWithProduct(items, userId);
 
     return {
       items: enrichedItems,
@@ -112,7 +138,7 @@ export class ConsumerPostService {
 
     qb.orderBy('post.createdAt', 'DESC');
     const posts = await qb.getMany();
-    return this.postSocialService.enrichPosts(posts, userId);
+    return this.enrichPostsWithProduct(posts, userId);
   }
 
   async findByAuthor(authorId: number, viewerId?: number) {
@@ -121,7 +147,7 @@ export class ConsumerPostService {
       relations: ['author'],
       order: { createdAt: 'DESC' },
     });
-    return this.postSocialService.enrichPosts(posts, viewerId);
+    return this.enrichPostsWithProduct(posts, viewerId);
   }
 
   async findByAuthorPaginated(
@@ -139,7 +165,7 @@ export class ConsumerPostService {
       skip,
       take: normalizedLimit,
     });
-    const items = await this.postSocialService.enrichPosts(posts, viewerId);
+    const items = await this.enrichPostsWithProduct(posts, viewerId);
     return createPaginatedResult(items, total, normalizedPage, normalizedLimit);
   }
 
@@ -151,11 +177,18 @@ export class ConsumerPostService {
     if (!post) {
       throw new NotFoundException('信息不存在');
     }
-    return this.postSocialService.enrichPost(post, userId);
+    const [enriched] = await this.enrichPostsWithProduct([post], userId);
+    return enriched;
   }
 
   async update(userId: number, id: number, body: UpdatePostBodyDto) {
-    const post = await this.findOne(id);
+    const post = await this.postRepository.findOne({
+      where: { id },
+      relations: ['author'],
+    });
+    if (!post) {
+      throw new NotFoundException('信息不存在');
+    }
     if (post.authorId !== userId) {
       throw new ForbiddenException('无权修改该信息');
     }
@@ -165,7 +198,23 @@ export class ConsumerPostService {
       images: body.images ?? post.images ?? [],
     });
     Object.assign(post, normalized);
-    return this.postRepository.save(post);
+    const saved = await this.postRepository.save(post);
+
+    if (body.product === null) {
+      const existing = await this.postProductService.findByPostId(id);
+      if (existing) {
+        await this.postProductService.offShelf(id, userId);
+      }
+    } else if (body.product) {
+      const existing = await this.postProductService.findByPostId(id);
+      if (existing) {
+        await this.postProductService.updateForPost(id, userId, body.product);
+      } else {
+        await this.postProductService.createForPost(id, body.product);
+      }
+    }
+
+    return this.findOne(saved.id, userId);
   }
 
   async remove(userId: number, id: number) {
@@ -173,8 +222,32 @@ export class ConsumerPostService {
     if (post.authorId !== userId) {
       throw new ForbiddenException('无权删除该信息');
     }
-    await this.postRepository.remove(post);
+    await this.postRepository.remove(
+      await this.postRepository.findOneOrFail({ where: { id } }),
+    );
     return { message: '删除成功' };
+  }
+
+  offShelfProduct(userId: number, postId: number) {
+    return this.postProductService.offShelf(postId, userId);
+  }
+
+  onShelfProduct(userId: number, postId: number) {
+    return this.postProductService.onShelf(postId, userId);
+  }
+
+  private async enrichPostsWithProduct(posts: PostEntity[], userId?: number) {
+    const productMap = await this.postProductService.findMapByPostIds(
+      posts.map((post) => post.id),
+    );
+    const socialPosts = await this.postSocialService.enrichPosts(posts, userId);
+    return socialPosts.map((post) => {
+      const product = productMap.get(post.id);
+      return {
+        ...post,
+        product: product ? this.postProductService.toDto(product) : null,
+      };
+    });
   }
 
   private normalizePostBody(body: CreatePostBodyDto) {

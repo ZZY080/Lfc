@@ -16,7 +16,9 @@ import {
   UpdateActivityBodyDto,
 } from '@module/activity/dto/activity.dto';
 import { NotificationService } from '@module/message/service/notification.service';
+import { UserAlipayService } from '@module/user/service/user-alipay.service';
 import { UserEntity } from '@module/user/entity/user.entity';
+import { ConsumerActivitySocialService } from '@module/activity/service/consumer-activity-social.service';
 import {
   createPaginatedResult,
   normalizePagination,
@@ -35,12 +37,18 @@ export class ConsumerActivityService {
     private readonly userRepository: Repository<UserEntity>,
     private readonly roleAuthzService: RoleAuthzService,
     private readonly notificationService: NotificationService,
+    private readonly userAlipayService: UserAlipayService,
+    private readonly consumerActivitySocialService: ConsumerActivitySocialService,
   ) {}
 
   async create(userId: number, body: CreateActivityBodyDto) {
     await this.roleAuthzService.assertRole(userId, UserRole.CONSUMER);
     this.validateTimeRange(body.startTime, body.endTime);
     const normalized = this.normalizeActivityBody(body);
+    const fee = this.normalizeFee(body.fee);
+    if (Number.parseFloat(fee) > 0) {
+      await this.userAlipayService.assertCanReceive(userId, '活动发起人');
+    }
 
     const activity = this.activityRepository.create({
       ...normalized,
@@ -48,6 +56,7 @@ export class ConsumerActivityService {
       startTime: new Date(body.startTime),
       endTime: new Date(body.endTime),
       maxParticipants: body.maxParticipants ?? 0,
+      fee,
       authorId: userId,
       status: ActivityStatus.PENDING,
     });
@@ -56,15 +65,16 @@ export class ConsumerActivityService {
     return saved;
   }
 
-  findApproved() {
-    return this.activityRepository.find({
+  async findApproved() {
+    const activities = await this.activityRepository.find({
       where: { status: ActivityStatus.APPROVED },
       relations: ['author', 'participants', 'participants.user'],
       order: { startTime: 'ASC' },
     });
+    return this.consumerActivitySocialService.enrichActivities(activities);
   }
 
-  async findApprovedPaginated(page?: number, limit?: number) {
+  async findApprovedPaginated(page?: number, limit?: number, userId?: number) {
     const { page: normalizedPage, limit: normalizedLimit, skip } =
       normalizePagination(page, limit);
     const [activities, total] = await this.activityRepository.findAndCount({
@@ -74,8 +84,17 @@ export class ConsumerActivityService {
       skip,
       take: normalizedLimit,
     });
+    const items = await this.consumerActivitySocialService.enrichActivities(
+      activities.map((activity) => ({
+        ...activity,
+        isJoined: userId
+          ? activity.participants.some((item) => item.userId === userId)
+          : false,
+      })),
+      userId,
+    );
     return createPaginatedResult(
-      activities,
+      items,
       total,
       normalizedPage,
       normalizedLimit,
@@ -123,8 +142,11 @@ export class ConsumerActivityService {
       skip,
       take: normalizedLimit,
     });
-    return createPaginatedResult(
+    const items = await this.consumerActivitySocialService.enrichActivities(
       activities,
+    );
+    return createPaginatedResult(
+      items,
       total,
       normalizedPage,
       normalizedLimit,
@@ -140,6 +162,22 @@ export class ConsumerActivityService {
       throw new NotFoundException('活动不存在');
     }
     return activity;
+  }
+
+  async findOneForViewer(id: number, userId?: number) {
+    const activity = await this.findOne(id);
+    const isJoined = userId
+      ? activity.participants.some((item) => item.userId === userId)
+      : false;
+    const [enriched] = await this.consumerActivitySocialService.enrichActivities(
+      [{ ...activity, isJoined }],
+      userId,
+    );
+    return enriched;
+  }
+
+  isUserJoined(activity: ActivityEntity, userId: number): boolean {
+    return activity.participants.some((item) => item.userId === userId);
   }
 
   async update(userId: number, id: number, body: UpdateActivityBodyDto) {
@@ -173,6 +211,7 @@ export class ConsumerActivityService {
       startTime: body.startTime ? new Date(body.startTime) : activity.startTime,
       endTime: body.endTime ? new Date(body.endTime) : activity.endTime,
       maxParticipants: body.maxParticipants ?? activity.maxParticipants,
+      fee: body.fee !== undefined ? this.normalizeFee(body.fee) : activity.fee,
       status: ActivityStatus.PENDING,
     });
     const saved = await this.activityRepository.save(activity);
@@ -192,6 +231,20 @@ export class ConsumerActivityService {
   async join(userId: number, activityId: number) {
     await this.roleAuthzService.assertRole(userId, UserRole.CONSUMER);
     const activity = await this.findOne(activityId);
+    if (this.getActivityFee(activity) > 0) {
+      throw new BadRequestException('该活动为付费活动，请先完成支付后再报名');
+    }
+    return this.createParticipation(userId, activity);
+  }
+
+  async joinAfterPayment(userId: number, activityId: number) {
+    await this.roleAuthzService.assertRole(userId, UserRole.CONSUMER);
+    const activity = await this.findOne(activityId);
+    return this.createParticipation(userId, activity);
+  }
+
+  async assertCanJoin(userId: number, activityId: number) {
+    const activity = await this.findOne(activityId);
     if (activity.status !== ActivityStatus.APPROVED) {
       throw new BadRequestException('仅已审核通过的活动可以报名');
     }
@@ -209,9 +262,33 @@ export class ConsumerActivityService {
     ) {
       throw new BadRequestException('活动名额已满');
     }
+  }
+
+  getActivityFee(activity: ActivityEntity): number {
+    return Number.parseFloat(String(activity.fee ?? 0));
+  }
+
+  private async createParticipation(userId: number, activity: ActivityEntity) {
+    if (activity.status !== ActivityStatus.APPROVED) {
+      throw new BadRequestException('仅已审核通过的活动可以报名');
+    }
+
+    const existing = await this.participantRepository.findOne({
+      where: { activityId: activity.id, userId },
+    });
+    if (existing) {
+      throw new ConflictException('您已报名该活动');
+    }
+
+    if (
+      activity.maxParticipants > 0 &&
+      activity.participants.length >= activity.maxParticipants
+    ) {
+      throw new BadRequestException('活动名额已满');
+    }
 
     const participant = await this.participantRepository.save(
-      this.participantRepository.create({ activityId, userId }),
+      this.participantRepository.create({ activityId: activity.id, userId }),
     );
 
     const joiner = await this.userRepository.findOne({ where: { id: userId } });
@@ -224,6 +301,14 @@ export class ConsumerActivityService {
     }
 
     return participant;
+  }
+
+  private normalizeFee(fee?: number): string {
+    const value = fee ?? 0;
+    if (value < 0) {
+      throw new BadRequestException('活动费用不能小于0');
+    }
+    return value.toFixed(2);
   }
 
   async leave(userId: number, activityId: number) {

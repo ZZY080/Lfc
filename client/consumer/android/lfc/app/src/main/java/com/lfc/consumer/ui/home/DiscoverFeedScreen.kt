@@ -44,13 +44,14 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lfc.consumer.data.model.FeedUiState
+import com.lfc.consumer.data.model.displayName
 import com.lfc.consumer.ui.theme.XhsBackground
 import com.lfc.consumer.ui.theme.XhsRed
 import com.lfc.consumer.ui.theme.XhsTextPrimary
 import com.lfc.consumer.ui.theme.XhsTextSecondary
 import kotlinx.coroutines.flow.distinctUntilChanged
 
-val XHS_FEED_TABS = listOf("推荐", "最新", "校园", "活动", "美食", "学习", "生活")
+val XHS_FEED_TABS = listOf("推荐", "最新", "二手闲置", "校园", "活动", "美食", "学习", "生活")
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -186,10 +187,14 @@ fun DiscoverFeedScreen(
                         modifier = Modifier.fillMaxSize(),
                     ) {
                         items(feedState.posts, key = { it.id }) { post ->
-                            XhsFeedCard(
-                                post = post,
-                                onClick = { onPostClick(post.id) },
-                            )
+                            val authorLabel = post.author?.displayName() ?: "同学${post.authorId}"
+                            Box(modifier = Modifier.clickable { onPostClick(post.id) }) {
+                                XhsProfileFeedCard(
+                                    post = post,
+                                    authorLabel = authorLabel,
+                                    avatarUrl = post.author?.avatarUrl,
+                                )
+                            }
                         }
                         if (feedState.isLoadingMore) {
                             item(span = StaggeredGridItemSpan.FullLine) {

@@ -19,3 +19,7 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+-keep class com.alipay.** { *; }
+-keep class com.ta.utdid2.** { *; }
+-keep class com.ut.device.** { *; }

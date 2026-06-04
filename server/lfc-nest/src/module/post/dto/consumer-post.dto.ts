@@ -1,13 +1,17 @@
+import { PostProductBodyDto } from '@module/post/dto/post-product.dto';
+
 export interface CreatePostBodyDto {
   title?: string;
   content?: string;
   images?: string[];
+  product?: PostProductBodyDto;
 }
 
 export interface UpdatePostBodyDto {
   title?: string;
   content?: string;
   images?: string[];
+  product?: PostProductBodyDto | null;
 }
 
 export interface PostFeedQueryDto {

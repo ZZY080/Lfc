@@ -11,6 +11,7 @@ import { UserFollowEntity } from '@module/user/entity/user-follow.entity';
 import { ConsumerPostService } from '@module/post/service/consumer-post.service';
 import { ConsumerPostSocialService } from '@module/post/service/consumer-post-social.service';
 import { ConsumerActivityService } from '@module/activity/service/consumer-activity.service';
+import { ConsumerActivitySocialService } from '@module/activity/service/consumer-activity-social.service';
 import { UserProfileDetailDto } from '@module/user/dto/user-profile.dto';
 import { UpdateUserProfileBodyDto } from '@module/user/dto/update-user.dto';
 import { PostEntity } from '@module/post/entity/post.entity';
@@ -23,6 +24,8 @@ import {
   generateUniqueLfcNo,
   normalizeLfcNo,
 } from '@module/user/util/user-lfc-no.util';
+import { UserAlipayService } from '@module/user/service/user-alipay.service';
+import { BindAlipayAccountBodyDto } from '@module/user/dto/alipay-account.dto';
 
 @Injectable()
 export class ConsumerUserService {
@@ -38,6 +41,8 @@ export class ConsumerUserService {
     private readonly consumerPostService: ConsumerPostService,
     private readonly consumerPostSocialService: ConsumerPostSocialService,
     private readonly consumerActivityService: ConsumerActivityService,
+    private readonly consumerActivitySocialService: ConsumerActivitySocialService,
+    private readonly userAlipayService: UserAlipayService,
   ) {}
 
   async getMe(userId: number) {
@@ -109,6 +114,24 @@ export class ConsumerUserService {
     );
   }
 
+  findMyFavoriteActivities(userId: number, page?: number, limit?: number) {
+    return this.consumerActivitySocialService.findFavoritedActivitiesPaginated(
+      userId,
+      page,
+      limit,
+      userId,
+    );
+  }
+
+  findMyLikedActivities(userId: number, page?: number, limit?: number) {
+    return this.consumerActivitySocialService.findLikedActivitiesPaginated(
+      userId,
+      page,
+      limit,
+      userId,
+    );
+  }
+
   findMyComments(userId: number, page?: number, limit?: number) {
     return this.consumerPostSocialService.findMyCommentsPaginated(
       userId,
@@ -174,6 +197,36 @@ export class ConsumerUserService {
     );
   }
 
+  async findUserFavoriteActivities(
+    userId: number,
+    viewerId: number | undefined,
+    page?: number,
+    limit?: number,
+  ) {
+    await this.assertLibraryAccess(userId, viewerId, 'favorites');
+    return this.consumerActivitySocialService.findFavoritedActivitiesPaginated(
+      userId,
+      page,
+      limit,
+      viewerId,
+    );
+  }
+
+  async findUserLikedActivities(
+    userId: number,
+    viewerId: number | undefined,
+    page?: number,
+    limit?: number,
+  ) {
+    await this.assertLibraryAccess(userId, viewerId, 'likes');
+    return this.consumerActivitySocialService.findLikedActivitiesPaginated(
+      userId,
+      page,
+      limit,
+      viewerId,
+    );
+  }
+
   async findUserComments(
     userId: number,
     viewerId: number | undefined,
@@ -207,6 +260,37 @@ export class ConsumerUserService {
       this.followRepository.create({ followerId, followingId }),
     );
     return { isFollowing: true };
+  }
+
+  bindAlipayAccount(userId: number, body: BindAlipayAccountBodyDto) {
+    return this.userAlipayService.bindAccount(
+      userId,
+      body.alipayLoginId,
+      body.alipayRealName,
+    );
+  }
+
+  getAlipayOAuthAuthInfo(userId: number) {
+    return this.userAlipayService.createOAuthAuthInfo(userId);
+  }
+
+  bindAlipayByOAuth(userId: number, authCode: string) {
+    return this.userAlipayService.bindByAuthCode(userId, authCode);
+  }
+
+  unbindAlipayAccount(userId: number) {
+    return this.userAlipayService.unbindAccount(userId);
+  }
+
+  getAlipayAccount(userId: number) {
+    return this.userRepository
+      .findOne({ where: { id: userId } })
+      .then((user) => {
+        if (!user) {
+          throw new NotFoundException('用户不存在');
+        }
+        return this.userAlipayService.toBindingDto(user);
+      });
   }
 
   private async buildProfileDetail(
@@ -259,6 +343,14 @@ export class ConsumerUserService {
       showCommentsPublic: user.showCommentsPublic,
       showFavoritesPublic: user.showFavoritesPublic,
       showLikesPublic: user.showLikesPublic,
+      ...(isSelf
+        ? {
+            alipayBound: Boolean(user.alipayUserId || user.alipayLoginId),
+            alipayLoginIdMasked: this.userAlipayService
+              .toBindingDto(user)
+              .alipayLoginIdMasked,
+          }
+        : {}),
       posts,
       activities,
       participationCount,

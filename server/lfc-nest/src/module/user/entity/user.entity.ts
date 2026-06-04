@@ -25,6 +25,9 @@ export class UserEntity {
   @Column({ name: 'student_id', unique: true })
   studentId: string;
 
+  @Column({ name: 'real_name', type: 'varchar', length: 32 })
+  realName: string;
+
   @Column({ name: 'student_card_url' })
   studentCardUrl: string;
 
@@ -51,6 +54,24 @@ export class UserEntity {
 
   @Column({ name: 'show_likes_public', type: 'boolean', default: false })
   showLikesPublic: boolean;
+
+  /** 支付宝登录号（手机号或邮箱），用于 C2C 收款 */
+  @Column({ name: 'alipay_login_id', type: 'varchar', length: 64, nullable: true })
+  alipayLoginId: string | null;
+
+  /** 支付宝 userId（2088 开头），OAuth 授权获得，分账推荐使用 */
+  @Column({ name: 'alipay_user_id', type: 'varchar', length: 32, nullable: true })
+  alipayUserId: string | null;
+
+  /** 支付宝实名（转账校验用，建议填写） */
+  @Column({ name: 'alipay_real_name', type: 'varchar', length: 32, nullable: true })
+  alipayRealName: string | null;
+
+  @Column({ name: 'alipay_bound_at', type: 'datetime', nullable: true })
+  alipayBoundAt: Date | null;
+
+  @Column({ name: 'alipay_royalty_bound_at', type: 'datetime', nullable: true })
+  alipayRoyaltyBoundAt: Date | null;
 
   @Column({ type: 'enum', enum: UserRole, default: UserRole.CONSUMER })
   role: UserRole;

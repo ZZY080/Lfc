@@ -28,18 +28,16 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -48,6 +46,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.lfc.consumer.data.model.isPaidActivity
 import com.lfc.consumer.data.model.ActivityDto
 import com.lfc.consumer.data.model.ActivityFeedUiState
 import com.lfc.consumer.ui.theme.XhsBackground
@@ -96,31 +95,27 @@ private fun ActivityFeedContent(
 ) {
     val listState = rememberLazyListState()
     val pullRefreshState = rememberPullToRefreshState()
-    var pendingRefresh by remember { mutableStateOf(false) }
-    val isRefreshing = feedState.isRefreshing || pendingRefresh
+    val activityCount = feedState.activities.size
+    val latestFeedState by rememberUpdatedState(feedState)
 
-    LaunchedEffect(feedState.isRefreshing) {
-        if (!feedState.isRefreshing) {
-            pendingRefresh = false
-        } else {
-            listState.animateScrollToItem(0)
-        }
-    }
-
-    LaunchedEffect(listState, feedState.hasMore, feedState.isLoadingMore, isRefreshing) {
+    LaunchedEffect(listState, activityCount) {
         snapshotFlow {
             val info = listState.layoutInfo
             val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: -1
-            lastVisible to info.totalItemsCount
+            lastVisible
         }
             .distinctUntilChanged()
-            .collect { (lastVisible, total) ->
+            .collect { lastVisible ->
+                val state = latestFeedState
+                val count = state.activities.size
                 if (
-                    total > 0 &&
-                    lastVisible >= total - 2 &&
-                    feedState.hasMore &&
-                    !feedState.isLoadingMore &&
-                    !isRefreshing
+                    count > 0 &&
+                    lastVisible >= count - 1 &&
+                    lastVisible < count &&
+                    state.hasMore &&
+                    !state.isLoadingMore &&
+                    !state.isRefreshing &&
+                    !state.isInitialLoading
                 ) {
                     onLoadMore()
                 }
@@ -129,23 +124,16 @@ private fun ActivityFeedContent(
 
     PullToRefreshBox(
         state = pullRefreshState,
-        isRefreshing = isRefreshing,
-        onRefresh = {
-            pendingRefresh = true
-            onRefresh()
-        },
+        isRefreshing = feedState.isRefreshing,
+        onRefresh = onRefresh,
         modifier = modifier.fillMaxSize(),
         indicator = {
-            if (isRefreshing) {
-                CircularProgressIndicator(
-                    color = XhsRed,
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .padding(top = 12.dp)
-                        .size(28.dp),
-                    strokeWidth = 2.5.dp,
-                )
-            }
+            PullToRefreshDefaults.Indicator(
+                isRefreshing = feedState.isRefreshing,
+                state = pullRefreshState,
+                modifier = Modifier.align(Alignment.TopCenter),
+                color = XhsRed,
+            )
         },
     ) {
         LazyColumn(
@@ -227,7 +215,11 @@ private fun ActivityCard(
     onJoin: () -> Unit,
 ) {
     val coverUrl = activity.images?.firstOrNull()
-    val imageCount = activity.images?.size ?: 0
+    val joinLabel = when {
+        activity.isJoined -> "已报名"
+        activity.isPaidActivity() -> "支付 ${formatActivityFeeLabel(activity.fee)}"
+        else -> "免费报名"
+    }
 
     Surface(
         modifier = Modifier
@@ -253,49 +245,20 @@ private fun ActivityCard(
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.verticalGradient(
-                                colors = listOf(
-                                    Color.Transparent,
-                                    Color.Black.copy(alpha = 0.08f),
-                                    Color.Black.copy(alpha = 0.55f),
-                                ),
-                            ),
-                        ),
-                )
-                if (imageCount > 1) {
-                    Text(
-                        text = "${imageCount}图",
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(10.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(Color.Black.copy(alpha = 0.45f))
-                            .padding(horizontal = 8.dp, vertical = 3.dp),
-                        color = Color.White,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Medium,
-                    )
-                }
-                Text(
-                    text = activity.title,
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(horizontal = 14.dp, vertical = 14.dp),
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp,
-                    lineHeight = 24.sp,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
             }
 
             Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+                Text(
+                    text = activity.title,
+                    fontSize = 16.sp,
+                    lineHeight = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = XhsTextPrimary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
                 if (activity.description.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(6.dp))
                     Text(
                         text = activity.description,
                         fontSize = 14.sp,
@@ -361,21 +324,32 @@ private fun ActivityCard(
                             fontSize = 14.sp,
                             color = XhsRed,
                         )
-                        if (activity.maxParticipants > 0) {
-                            Text(
-                                text = "限额 ${activity.maxParticipants} 人",
-                                fontSize = 12.sp,
-                                color = XhsTextSecondary,
-                            )
-                        }
+                        Text(
+                            text = buildString {
+                                if (activity.maxParticipants > 0) append("限额 ${activity.maxParticipants} 人 · ")
+                                append(if (activity.isPaidActivity()) formatActivityFeeLabel(activity.fee) else "免费")
+                            },
+                            fontSize = 12.sp,
+                            color = XhsTextSecondary,
+                        )
                     }
                     Button(
                         onClick = onJoin,
-                        colors = ButtonDefaults.buttonColors(containerColor = XhsRed),
+                        enabled = !activity.isJoined,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (activity.isJoined) Color(0xFFE8E8E8) else XhsRed,
+                            disabledContainerColor = Color(0xFFE8E8E8),
+                            disabledContentColor = XhsTextSecondary,
+                        ),
                         shape = RoundedCornerShape(20.dp),
                         modifier = Modifier.height(38.dp),
                     ) {
-                        Text("立即报名", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            text = joinLabel,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (activity.isJoined) XhsTextSecondary else Color.White,
+                        )
                     }
                 }
             }

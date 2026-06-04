@@ -6,6 +6,7 @@ export interface CreateActivityBodyDto {
   startTime: string;
   endTime: string;
   maxParticipants?: number;
+  fee?: number;
 }
 
 export interface UpdateActivityBodyDto {
@@ -16,6 +17,7 @@ export interface UpdateActivityBodyDto {
   startTime?: string;
   endTime?: string;
   maxParticipants?: number;
+  fee?: number;
 }
 
 import { ActivityStatus } from '@shared/enum/user-role.enum';

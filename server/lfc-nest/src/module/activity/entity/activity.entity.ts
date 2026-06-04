@@ -38,6 +38,9 @@ export class ActivityEntity {
   @Column({ name: 'max_participants', type: 'int', default: 0 })
   maxParticipants: number;
 
+  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
+  fee: string;
+
   @Column({ type: 'enum', enum: ActivityStatus, default: ActivityStatus.PENDING })
   status: ActivityStatus;
 

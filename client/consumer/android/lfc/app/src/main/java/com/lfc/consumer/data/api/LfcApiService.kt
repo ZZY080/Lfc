@@ -14,16 +14,29 @@ import com.lfc.consumer.data.model.SendChatMessageRequest
 import com.lfc.consumer.data.model.CreatePostCommentRequest
 import com.lfc.consumer.data.model.PostCommentDto
 import com.lfc.consumer.data.model.PostDto
+import com.lfc.consumer.data.model.ActivitySocialStateDto
 import com.lfc.consumer.data.model.PostSocialStateDto
 import com.lfc.consumer.data.model.PostFeedResponse
 import com.lfc.consumer.data.model.PaginatedResponse
 import com.lfc.consumer.data.model.UnreadCountDto
 import com.lfc.consumer.data.model.UploadImageResponse
+import com.lfc.consumer.data.model.AlipayAccountBindingDto
+import com.lfc.consumer.data.model.AlipayAuthInfoDto
+import com.lfc.consumer.data.model.BindAlipayAccountRequest
+import com.lfc.consumer.data.model.BindAlipayOAuthRequest
 import com.lfc.consumer.data.model.UpdateProfileRequest
 import com.lfc.consumer.data.model.FollowStateDto
 import com.lfc.consumer.data.model.ProfileCommentDto
 import com.lfc.consumer.data.model.UserProfileDto
+import retrofit2.http.PUT
 import retrofit2.http.Query
+import com.lfc.consumer.data.model.PaymentConfigDto
+import com.lfc.consumer.data.model.PaymentOrderDetailDto
+import com.lfc.consumer.data.model.PaymentOrderListItemDto
+import com.lfc.consumer.data.model.PaymentOrderResultDto
+import com.lfc.consumer.data.model.PaymentOrderTabCountsDto
+import com.lfc.consumer.data.model.CreateOrderReviewRequest
+import com.lfc.consumer.data.model.ApplyAfterSalesRequest
 import com.lfc.consumer.data.model.UpdateActivityRequest
 import com.lfc.consumer.data.model.UpdatePostRequest
 import okhttp3.MultipartBody
@@ -47,6 +60,7 @@ interface LfcApiService {
         @Part("email") email: RequestBody,
         @Part("password") password: RequestBody,
         @Part("studentId") studentId: RequestBody,
+        @Part("realName") realName: RequestBody,
         @Part studentCard: MultipartBody.Part,
     ): AuthResponse
 
@@ -71,6 +85,21 @@ interface LfcApiService {
     @PATCH("consumer/user/me")
     suspend fun updateMyProfile(@Body request: UpdateProfileRequest): UserProfileDto
 
+    @GET("consumer/user/me/alipay")
+    suspend fun getMyAlipayAccount(): AlipayAccountBindingDto
+
+    @GET("consumer/user/me/alipay/auth-info")
+    suspend fun getAlipayOAuthAuthInfo(): AlipayAuthInfoDto
+
+    @POST("consumer/user/me/alipay/oauth")
+    suspend fun bindMyAlipayByOAuth(@Body request: BindAlipayOAuthRequest): AlipayAccountBindingDto
+
+    @PUT("consumer/user/me/alipay")
+    suspend fun bindMyAlipayAccount(@Body request: BindAlipayAccountRequest): AlipayAccountBindingDto
+
+    @DELETE("consumer/user/me/alipay")
+    suspend fun unbindMyAlipayAccount(): AlipayAccountBindingDto
+
     @GET("consumer/user/me/favorites")
     suspend fun getMyFavoritePosts(
         @Query("page") page: Int = 1,
@@ -82,6 +111,18 @@ interface LfcApiService {
         @Query("page") page: Int = 1,
         @Query("limit") limit: Int = 10,
     ): PaginatedResponse<PostDto>
+
+    @GET("consumer/user/me/favorite-activities")
+    suspend fun getMyFavoriteActivities(
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 10,
+    ): PaginatedResponse<ActivityDto>
+
+    @GET("consumer/user/me/liked-activities")
+    suspend fun getMyLikedActivities(
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 10,
+    ): PaginatedResponse<ActivityDto>
 
     @GET("consumer/user/me/comments")
     suspend fun getMyProfileComments(
@@ -116,6 +157,20 @@ interface LfcApiService {
         @Query("page") page: Int = 1,
         @Query("limit") limit: Int = 10,
     ): PaginatedResponse<PostDto>
+
+    @GET("consumer/user/{id}/favorite-activities")
+    suspend fun getUserFavoriteActivities(
+        @Path("id") id: Int,
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 10,
+    ): PaginatedResponse<ActivityDto>
+
+    @GET("consumer/user/{id}/liked-activities")
+    suspend fun getUserLikedActivities(
+        @Path("id") id: Int,
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 10,
+    ): PaginatedResponse<ActivityDto>
 
     @GET("consumer/user/{id}/comments")
     suspend fun getUserProfileComments(
@@ -164,6 +219,13 @@ interface LfcApiService {
         @Query("scope") scope: String? = null,
     ): UploadImageResponse
 
+    @Multipart
+    @POST("consumer/upload/video")
+    suspend fun uploadVideo(
+        @Part file: MultipartBody.Part,
+        @Query("scope") scope: String? = null,
+    ): UploadImageResponse
+
     @PATCH("consumer/post/{id}")
     suspend fun updatePost(
         @Path("id") id: Int,
@@ -206,8 +268,77 @@ interface LfcApiService {
     @POST("consumer/activity/{id}/join")
     suspend fun joinActivity(@Path("id") id: Int): ActivityParticipantDto
 
+    @POST("consumer/activity/{id}/like")
+    suspend fun toggleActivityLike(@Path("id") id: Int): ActivitySocialStateDto
+
+    @POST("consumer/activity/{id}/favorite")
+    suspend fun toggleActivityFavorite(@Path("id") id: Int): ActivitySocialStateDto
+
     @DELETE("consumer/activity/{id}/join")
     suspend fun leaveActivity(@Path("id") id: Int)
+
+    @GET("consumer/payment/config")
+    suspend fun getPaymentConfig(): PaymentConfigDto
+
+    @GET("consumer/payment/orders")
+    suspend fun getPaymentOrders(
+        @Query("tab") tab: String,
+        @Query("page") page: Int,
+        @Query("limit") limit: Int,
+    ): PaginatedResponse<PaymentOrderListItemDto>
+
+    @GET("consumer/payment/orders/counts")
+    suspend fun getPaymentOrderTabCounts(): PaymentOrderTabCountsDto
+
+    @POST("consumer/payment/orders/{outTradeNo}/cancel")
+    suspend fun cancelPaymentOrder(@Path("outTradeNo") outTradeNo: String): PaymentOrderDetailDto
+
+    @POST("consumer/payment/orders/{outTradeNo}/repay")
+    suspend fun repayPaymentOrder(@Path("outTradeNo") outTradeNo: String): PaymentOrderResultDto
+
+    @POST("consumer/payment/orders/{outTradeNo}/reviews")
+    suspend fun createPaymentOrderReview(
+        @Path("outTradeNo") outTradeNo: String,
+        @Body request: CreateOrderReviewRequest,
+    ): Map<String, Any?>
+
+    @POST("consumer/payment/orders/{outTradeNo}/after-sales")
+    suspend fun applyPaymentAfterSales(
+        @Path("outTradeNo") outTradeNo: String,
+        @Body request: ApplyAfterSalesRequest,
+    ): Map<String, Any?>
+
+    @DELETE("consumer/payment/orders/{outTradeNo}/after-sales")
+    suspend fun cancelPaymentAfterSales(@Path("outTradeNo") outTradeNo: String): Map<String, Any?>
+
+    @POST("consumer/payment/activity/{activityId}/order")
+    suspend fun createActivityPaymentOrder(
+        @Path("activityId") activityId: Int,
+    ): PaymentOrderResultDto
+
+    @POST("consumer/payment/post/{postId}/order")
+    suspend fun createPostProductOrder(
+        @Path("postId") postId: Int,
+    ): PaymentOrderResultDto
+
+    @GET("consumer/payment/post/{postId}/order")
+    suspend fun getPostProductOrder(
+        @Path("postId") postId: Int,
+    ): PaymentOrderDetailDto?
+
+    @GET("consumer/payment/orders/{outTradeNo}")
+    suspend fun getPaymentOrder(@Path("outTradeNo") outTradeNo: String): PaymentOrderDetailDto
+
+    @POST("consumer/payment/orders/{outTradeNo}/confirm-receipt")
+    suspend fun confirmPaymentReceipt(
+        @Path("outTradeNo") outTradeNo: String,
+    ): PaymentOrderDetailDto
+
+    @PATCH("consumer/post/{id}/product/off-shelf")
+    suspend fun offShelfPostProduct(@Path("id") id: Int)
+
+    @PATCH("consumer/post/{id}/product/on-shelf")
+    suspend fun onShelfPostProduct(@Path("id") id: Int)
 
     @GET("consumer/notification")
     suspend fun getNotifications(): List<NotificationDto>

@@ -4,6 +4,7 @@ import {
   IsDateString,
   IsEnum,
   IsInt,
+  IsNumber,
   IsOptional,
   IsString,
   Min,
@@ -46,6 +47,11 @@ export class CreateActivityBodySchema implements CreateActivityBodyDto {
   @IsInt()
   @Min(0)
   maxParticipants?: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  fee?: number;
 }
 
 export class UpdateActivityBodySchema implements UpdateActivityBodyDto {
@@ -81,6 +87,11 @@ export class UpdateActivityBodySchema implements UpdateActivityBodyDto {
   @IsInt()
   @Min(0)
   maxParticipants?: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  fee?: number;
 }
 
 export class ReviewActivityBodySchema implements ReviewActivityBodyDto {

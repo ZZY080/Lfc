@@ -9,6 +9,8 @@ import { ConsumerUserService } from '@module/user/service/consumer-user.service'
 import { PostModule } from '@module/post/post.module';
 import { ActivityModule } from '@module/activity/activity.module';
 
+import { UserAlipayModule } from '@module/user/user-alipay.module';
+
 @Module({
   imports: [
     TypeOrmModule.forFeature([
@@ -17,6 +19,7 @@ import { ActivityModule } from '@module/activity/activity.module';
       PostEntity,
       ActivityParticipantEntity,
     ]),
+    UserAlipayModule,
     PostModule,
     ActivityModule,
   ],

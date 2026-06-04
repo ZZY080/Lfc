@@ -36,6 +36,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.lfc.consumer.ui.home.ALIPAY_BIND_HINT_FOR_SELLERS
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -134,6 +135,7 @@ fun RegisterScreen(
 ) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var realName by remember { mutableStateOf("") }
     var studentId by remember { mutableStateOf("") }
     var studentCardUri by remember { mutableStateOf<Uri?>(null) }
     val uiState by viewModel.uiState.collectAsState()
@@ -198,6 +200,14 @@ fun RegisterScreen(
             )
             Spacer(modifier = Modifier.height(12.dp))
             OutlinedTextField(
+                value = realName,
+                onValueChange = { realName = it },
+                label = { Text("真实姓名") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            OutlinedTextField(
                 value = studentId,
                 onValueChange = { studentId = it },
                 label = { Text("学号") },
@@ -211,12 +221,19 @@ fun RegisterScreen(
             ) {
                 Text(if (studentCardUri == null) "上传学生证照片" else "已选择学生证照片")
             }
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(
+                text = ALIPAY_BIND_HINT_FOR_SELLERS,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             Spacer(modifier = Modifier.height(24.dp))
             Button(
                 onClick = {
                     viewModel.register(
                         email = email.trim(),
                         password = password,
+                        realName = realName.trim(),
                         studentId = studentId.trim(),
                         studentCardUri = studentCardUri,
                     )
@@ -224,6 +241,7 @@ fun RegisterScreen(
                 enabled = !uiState.isLoading &&
                     email.isNotBlank() &&
                     password.length >= 6 &&
+                    realName.length >= 2 &&
                     studentId.isNotBlank(),
                 modifier = Modifier.fillMaxWidth(),
             ) {

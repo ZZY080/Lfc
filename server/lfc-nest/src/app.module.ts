@@ -5,6 +5,9 @@ import {
   appConfiguration,
   mysqlConfiguration,
   redisConfiguration,
+  alipayConfiguration,
+  wechatPayConfiguration,
+  paymentConfiguration,
 } from '@config/configuration';
 import { MysqlModule } from '@integration/mysql/mysql.module';
 import { RedisModule } from '@integration/redis/redis.module';
@@ -14,12 +17,22 @@ import { ActivityModule } from '@module/activity/activity.module';
 import { MessageModule } from '@module/message/message.module';
 import { UserModule } from '@module/user/user.module';
 import { AliyunModule } from '@integration/aliyun/aliyun.module';
+import { AlipayModule } from '@integration/alipay/alipay.module';
+import { WechatPayModule } from '@integration/wechat-pay/wechat-pay.module';
+import { PaymentModule } from '@module/payment/payment.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [appConfiguration, mysqlConfiguration, redisConfiguration],
+      load: [
+        appConfiguration,
+        mysqlConfiguration,
+        redisConfiguration,
+        alipayConfiguration,
+        wechatPayConfiguration,
+        paymentConfiguration,
+      ],
       envFilePath: `.env.${process.env.NODE_ENV}`,
     }),
     JwtModule.registerAsync({
@@ -34,11 +47,14 @@ import { AliyunModule } from '@integration/aliyun/aliyun.module';
     MysqlModule,
     RedisModule,
     AliyunModule,
+    AlipayModule,
+    WechatPayModule,
     AuthModule,
     PostModule,
     ActivityModule,
     MessageModule,
     UserModule,
+    PaymentModule,
   ],
 })
 export class AppModule {}

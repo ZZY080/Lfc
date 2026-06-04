@@ -11,10 +11,12 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ConsumerActivityService } from '@module/activity/service/consumer-activity.service';
+import { ConsumerActivitySocialService } from '@module/activity/service/consumer-activity-social.service';
 import {
   CreateActivityBodySchema,
   UpdateActivityBodySchema,
 } from '@module/activity/schema/activity.schema';
+import { OptionalJwtAuthGuard } from '@shared/guard/optional-jwt-auth.guard';
 import { JwtAuthGuard } from '@shared/guard/jwt-auth.guard';
 import { CurrentUser } from '@shared/decorator/user.decorator';
 import { PaginationQuerySchema } from '@shared/schema/pagination.schema';
@@ -23,6 +25,7 @@ import { PaginationQuerySchema } from '@shared/schema/pagination.schema';
 export class ConsumerActivityController {
   constructor(
     private readonly consumerActivityService: ConsumerActivityService,
+    private readonly consumerActivitySocialService: ConsumerActivitySocialService,
   ) {}
 
   @Post()
@@ -40,10 +43,15 @@ export class ConsumerActivityController {
   }
 
   @Get('feed')
-  findApprovedFeed(@Query() query: PaginationQuerySchema) {
+  @UseGuards(OptionalJwtAuthGuard)
+  findApprovedFeed(
+    @Query() query: PaginationQuerySchema,
+    @CurrentUser('userId') userId?: number,
+  ) {
     return this.consumerActivityService.findApprovedPaginated(
       query.page,
       query.limit,
+      userId,
     );
   }
 
@@ -60,8 +68,12 @@ export class ConsumerActivityController {
   }
 
   @Get(':id')
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.consumerActivityService.findOne(id);
+  @UseGuards(OptionalJwtAuthGuard)
+  findOne(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser('userId') userId?: number,
+  ) {
+    return this.consumerActivityService.findOneForViewer(id, userId);
   }
 
   @Patch(':id')
@@ -90,6 +102,24 @@ export class ConsumerActivityController {
     @Param('id', ParseIntPipe) id: number,
   ) {
     return this.consumerActivityService.join(userId, id);
+  }
+
+  @Post(':id/like')
+  @UseGuards(JwtAuthGuard)
+  toggleLike(
+    @CurrentUser('userId') userId: number,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.consumerActivitySocialService.toggleLike(userId, id);
+  }
+
+  @Post(':id/favorite')
+  @UseGuards(JwtAuthGuard)
+  toggleFavorite(
+    @CurrentUser('userId') userId: number,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.consumerActivitySocialService.toggleFavorite(userId, id);
   }
 
   @Delete(':id/join')

@@ -1,6 +1,7 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { PostEntity } from '@module/post/entity/post.entity';
+import { PostProductEntity } from '@module/post/entity/post-product.entity';
 import { PostLikeEntity } from '@module/post/entity/post-like.entity';
 import { PostFavoriteEntity } from '@module/post/entity/post-favorite.entity';
 import { PostCommentEntity } from '@module/post/entity/post-comment.entity';
@@ -8,20 +9,33 @@ import { UserEntity } from '@module/user/entity/user.entity';
 import { ConsumerPostController } from '@module/post/controller/consumer-post.controller';
 import { ConsumerPostService } from '@module/post/service/consumer-post.service';
 import { ConsumerPostSocialService } from '@module/post/service/consumer-post-social.service';
+import { ConsumerPostProductService } from '@module/post/service/consumer-post-product.service';
+import { UserAlipayModule } from '@module/user/user-alipay.module';
 import { RoleAuthzService } from '@shared/auth/role-authz.service';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([
       PostEntity,
+      PostProductEntity,
       PostLikeEntity,
       PostFavoriteEntity,
       PostCommentEntity,
       UserEntity,
     ]),
+    forwardRef(() => UserAlipayModule),
   ],
   controllers: [ConsumerPostController],
-  providers: [ConsumerPostService, ConsumerPostSocialService, RoleAuthzService],
-  exports: [ConsumerPostService, ConsumerPostSocialService],
+  providers: [
+    ConsumerPostService,
+    ConsumerPostSocialService,
+    ConsumerPostProductService,
+    RoleAuthzService,
+  ],
+  exports: [
+    ConsumerPostService,
+    ConsumerPostSocialService,
+    ConsumerPostProductService,
+  ],
 })
 export class PostModule {}

@@ -12,6 +12,8 @@ import { ConversationEntity } from '@module/message/entity/conversation.entity';
 export enum ChatMessageType {
   TEXT = 'TEXT',
   IMAGE = 'IMAGE',
+  VIDEO = 'VIDEO',
+  PRODUCT = 'PRODUCT',
 }
 
 @Entity({ name: 'chat_message' })

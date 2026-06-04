@@ -13,6 +13,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -28,6 +29,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.zIndex
+import com.lfc.consumer.payment.AlipayHelper
+import com.lfc.consumer.util.findActivity
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -37,6 +40,7 @@ import androidx.navigation.navArgument
 import com.lfc.consumer.data.model.ActivityDto
 import com.lfc.consumer.data.model.PostDto
 import com.lfc.consumer.data.model.ProfileTabUiState
+import com.lfc.consumer.data.model.displayName
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.lfc.consumer.ui.theme.XhsRed
 import androidx.compose.ui.unit.sp
@@ -55,7 +59,6 @@ fun HomeScreen(
     var editingActivity by remember { mutableStateOf<ActivityDto?>(null) }
     var isSubmitting by remember { mutableStateOf(false) }
     var showPublishHub by remember { mutableStateOf(false) }
-    var showProfileSearch by remember { mutableStateOf(false) }
     var showProfileSideMenu by remember { mutableStateOf(false) }
     var profileContentTab by remember { mutableIntStateOf(0) }
     var userProfileContentTab by remember { mutableIntStateOf(0) }
@@ -63,9 +66,27 @@ fun HomeScreen(
     val uiState by viewModel.uiState.collectAsState()
     val userSession by viewModel.userSession.collectAsState()
     val context = LocalContext.current
+    val activity = remember(context) { context.findActivity() }
     val searchHistory by viewModel.searchHistory.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
+
+    DisposableEffect(activity, viewModel) {
+        viewModel.setAlipayPayHandler(
+            activity?.let { host ->
+                { orderStr -> AlipayHelper.pay(host, orderStr) }
+            },
+        )
+        viewModel.setAlipayAuthHandler(
+            activity?.let { host ->
+                { authInfo -> AlipayHelper.auth(host, authInfo) }
+            },
+        )
+        onDispose {
+            viewModel.setAlipayPayHandler(null)
+            viewModel.setAlipayAuthHandler(null)
+        }
+    }
     val launchProfileQrScan = rememberProfileQrScanner(
         onProfileScanned = { target ->
             coroutineScope.launch {
@@ -123,7 +144,7 @@ fun HomeScreen(
                 Box(modifier = Modifier.fillMaxSize()) {
                     Scaffold(
                         contentWindowInsets = WindowInsets(0, 0, 0, 0),
-                        snackbarHost = { SnackbarHost(snackbarHostState) },
+                        snackbarHost = { },
                         bottomBar = {
                             XhsBottomBar(
                                 selectedTab = selectedTab,
@@ -183,11 +204,14 @@ fun HomeScreen(
                             profileNotes = uiState.profileNotes,
                             profileActivities = uiState.profileActivities,
                             favoritePosts = uiState.profileFavoritePosts,
+                            favoriteActivities = uiState.profileFavoriteActivities,
                             likedPosts = uiState.profileLikedPosts,
+                            likedActivities = uiState.profileLikedActivities,
                             comments = uiState.profileComments,
-                            tabUiState = uiState.profileTabs.tabs.getOrElse(profileContentTab) {
-                                ProfileTabUiState()
-                            },
+                            tabUiState = profileTabUiStateFor(
+                                selectedTab = profileContentTab,
+                                profileTabs = uiState.profileTabs,
+                            ),
                             selectedContentTab = profileContentTab,
                             onRefresh = {
                                 viewModel.refreshProfileTab(profileContentTab)
@@ -218,8 +242,8 @@ fun HomeScreen(
                             },
                             onShowQr = { navController.navigate("my_qrcode") },
                             onScanProfile = launchProfileQrScan,
-                            onSearch = { showProfileSearch = true },
                             onSettings = { navController.navigate("settings") },
+                            onBindAlipay = { navController.navigate("settings") },
                             onGoToMessages = { selectedTab = 2 },
                             onOpenSideMenu = { showProfileSideMenu = true },
                             unreadCount = uiState.unreadCount,
@@ -232,16 +256,6 @@ fun HomeScreen(
                                 .padding(bottom = padding.calculateBottomPadding()),
                         )
                         }
-                    }
-                    if (showProfileSearch && uiState.myProfile != null) {
-                        ProfileSearchDialog(
-                            keyword = uiState.profileSearchKeyword,
-                            onDismiss = { showProfileSearch = false },
-                            onSearch = { keyword ->
-                                showProfileSearch = false
-                                viewModel.searchMyPosts(keyword)
-                            },
-                        )
                     }
                     if (showPublishHub) {
                         PublishHubScreen(
@@ -332,7 +346,9 @@ fun HomeScreen(
                 ChatScreen(
                     conversation = uiState.selectedConversation,
                     messages = uiState.chatMessages,
-                    currentUserId = userSession?.userId,
+                    currentUserId = uiState.myProfile?.id ?: userSession?.userId,
+                    currentUserLabel = uiState.myProfile?.displayName() ?: userSession?.studentId ?: "我",
+                    currentUserAvatarUrl = uiState.myProfile?.avatarUrl,
                     isLoading = uiState.isChatLoading,
                     isSending = uiState.isChatSending,
                     onBack = {
@@ -341,6 +357,12 @@ fun HomeScreen(
                     },
                     onSend = { content ->
                         viewModel.sendChatMessage(conversationId, content)
+                    },
+                    onSendMedia = { uri, type ->
+                        viewModel.sendChatMedia(conversationId, uri, type)
+                    },
+                    onProductClick = { postId ->
+                        navController.navigate("product_detail/$postId")
                     },
                 )
             }
@@ -356,7 +378,8 @@ fun HomeScreen(
                 PostDetailScreen(
                     post = uiState.selectedPost,
                     comments = uiState.postComments,
-                    currentUserLabel = userSession?.studentId ?: "我",
+                    currentUserLabel = uiState.myProfile?.displayName() ?: userSession?.studentId ?: "我",
+                    currentUserAvatarUrl = uiState.myProfile?.avatarUrl,
                     isLoading = uiState.isPostLoading,
                     isCommentsLoading = uiState.isPostCommentsLoading,
                     isSocialSubmitting = uiState.isPostSocialSubmitting,
@@ -376,7 +399,44 @@ fun HomeScreen(
                     onFollowToggle = {
                         uiState.selectedPost?.authorId?.let { viewModel.toggleDetailAuthorFollow(it) }
                     },
-                    currentUserId = userSession?.userId,
+                    currentUserId = uiState.myProfile?.id ?: userSession?.userId,
+                    onProductClick = { id -> navController.navigate("product_detail/$id") },
+                )
+            }
+
+            composable(
+                route = "product_detail/{postId}",
+                arguments = listOf(navArgument("postId") { type = NavType.IntType }),
+            ) { backStackEntry ->
+                val postId = backStackEntry.arguments?.getInt("postId") ?: return@composable
+                LaunchedEffect(postId) {
+                    viewModel.loadProductDetail(postId)
+                }
+                ProductDetailScreen(
+                    post = uiState.selectedPost,
+                    isLoading = uiState.isPostLoading,
+                    isPurchasing = uiState.isPurchasingProduct,
+                    isConfirmingReceipt = uiState.isConfirmingReceipt,
+                    platformFeeRateLabel = uiState.paymentConfig?.platformFeeRateLabel,
+                    autoConfirmDays = uiState.paymentConfig?.autoConfirmDays ?: 7,
+                    purchaseOrder = uiState.productPurchaseOrder,
+                    currentUserId = uiState.myProfile?.id ?: userSession?.userId,
+                    onBack = { navController.popBackStack() },
+                    onViewNote = { navController.navigate("post_detail/$postId") },
+                    onAuthorClick = { authorId -> navController.navigate("user_profile/$authorId") },
+                    onContactSeller = {
+                        uiState.selectedPost?.let { post ->
+                            viewModel.startConversationWithProductFromPost(post) { conversationId ->
+                                navController.navigate("chat/$conversationId")
+                            }
+                        }
+                    },
+                    onPurchase = { viewModel.purchasePostProduct(postId) },
+                    onConfirmReceipt = {
+                        uiState.productPurchaseOrder?.outTradeNo?.let { outTradeNo ->
+                            viewModel.confirmProductReceipt(outTradeNo, postId)
+                        }
+                    },
                 )
             }
 
@@ -396,11 +456,14 @@ fun HomeScreen(
                     profileNotes = uiState.profileNotes,
                     profileActivities = uiState.profileActivities,
                     favoritePosts = uiState.profileFavoritePosts,
+                    favoriteActivities = uiState.profileFavoriteActivities,
                     likedPosts = uiState.profileLikedPosts,
+                    likedActivities = uiState.profileLikedActivities,
                     comments = uiState.profileComments,
-                    tabUiState = uiState.profileTabs.tabs.getOrElse(userProfileContentTab) {
-                        ProfileTabUiState()
-                    },
+                    tabUiState = profileTabUiStateFor(
+                        selectedTab = userProfileContentTab,
+                        profileTabs = uiState.profileTabs,
+                    ),
                     selectedContentTab = userProfileContentTab,
                     onRefresh = { viewModel.refreshProfileTab(userProfileContentTab, userId) },
                     onLoadMore = { viewModel.loadMoreProfileTab(userProfileContentTab, userId) },
@@ -430,12 +493,59 @@ fun HomeScreen(
                 )
             }
 
+            composable("profile_search") {
+                LaunchedEffect(Unit) {
+                    viewModel.openProfileSearch()
+                }
+                ProfileMyNotesSearchScreen(
+                    state = uiState.profileSearch,
+                    onBack = { navController.popBackStack() },
+                    onKeywordChange = viewModel::updateProfileSearchKeyword,
+                    onSearch = viewModel::searchProfileNotes,
+                    onClearKeyword = viewModel::clearProfileSearchKeyword,
+                    onPostClick = { postId ->
+                        navController.navigate("post_detail/$postId")
+                    },
+                )
+            }
+
             composable("settings") {
                 SettingsScreen(
                     profile = uiState.myProfile,
                     isUpdating = uiState.isPrivacyUpdating,
+                    platformFeeRateLabel = uiState.paymentConfig?.platformFeeRateLabel,
                     onBack = { navController.popBackStack() },
+                    onOpenOrders = {
+                        navController.navigate("orders")
+                    },
                     onPrivacyChange = viewModel::updatePrivacySettings,
+                    onAuthorizeAlipay = viewModel::authorizeAlipayAccount,
+                    onBindAlipay = viewModel::bindAlipayAccount,
+                    onUnbindAlipay = viewModel::unbindAlipayAccount,
+                )
+            }
+
+            composable("orders") {
+                LaunchedEffect(Unit) {
+                    viewModel.refreshOrderCenter()
+                }
+                OrderCenterScreen(
+                    state = uiState.orderCenter,
+                    onBack = { navController.popBackStack() },
+                    onTabSelected = viewModel::selectOrderTab,
+                    onRefresh = { viewModel.loadOrders(refresh = true) },
+                    onLoadMore = viewModel::loadMoreOrders,
+                    onOrderClick = { order ->
+                        when (order.bizType) {
+                            "POST_PRODUCT_PURCHASE" -> navController.navigate("product_detail/${order.bizId}")
+                            "ACTIVITY_JOIN" -> navController.navigate("activity_detail/${order.bizId}")
+                        }
+                    },
+                    onPayOrder = viewModel::payOrderFromList,
+                    onCancelOrder = viewModel::cancelOrderFromList,
+                    onConfirmReceipt = viewModel::confirmReceiptFromList,
+                    onReviewOrder = viewModel::submitOrderReview,
+                    onApplyAfterSales = viewModel::applyOrderAfterSales,
                 )
             }
 
@@ -476,6 +586,7 @@ fun HomeScreen(
                     activity = uiState.selectedActivity,
                     isLoading = uiState.isActivityLoading,
                     isJoining = uiState.isJoiningActivity,
+                    isSocialSubmitting = uiState.isActivitySocialSubmitting,
                     currentUserId = uiState.myProfile?.id,
                     isAuthorFollowing = uiState.detailAuthorFollowing ?: false,
                     onBack = {
@@ -483,6 +594,8 @@ fun HomeScreen(
                         navController.popBackStack()
                     },
                     onJoin = { viewModel.joinActivity(activityId) },
+                    onLike = { viewModel.toggleActivityLike(activityId) },
+                    onFavorite = { viewModel.toggleActivityFavorite(activityId) },
                     onAuthorClick = { authorId ->
                         navController.navigate("user_profile/$authorId")
                     },
@@ -495,13 +608,18 @@ fun HomeScreen(
             composable("publish_post") {
                 PublishPostScreen(
                     isSubmitting = isSubmitting,
+                    platformFeeRateLabel = uiState.paymentConfig?.platformFeeRateLabel,
+                    alipayBound = uiState.myProfile?.alipayBound == true,
+                    alipayLoginIdMasked = uiState.myProfile?.alipayLoginIdMasked,
                     onBack = { navController.popBackStack() },
-                    onSubmit = { title, content, imageUris ->
+                    onBindAlipay = { navController.navigate("settings") },
+                    onSubmit = { title, content, imageUris, product ->
                         isSubmitting = true
                         viewModel.createPost(
                             title = title,
                             content = content,
                             imageUris = imageUris,
+                            product = product,
                             onSuccess = {
                                 navController.popBackStack("main", inclusive = false)
                                 selectedTab = 0
@@ -515,8 +633,11 @@ fun HomeScreen(
             composable("publish_activity") {
                 PublishActivityScreen(
                     isSubmitting = isSubmitting,
+                    platformFeeRateLabel = uiState.paymentConfig?.platformFeeRateLabel,
+                    alipayBound = uiState.myProfile?.alipayBound == true,
                     onBack = { navController.popBackStack() },
-                    onSubmit = { title, description, location, startTime, endTime, maxParticipants, imageUris ->
+                    onBindAlipay = { navController.navigate("settings") },
+                    onSubmit = { title, description, location, startTime, endTime, maxParticipants, fee, imageUris ->
                         isSubmitting = true
                         viewModel.createActivity(
                             title = title,
@@ -525,6 +646,7 @@ fun HomeScreen(
                             startTime = startTime,
                             endTime = endTime,
                             maxParticipants = maxParticipants,
+                            fee = fee,
                             imageUris = imageUris,
                             onSuccess = {
                                 navController.popBackStack("main", inclusive = false)
@@ -540,8 +662,12 @@ fun HomeScreen(
                 PublishPostScreen(
                     initial = editingPost,
                     isSubmitting = isSubmitting,
+                    platformFeeRateLabel = uiState.paymentConfig?.platformFeeRateLabel,
+                    alipayBound = uiState.myProfile?.alipayBound == true,
+                    alipayLoginIdMasked = uiState.myProfile?.alipayLoginIdMasked,
                     onBack = { navController.popBackStack() },
-                    onSubmit = { title, content, imageUris ->
+                    onBindAlipay = { navController.navigate("settings") },
+                    onSubmit = { title, content, imageUris, _ ->
                         editingPost?.let { post ->
                             isSubmitting = true
                             viewModel.updatePost(
@@ -562,8 +688,11 @@ fun HomeScreen(
                 PublishActivityScreen(
                     initial = editingActivity,
                     isSubmitting = isSubmitting,
+                    platformFeeRateLabel = uiState.paymentConfig?.platformFeeRateLabel,
+                    alipayBound = uiState.myProfile?.alipayBound == true,
                     onBack = { navController.popBackStack() },
-                    onSubmit = { title, description, location, startTime, endTime, maxParticipants, imageUris ->
+                    onBindAlipay = { navController.navigate("settings") },
+                    onSubmit = { title, description, location, startTime, endTime, maxParticipants, _, imageUris ->
                         editingActivity?.let { activity ->
                             isSubmitting = true
                             viewModel.updateActivity(
@@ -599,6 +728,14 @@ fun HomeScreen(
                 showProfileSideMenu = false
                 navController.navigate("settings")
             },
+            onOrders = {
+                showProfileSideMenu = false
+                navController.navigate("orders")
+            },
+            onBindAlipay = {
+                showProfileSideMenu = false
+                navController.navigate("settings")
+            },
             onEditProfile = {
                 showProfileSideMenu = false
                 navController.navigate("edit_profile")
@@ -606,7 +743,10 @@ fun HomeScreen(
             onShare = {
                 uiState.myProfile?.let { ProfileShareHelper.shareProfile(context, it) }
             },
-            onSearch = { showProfileSearch = true },
+            onSearch = {
+                showProfileSideMenu = false
+                navController.navigate("profile_search")
+            },
             onLogout = onLogout,
             onSelectProfileTab = { tab ->
                 profileContentTab = tab
@@ -614,6 +754,14 @@ fun HomeScreen(
             },
             onGoToMessages = { selectedTab = 2 },
             modifier = Modifier.zIndex(200f),
+        )
+
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 16.dp)
+                .zIndex(300f),
         )
     }
 }
