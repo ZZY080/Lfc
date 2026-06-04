@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { UserEntity } from '@module/user/entity/user.entity';
@@ -12,6 +12,8 @@ import { AlipayService } from '@integration/alipay/service/alipay.service';
 
 @Injectable()
 export class UserAlipayService {
+  private readonly logger = new Logger(UserAlipayService.name);
+
   constructor(
     @InjectRepository(UserEntity)
     private readonly userRepository: Repository<UserEntity>,
@@ -29,16 +31,22 @@ export class UserAlipayService {
       throw new BadRequestException('授权码无效');
     }
 
-    const oauthUser = await this.alipayService.exchangeOAuthUser(authCodeValue);
+    let oauthUser: { userId: string; nickName: string | null };
+    try {
+      oauthUser = await this.alipayService.exchangeOAuthUser(authCodeValue);
+    } catch (error) {
+      this.logger.warn(
+        `支付宝授权换取用户信息失败。userId=${userId}, authCodePrefix=${authCodeValue.slice(0, 8)}, error=${String(error)}`,
+      );
+      throw error;
+    }
     const user = await this.findUser(userId);
     user.alipayUserId = oauthUser.userId;
     user.alipayLoginId = null;
     user.alipayRealName = oauthUser.nickName;
     user.alipayBoundAt = new Date();
 
-    if (this.alipayService.isConfigured()) {
-      await this.bindRoyaltyRelation(user);
-    }
+    await this.tryBindRoyaltyRelation(user);
 
     await this.userRepository.save(user);
     return this.toBindingDto(user);
@@ -60,9 +68,7 @@ export class UserAlipayService {
     user.alipayRealName = alipayRealName?.trim() || null;
     user.alipayBoundAt = new Date();
 
-    if (this.alipayService.isConfigured()) {
-      await this.bindRoyaltyRelation(user);
-    }
+    await this.tryBindRoyaltyRelation(user);
 
     await this.userRepository.save(user);
 
@@ -130,6 +136,19 @@ export class UserAlipayService {
         }
       }
       throw error;
+    }
+  }
+
+  private async tryBindRoyaltyRelation(user: UserEntity) {
+    if (!this.alipayService.isConfigured()) {
+      return;
+    }
+    try {
+      await this.bindRoyaltyRelation(user);
+    } catch (error) {
+      this.logger.warn(
+        `支付宝分账关系绑定失败，将跳过并保留授权绑定。userId=${user.id}, error=${String(error)}`,
+      );
     }
   }
 

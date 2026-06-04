@@ -5,6 +5,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { Inject } from '@nestjs/common';
+import crypto from 'crypto';
 import { alipayConfiguration } from '@config/configuration';
 import type { IAlipayConfig } from '@config/configuration';
 import {
@@ -33,19 +34,20 @@ export class AlipayService {
   constructor(
     @Inject(alipayConfiguration.KEY)
     private readonly alipayConfig: IAlipayConfig,
-  ) {}
+  ) {
+    this.logBootstrapConfig();
+  }
 
   isConfigured(): boolean {
-    return Boolean(
-      this.alipayConfig.appId &&
-        this.alipayConfig.privateKey &&
-        this.alipayConfig.alipayPublicKey &&
-        this.alipayConfig.notifyUrl,
-    );
+    return this.getMissingPaymentConfigKeys().length === 0;
   }
 
   isOAuthConfigured(): boolean {
-    return this.isConfigured() && Boolean(this.alipayConfig.pid);
+    return Boolean(
+      this.alipayConfig.appId &&
+        this.alipayConfig.privateKey &&
+        this.alipayConfig.pid,
+    );
   }
 
   createAppAuthInfo(targetId: string): AlipayAppAuthInfoResult {
@@ -67,22 +69,32 @@ export class AlipayService {
       appId: this.alipayConfig.appId,
       privateKey: this.alipayConfig.privateKey,
       method: 'alipay.system.oauth.token',
-      bizContent: {
+      extraParams: {
         grant_type: 'authorization_code',
         code: authCode,
       },
     });
 
     const tokenCode = String(tokenPayload.code ?? '');
-    if (tokenCode !== '10000') {
-      const subMsg = String(tokenPayload.sub_msg ?? tokenPayload.msg ?? '授权失败');
-      throw new BadRequestException(subMsg);
-    }
-
     const accessToken = String(tokenPayload.access_token ?? '');
     const userId = String(tokenPayload.user_id ?? tokenPayload.open_id ?? '');
-    if (!userId) {
-      throw new BadRequestException('未获取到支付宝用户标识');
+    const tokenLooksSuccessful = userId.trim().length > 0;
+    if (tokenCode.trim().length > 0 && tokenCode !== '10000') {
+      const subCode = String(tokenPayload.sub_code ?? '');
+      const msg = String(tokenPayload.msg ?? '');
+      const subMsg = String(tokenPayload.sub_msg ?? '');
+      const detail = [tokenCode, subCode, msg, subMsg]
+        .filter((item) => item)
+        .join(' | ');
+      throw new BadRequestException(
+        detail || '授权失败',
+      );
+    }
+    if (!tokenLooksSuccessful) {
+      const payloadKeys = Object.keys(tokenPayload).join(',');
+      throw new BadRequestException(
+        `授权失败：未获取到支付宝用户标识（payloadKeys=${payloadKeys}）`,
+      );
     }
 
     let nickName: string | null = null;
@@ -93,9 +105,7 @@ export class AlipayService {
           appId: this.alipayConfig.appId,
           privateKey: this.alipayConfig.privateKey,
           method: 'alipay.user.info.share',
-          bizContent: {
-            auth_token: accessToken,
-          },
+          authToken: accessToken,
         });
         if (String(profilePayload.code ?? '') === '10000') {
           nickName = profilePayload.nick_name
@@ -252,16 +262,57 @@ export class AlipayService {
   }
 
   private assertConfigured() {
-    if (!this.isConfigured()) {
-      throw new ServiceUnavailableException('支付宝支付未配置');
+    const missing = this.getMissingPaymentConfigKeys();
+    if (missing.length > 0) {
+      throw new ServiceUnavailableException(
+        `支付宝支付未配置，请设置 ${missing.join('、')}`,
+      );
     }
   }
 
   private assertOAuthConfigured() {
     if (!this.isOAuthConfigured()) {
       throw new ServiceUnavailableException(
-        '支付宝授权未配置，请设置 ALIPAY_APP_ID、ALIPAY_PID 及密钥',
+        '支付宝授权未配置，请设置 ALIPAY_APP_ID、ALIPAY_PID、ALIPAY_PRIVATE_KEY',
       );
     }
+  }
+
+  private logBootstrapConfig() {
+    const appId = this.alipayConfig.appId?.trim() || '(empty)';
+    const pid = this.alipayConfig.pid?.trim() || '(empty)';
+    const gateway = this.alipayConfig.gateway?.trim() || '(empty)';
+    const privateKey = this.alipayConfig.privateKey?.trim() || '';
+    const keyFingerprint = privateKey
+      ? crypto
+          .createHash('sha256')
+          .update(privateKey.replace(/\\n/g, '\n'))
+          .digest('hex')
+          .slice(0, 16)
+      : '(empty)';
+    const alipayPublicKeyConfigured = Boolean(
+      this.alipayConfig.alipayPublicKey?.trim(),
+    );
+    const notifyUrlConfigured = Boolean(this.alipayConfig.notifyUrl?.trim());
+    this.logger.log(
+      `Alipay config loaded appId=${appId}, pid=${pid}, gateway=${gateway}, privateKeySha256=${keyFingerprint}, alipayPublicKeyConfigured=${alipayPublicKeyConfigured}, notifyUrlConfigured=${notifyUrlConfigured}`,
+    );
+  }
+
+  private getMissingPaymentConfigKeys(): string[] {
+    const missing: string[] = [];
+    if (!this.alipayConfig.appId?.trim()) {
+      missing.push('ALIPAY_APP_ID');
+    }
+    if (!this.alipayConfig.privateKey?.trim()) {
+      missing.push('ALIPAY_PRIVATE_KEY');
+    }
+    if (!this.alipayConfig.alipayPublicKey?.trim()) {
+      missing.push('ALIPAY_ALIPAY_PUBLIC_KEY');
+    }
+    if (!this.alipayConfig.notifyUrl?.trim()) {
+      missing.push('ALIPAY_NOTIFY_URL');
+    }
+    return missing;
   }
 }

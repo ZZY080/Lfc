@@ -2364,7 +2364,13 @@ class HomeViewModel(
             val body = e.response()?.errorBody()?.string()
             if (!body.isNullOrBlank()) {
                 runCatching {
-                    JsonParser.parseString(body).asJsonObject["message"]?.asString
+                    val messageNode = JsonParser.parseString(body).asJsonObject["message"]
+                    when {
+                        messageNode == null || messageNode.isJsonNull -> null
+                        messageNode.isJsonPrimitive -> messageNode.asString
+                        messageNode.isJsonArray -> messageNode.asJsonArray.firstOrNull()?.asString
+                        else -> messageNode.toString()
+                    }
                 }.getOrNull()?.let { return it }
             }
         }

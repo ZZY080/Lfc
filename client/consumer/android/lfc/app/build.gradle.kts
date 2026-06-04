@@ -16,7 +16,7 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        buildConfigField("String", "API_BASE_URL", "\"http://192.168.2.113:8000/api/\"")
+        buildConfigField("String", "API_BASE_URL", "\"http://192.168.0.104:8000/api/\"")
         val amapApiKey = (project.findProperty("AMAP_API_KEY") as String?)?.trim().orEmpty()
         buildConfigField("String", "AMAP_API_KEY", "\"$amapApiKey\"")
         manifestPlaceholders["AMAP_API_KEY"] = amapApiKey

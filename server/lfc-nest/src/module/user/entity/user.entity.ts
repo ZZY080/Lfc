@@ -60,7 +60,7 @@ export class UserEntity {
   alipayLoginId: string | null;
 
   /** 支付宝 userId（2088 开头），OAuth 授权获得，分账推荐使用 */
-  @Column({ name: 'alipay_user_id', type: 'varchar', length: 32, nullable: true })
+  @Column({ name: 'alipay_user_id', type: 'varchar', length: 64, nullable: true })
   alipayUserId: string | null;
 
   /** 支付宝实名（转账校验用，建议填写） */

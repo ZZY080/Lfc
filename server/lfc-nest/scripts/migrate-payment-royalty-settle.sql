@@ -17,4 +17,8 @@ ALTER TABLE `payment_order`
 
 ALTER TABLE `user`
   ADD COLUMN IF NOT EXISTS `alipay_royalty_bound_at` DATETIME NULL COMMENT '分账关系绑定时间' AFTER `alipay_bound_at`,
-  ADD COLUMN IF NOT EXISTS `alipay_user_id` VARCHAR(32) NULL COMMENT '支付宝 userId（OAuth 授权）' AFTER `alipay_login_id`;
+  ADD COLUMN IF NOT EXISTS `alipay_user_id` VARCHAR(64) NULL COMMENT '支付宝 userId（OAuth 授权）' AFTER `alipay_login_id`;
+
+-- 兼容旧库：历史上 alipay_user_id 可能是 VARCHAR(32)，OAuth 返回值可能更长
+ALTER TABLE `user`
+  MODIFY COLUMN `alipay_user_id` VARCHAR(64) NULL COMMENT '支付宝 userId（OAuth 授权）';

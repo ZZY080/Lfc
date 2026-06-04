@@ -148,7 +148,18 @@ function normalizePem(value?: string): string {
   if (!value) {
     return '';
   }
-  return value.replace(/\\n/g, '\n').trim();
+  let normalized = value.trim();
+  const quoted =
+    (normalized.startsWith('"') && normalized.endsWith('"')) ||
+    (normalized.startsWith("'") && normalized.endsWith("'"));
+  if (quoted && normalized.length >= 2) {
+    normalized = normalized.slice(1, -1);
+  }
+  return normalized
+    .replace(/\\r/g, '')
+    .replace(/\r/g, '')
+    .replace(/\\n/g, '\n')
+    .trim();
 }
 
 export {

@@ -3,6 +3,7 @@ package com.lfc.consumer.payment
 import android.app.Activity
 import com.alipay.sdk.app.AuthTask
 import com.alipay.sdk.app.PayTask
+import java.net.URLDecoder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -75,17 +76,31 @@ object AlipayHelper {
     }
 
     fun authMessage(result: AlipayAuthResult): String = when (result.resultStatus) {
-        "9000" -> if (result.authCode.isNullOrBlank()) "授权失败，未获取授权码" else ""
+        "9000" -> if (result.authCode.isNullOrBlank()) "授权失败，未获取授权码（status=9000）" else ""
         "6001" -> "已取消授权"
         "6002" -> "网络异常，请稍后重试"
         "4000" -> result.memo.ifBlank { "授权失败" }
         "ERROR" -> result.memo.ifBlank { "支付宝调起失败" }
-        else -> result.memo.ifBlank { "授权未完成" }
+        else -> result.memo.ifBlank { "授权未完成（status=${result.resultStatus}）" }
     }
 
     private fun parseAuthCode(result: String): String? {
         if (result.isBlank()) return null
-        val match = Regex("""auth_code=([^&]+)""").find(result) ?: return null
-        return match.groupValues.getOrNull(1)?.trim()?.takeIf { it.isNotBlank() }
+        val decoded = runCatching { URLDecoder.decode(result, "UTF-8") }.getOrDefault(result)
+        val candidates = listOf(result, decoded)
+        val patterns = listOf(
+            Regex("""(?:^|&)auth_code=([^&]+)"""),
+            Regex("""(?:^|&)authCode=([^&]+)"""),
+        )
+        for (candidate in candidates) {
+            for (pattern in patterns) {
+                val match = pattern.find(candidate) ?: continue
+                val value = match.groupValues.getOrNull(1)?.trim()
+                if (!value.isNullOrBlank()) {
+                    return value
+                }
+            }
+        }
+        return null
     }
 }

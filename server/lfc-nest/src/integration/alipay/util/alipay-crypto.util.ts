@@ -6,7 +6,7 @@ function formatPrivateKey(privateKey: string): string {
     return normalized;
   }
   const body = normalized.match(/.{1,64}/g)?.join('\n') ?? normalized;
-  return `-----BEGIN RSA PRIVATE KEY-----\n${body}\n-----END RSA PRIVATE KEY-----`;
+  return `-----BEGIN PRIVATE KEY-----\n${body}\n-----END PRIVATE KEY-----`;
 }
 
 function formatPublicKey(publicKey: string): string {
@@ -23,12 +23,16 @@ function formatTimestamp(date: Date): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
-export function getAlipaySignContent(params: Record<string, string>): string {
+export function getAlipaySignContent(
+  params: Record<string, string>,
+  options?: { excludeSignType?: boolean },
+): string {
+  const excludeSignType = options?.excludeSignType ?? false;
   return Object.keys(params)
     .filter(
       (key) =>
         key !== 'sign' &&
-        key !== 'sign_type' &&
+        (!excludeSignType || key !== 'sign_type') &&
         params[key] !== undefined &&
         params[key] !== '',
     )
@@ -38,9 +42,26 @@ export function getAlipaySignContent(params: Record<string, string>): string {
 }
 
 export function rsaSign(content: string, privateKey: string): string {
-  const signer = crypto.createSign('RSA-SHA256');
-  signer.update(content, 'utf8');
-  return signer.sign(formatPrivateKey(privateKey), 'base64');
+  const signWithKey = (keyPem: string): string => {
+    const signer = crypto.createSign('RSA-SHA256');
+    signer.update(content, 'utf8');
+    return signer.sign(keyPem, 'base64');
+  };
+  const normalized = privateKey.replace(/\\n/g, '\n').trim();
+  if (normalized.includes('BEGIN')) {
+    return signWithKey(normalized);
+  }
+  const body = normalized.match(/.{1,64}/g)?.join('\n') ?? normalized;
+  try {
+    return signWithKey(
+      `-----BEGIN PRIVATE KEY-----\n${body}\n-----END PRIVATE KEY-----`,
+    );
+  } catch {
+    // Fallback for PKCS#1 keys.
+    return signWithKey(
+      `-----BEGIN RSA PRIVATE KEY-----\n${body}\n-----END RSA PRIVATE KEY-----`,
+    );
+  }
 }
 
 export function rsaVerify(
@@ -128,6 +149,6 @@ export function verifyAlipayNotify(
   if (!sign) {
     return false;
   }
-  const content = getAlipaySignContent(payload);
+  const content = getAlipaySignContent(payload, { excludeSignType: true });
   return rsaVerify(content, sign, publicKey);
 }
