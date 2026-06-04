@@ -18,6 +18,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Event
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.Button
@@ -46,6 +49,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.lfc.consumer.data.model.displayName
 import com.lfc.consumer.data.model.isPaidActivity
 import com.lfc.consumer.data.model.ActivityDto
 import com.lfc.consumer.data.model.ActivityFeedUiState
@@ -215,6 +219,7 @@ private fun ActivityCard(
     onJoin: () -> Unit,
 ) {
     val coverUrl = activity.images?.firstOrNull()
+    val participantCount = activity.participants?.size ?: 0
     val joinLabel = when {
         activity.isJoined -> "已报名"
         activity.isPaidActivity() -> "支付 ${formatActivityFeeLabel(activity.fee)}"
@@ -244,6 +249,43 @@ private fun ActivityCard(
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize(),
                     )
+                }
+
+                Text(
+                    text = profileActivityStatusLabel(activity.status),
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(8.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color.Black.copy(alpha = 0.42f))
+                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                    color = Color.White,
+                    fontSize = 10.sp,
+                )
+
+                if (participantCount > 0) {
+                    Row(
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(8.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color.Black.copy(alpha = 0.42f))
+                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            Icons.Default.Event,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(11.dp),
+                        )
+                        Text(
+                            text = formatLikeCount(participantCount),
+                            color = Color.White,
+                            fontSize = 10.sp,
+                            modifier = Modifier.padding(start = 2.dp),
+                        )
+                    }
                 }
             }
 
@@ -308,6 +350,43 @@ private fun ActivityCard(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    val authorLabel = activity.author?.displayName() ?: "同学${activity.authorId}"
+                    XhsProfileAvatar(
+                        label = authorLabel,
+                        size = 20,
+                        avatarUrl = activity.author?.avatarUrl,
+                    )
+                    Text(
+                        text = authorLabel,
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(start = 6.dp),
+                        fontSize = 12.sp,
+                        color = XhsTextSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Icon(
+                        if (activity.isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                        contentDescription = null,
+                        tint = if (activity.isLiked) XhsRed else XhsTextSecondary.copy(alpha = 0.7f),
+                        modifier = Modifier.size(14.dp),
+                    )
+                    if (activity.likeCount > 0) {
+                        Text(
+                            text = formatLikeCount(activity.likeCount),
+                            modifier = Modifier.padding(start = 2.dp),
+                            fontSize = 12.sp,
+                            color = if (activity.isLiked) XhsRed else XhsTextSecondary,
+                        )
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))

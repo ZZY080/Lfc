@@ -18,14 +18,12 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material.icons.filled.ShoppingBag
@@ -34,14 +32,12 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -194,7 +190,6 @@ fun ProductDetailScreen(
                                 images = images,
                                 postId = post.id,
                                 displayTitle = displayTitle,
-                                onBack = onBack,
                             )
 
                             Column(
@@ -282,6 +277,11 @@ fun ProductDetailScreen(
                                 )
                             }
                         }
+
+                        XhsDetailBackButton(
+                            onBack = onBack,
+                            modifier = Modifier.align(Alignment.TopStart),
+                        )
                     }
 
                     ProductDetailBottomBar(
@@ -305,7 +305,6 @@ private fun ProductHeroGallery(
     images: List<String>,
     postId: Int,
     displayTitle: String,
-    onBack: () -> Unit,
 ) {
     Box(
         modifier = Modifier
@@ -347,24 +346,6 @@ private fun ProductHeroGallery(
                     ),
                 ),
         )
-
-        IconButton(
-            onClick = onBack,
-            modifier = Modifier
-                .statusBarsPadding()
-                .padding(start = 12.dp, top = 6.dp)
-                .size(34.dp)
-                .shadow(4.dp, CircleShape, clip = false, ambientColor = Color.Black.copy(0.12f))
-                .clip(CircleShape)
-                .background(Color.White.copy(alpha = 0.94f)),
-        ) {
-            Icon(
-                Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = "返回",
-                tint = XhsTextPrimary,
-                modifier = Modifier.size(18.dp),
-            )
-        }
     }
 }
 

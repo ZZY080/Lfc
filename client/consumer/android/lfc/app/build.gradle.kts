@@ -17,6 +17,9 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "API_BASE_URL", "\"http://192.168.2.113:8000/api/\"")
+        val amapApiKey = (project.findProperty("AMAP_API_KEY") as String?)?.trim().orEmpty()
+        buildConfigField("String", "AMAP_API_KEY", "\"$amapApiKey\"")
+        manifestPlaceholders["AMAP_API_KEY"] = amapApiKey
     }
 
     buildTypes {
@@ -75,6 +78,9 @@ dependencies {
 
     // Alipay App Pay
     implementation("com.alipay.sdk:alipaysdk-android:15.8.17")
+
+    // Amap location
+    implementation("com.amap.api:location:6.4.9")
 
     // Test
     testImplementation("junit:junit:4.13.2")

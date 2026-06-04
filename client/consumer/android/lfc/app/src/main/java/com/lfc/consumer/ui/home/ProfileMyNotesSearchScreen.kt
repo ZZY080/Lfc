@@ -1,6 +1,7 @@
 package com.lfc.consumer.ui.home
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -38,7 +39,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.lfc.consumer.data.model.PostDto
+import com.lfc.consumer.data.model.displayName
 import com.lfc.consumer.data.model.ProfileSearchUiState
 import com.lfc.consumer.ui.theme.XhsBackground
 import com.lfc.consumer.ui.theme.XhsRed
@@ -145,10 +146,13 @@ fun ProfileMyNotesSearchScreen(
                     modifier = Modifier.fillMaxSize(),
                 ) {
                     items(state.results, key = { it.id }) { post ->
-                        XhsFeedCard(
-                            post = post,
-                            onClick = { onPostClick(post.id) },
-                        )
+                        Box(modifier = Modifier.clickable { onPostClick(post.id) }) {
+                            XhsProfileFeedCard(
+                                post = post,
+                                authorLabel = post.author?.displayName() ?: "同学${post.authorId}",
+                                avatarUrl = post.author?.avatarUrl,
+                            )
+                        }
                     }
                 }
             }

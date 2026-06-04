@@ -130,6 +130,7 @@ export class ConsumerActivityService {
     isSelf: boolean,
     page?: number,
     limit?: number,
+    viewerId?: number,
   ) {
     const { page: normalizedPage, limit: normalizedLimit, skip } =
       normalizePagination(page, limit);
@@ -137,13 +138,19 @@ export class ConsumerActivityService {
       where: isSelf
         ? { authorId }
         : { authorId, status: ActivityStatus.APPROVED },
-      relations: isSelf ? ['participants'] : ['author'],
+      relations: isSelf ? ['participants', 'author'] : ['author', 'participants'],
       order: { createdAt: 'DESC' },
       skip,
       take: normalizedLimit,
     });
     const items = await this.consumerActivitySocialService.enrichActivities(
-      activities,
+      activities.map((activity) => ({
+        ...activity,
+        isJoined: viewerId
+          ? activity.participants.some((item) => item.userId === viewerId)
+          : false,
+      })),
+      viewerId,
     );
     return createPaginatedResult(
       items,

@@ -23,3 +23,6 @@
 -keep class com.alipay.** { *; }
 -keep class com.ta.utdid2.** { *; }
 -keep class com.ut.device.** { *; }
+-keep class com.amap.api.location.** { *; }
+-keep class com.autonavi.aps.amapapi.model.** { *; }
+-dontwarn com.amap.**

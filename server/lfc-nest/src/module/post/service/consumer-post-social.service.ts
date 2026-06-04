@@ -229,15 +229,26 @@ export class ConsumerPostSocialService {
   async findLikedPostsPaginated(userId: number, page?: number, limit?: number) {
     const { page: normalizedPage, limit: normalizedLimit, skip } =
       normalizePagination(page, limit);
-    const [likes, total] = await this.likeRepository.findAndCount({
-      where: { userId },
-      order: { createdAt: 'DESC' },
-      skip,
-      take: normalizedLimit,
-    });
+
+    const baseQb = this.likeRepository
+      .createQueryBuilder('like')
+      .innerJoin('like.post', 'post')
+      .where('like.userId = :userId', { userId });
+
+    const total = await baseQb.getCount();
+    const likes = await baseQb
+      .orderBy('like.createdAt', 'DESC')
+      .skip(skip)
+      .take(normalizedLimit)
+      .getMany();
+
+    const savedAtMap = new Map(
+      likes.map((item) => [item.postId, item.createdAt]),
+    );
     const items = await this.findPostsByIds(
       likes.map((item) => item.postId),
       userId,
+      savedAtMap,
     );
     return createPaginatedResult(items, total, normalizedPage, normalizedLimit);
   }
@@ -260,15 +271,26 @@ export class ConsumerPostSocialService {
   ) {
     const { page: normalizedPage, limit: normalizedLimit, skip } =
       normalizePagination(page, limit);
-    const [favorites, total] = await this.favoriteRepository.findAndCount({
-      where: { userId },
-      order: { createdAt: 'DESC' },
-      skip,
-      take: normalizedLimit,
-    });
+
+    const baseQb = this.favoriteRepository
+      .createQueryBuilder('favorite')
+      .innerJoin('favorite.post', 'post')
+      .where('favorite.userId = :userId', { userId });
+
+    const total = await baseQb.getCount();
+    const favorites = await baseQb
+      .orderBy('favorite.createdAt', 'DESC')
+      .skip(skip)
+      .take(normalizedLimit)
+      .getMany();
+
+    const savedAtMap = new Map(
+      favorites.map((item) => [item.postId, item.createdAt]),
+    );
     const items = await this.findPostsByIds(
       favorites.map((item) => item.postId),
       userId,
+      savedAtMap,
     );
     return createPaginatedResult(items, total, normalizedPage, normalizedLimit);
   }
@@ -295,7 +317,11 @@ export class ConsumerPostSocialService {
     }));
   }
 
-  private async findPostsByIds(postIds: number[], userId: number) {
+  private async findPostsByIds(
+    postIds: number[],
+    userId: number,
+    savedAtMap?: Map<number, Date>,
+  ) {
     if (postIds.length === 0) {
       return [];
     }
@@ -307,7 +333,14 @@ export class ConsumerPostSocialService {
     const ordered = postIds
       .map((id) => postMap.get(id))
       .filter((post): post is PostEntity => Boolean(post));
-    return this.enrichPosts(ordered, userId);
+    const enriched = await this.enrichPosts(ordered, userId);
+    if (!savedAtMap) {
+      return enriched;
+    }
+    return enriched.map((post) => ({
+      ...post,
+      savedAt: savedAtMap.get(post.id)?.toISOString(),
+    }));
   }
 
   private async buildSocialState(post: PostEntity, userId: number) {

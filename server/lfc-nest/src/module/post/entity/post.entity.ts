@@ -32,6 +32,9 @@ export class PostEntity {
   @Column({ name: 'comment_count', default: 0 })
   commentCount: number;
 
+  @Column({ name: 'view_count', default: 0 })
+  viewCount: number;
+
   @Column({ name: 'author_id' })
   authorId: number;
 

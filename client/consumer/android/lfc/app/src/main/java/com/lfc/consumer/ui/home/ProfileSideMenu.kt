@@ -29,6 +29,7 @@ import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.automirrored.filled.Message
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Event
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.QrCode2
@@ -191,6 +192,15 @@ fun ProfileSideMenu(
                     title = "我的收藏",
                     onClick = {
                         onSelectProfileTab(3)
+                        onDismiss()
+                    },
+                )
+                ProfileSideMenuDivider()
+                ProfileSideMenuRow(
+                    icon = Icons.Default.Favorite,
+                    title = "我的赞",
+                    onClick = {
+                        onSelectProfileTab(4)
                         onDismiss()
                     },
                 )

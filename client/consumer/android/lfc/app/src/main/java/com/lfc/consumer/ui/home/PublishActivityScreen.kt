@@ -1,6 +1,10 @@
 package com.lfc.consumer.ui.home
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -15,16 +19,26 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import com.lfc.consumer.data.model.ActivityDto
+import com.lfc.consumer.location.AmapLocationHelper
 import com.lfc.consumer.ui.theme.XhsRed
 import com.lfc.consumer.ui.theme.XhsTextSecondary
+import kotlinx.coroutines.launch
+
+private val locationPermissions = arrayOf(
+    Manifest.permission.ACCESS_FINE_LOCATION,
+    Manifest.permission.ACCESS_COARSE_LOCATION,
+)
 
 @Composable
 fun PublishActivityScreen(
@@ -45,6 +59,8 @@ fun PublishActivityScreen(
         imageUris: List<Uri>,
     ) -> Unit,
 ) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var title by remember { mutableStateOf(initial?.title ?: "") }
     var description by remember { mutableStateOf(initial?.description ?: "") }
     var location by remember { mutableStateOf(initial?.location ?: "") }
@@ -54,8 +70,43 @@ fun PublishActivityScreen(
     var showEndPicker by remember { mutableStateOf(false) }
     var maxParticipants by remember { mutableStateOf((initial?.maxParticipants ?: 0).toString()) }
     var fee by remember { mutableStateOf(initial?.fee?.toDoubleOrNull()?.let { if (it > 0) it.toString() else "" } ?: "") }
+    var isLocating by remember { mutableStateOf(false) }
+    var locationHint by remember { mutableStateOf<String?>(null) }
     val selectedImages = rememberPublishImageSelection()
     val existingImages = initial?.images.orEmpty()
+
+    fun hasLocationPermission(): Boolean = locationPermissions.all { permission ->
+        ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
+    }
+
+    fun startLocate() {
+        locationHint = null
+        scope.launch {
+            isLocating = true
+            AmapLocationHelper.getCurrentLocation(context)
+                .onSuccess { location = it }
+                .onFailure { locationHint = it.message ?: "定位失败，请检查高德 Key 或定位权限" }
+            isLocating = false
+        }
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { results ->
+        if (results.values.all { it }) {
+            startLocate()
+        } else {
+            locationHint = "需要定位权限才能使用高德定位"
+        }
+    }
+
+    fun requestLocate() {
+        if (hasLocationPermission()) {
+            startLocate()
+        } else {
+            permissionLauncher.launch(locationPermissions)
+        }
+    }
 
     val isValid = location.isNotBlank() && startTime.isNotBlank() && endTime.isNotBlank() &&
         (description.isNotBlank() || selectedImages.isNotEmpty() || existingImages.isNotEmpty())
@@ -131,12 +182,21 @@ fun PublishActivityScreen(
 
                 XhsPublishFieldCard {
                     XhsPublishSectionTitle("时间地点")
-                    XhsPublishTextField(
+                    XhsPublishLocationField(
                         value = location,
                         onValueChange = { location = it },
-                        placeholder = "活动地点，例如：体育馆",
-                        singleLine = true,
+                        placeholder = "点击右侧按钮获取当前位置，也可手动输入",
+                        isLoading = isLocating,
+                        onLocate = ::requestLocate,
                     )
+                    locationHint?.let { hint ->
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = hint,
+                            fontSize = 12.sp,
+                            color = XhsRed,
+                        )
+                    }
                     Spacer(modifier = Modifier.height(14.dp))
                     XhsPublishDateTimeField(
                         label = "开始时间",

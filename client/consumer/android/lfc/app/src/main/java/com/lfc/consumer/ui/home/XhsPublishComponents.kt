@@ -15,6 +15,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -179,6 +180,56 @@ fun XhsPublishDateTimeField(
             tint = XhsTextSecondary,
             modifier = Modifier.size(20.dp),
         )
+    }
+}
+
+@Composable
+fun XhsPublishLocationField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    isLoading: Boolean,
+    onLocate: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            modifier = Modifier.weight(1f),
+            singleLine = true,
+            textStyle = TextStyle(fontSize = 16.sp, color = XhsTextPrimary),
+            cursorBrush = SolidColor(XhsRed),
+            decorationBox = { inner ->
+                Box {
+                    if (value.isEmpty()) {
+                        Text(placeholder, color = XhsTextSecondary, fontSize = 16.sp)
+                    }
+                    inner()
+                }
+            },
+        )
+        if (isLoading) {
+            CircularProgressIndicator(
+                color = XhsRed,
+                modifier = Modifier
+                    .padding(start = 8.dp)
+                    .size(20.dp),
+                strokeWidth = 2.dp,
+            )
+        } else {
+            IconButton(onClick = onLocate) {
+                Icon(
+                    Icons.Default.MyLocation,
+                    contentDescription = "高德定位",
+                    tint = XhsRed,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+        }
     }
 }
 

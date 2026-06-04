@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -207,7 +208,6 @@ fun XhsProfileFeedCard(
     modifier: Modifier = Modifier,
 ) {
     val coverUrl = post.images?.firstOrNull()
-    val viewCount = post.likeCount + post.commentCount + post.favoriteCount
     val aspectRatio = 0.68f + gradientIndexForId(post.id, 4) * 0.06f
 
     Surface(
@@ -249,29 +249,11 @@ fun XhsProfileFeedCard(
                     }
                 }
 
-                if (viewCount > 0) {
-                    Row(
-                        modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .padding(6.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(Color.Black.copy(alpha = 0.42f))
-                            .padding(horizontal = 5.dp, vertical = 2.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(
-                            Icons.Default.Visibility,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(10.dp),
-                        )
-                        Text(
-                            text = formatLikeCount(viewCount),
-                            color = Color.White,
-                            fontSize = 9.sp,
-                            modifier = Modifier.padding(start = 2.dp),
-                        )
-                    }
+                if (post.viewCount > 0) {
+                    ProfileFeedViewBadge(
+                        viewCount = post.viewCount,
+                        modifier = Modifier.align(Alignment.BottomStart),
+                    )
                 }
             }
 
@@ -458,7 +440,7 @@ fun XhsProfileActivityCard(
     }
 }
 
-private fun profileActivityStatusLabel(status: String): String = when (status.uppercase()) {
+fun profileActivityStatusLabel(status: String): String = when (status.uppercase()) {
     "PENDING" -> "待审核"
     "APPROVED" -> "进行中"
     "REJECTED" -> "已拒绝"
@@ -531,10 +513,48 @@ internal fun TextNoteCover(
     }
 }
 
-private fun formatLikeCount(count: Int): String = when {
+fun formatLikeCount(count: Int): String = when {
     count <= 0 -> "0"
     count < 10000 -> count.toString()
     else -> String.format("%.1fw", count / 10000f)
+}
+
+@Composable
+private fun ProfileFeedCoverBadge(
+    modifier: Modifier = Modifier,
+    content: @Composable RowScope.() -> Unit,
+) {
+    Row(
+        modifier = modifier
+            .padding(6.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color.Black.copy(alpha = 0.42f))
+            .padding(horizontal = 5.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        content = content,
+    )
+}
+
+@Composable
+fun ProfileFeedViewBadge(
+    viewCount: Int,
+    modifier: Modifier = Modifier,
+) {
+    if (viewCount <= 0) return
+    ProfileFeedCoverBadge(modifier = modifier) {
+        Icon(
+            Icons.Default.Visibility,
+            contentDescription = "浏览量",
+            tint = Color.White,
+            modifier = Modifier.size(10.dp),
+        )
+        Text(
+            text = formatLikeCount(viewCount),
+            color = Color.White,
+            fontSize = 9.sp,
+            modifier = Modifier.padding(start = 2.dp),
+        )
+    }
 }
 
 @Composable

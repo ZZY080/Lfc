@@ -608,7 +608,7 @@ fun XhsPostDetailBottomBar(
                     }
                 } else {
                     Spacer(modifier = Modifier.width(4.dp))
-                    BottomSocialChip(
+                    XhsDetailSocialChip(
                         icon = {
                             Icon(
                                 if (isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
@@ -621,7 +621,7 @@ fun XhsPostDetailBottomBar(
                         onClick = onLike,
                         enabled = !isSubmitting,
                     )
-                    BottomSocialChip(
+                    XhsDetailSocialChip(
                         icon = {
                             Icon(
                                 if (isFavorited) Icons.Default.Star else Icons.Default.StarBorder,
@@ -634,55 +634,10 @@ fun XhsPostDetailBottomBar(
                         onClick = onFavorite,
                         enabled = !isSubmitting,
                     )
-                    BottomSocialChip(
-                        icon = {
-                            Icon(
-                                Icons.Default.ChatBubbleOutline,
-                                contentDescription = "评论",
-                                tint = XhsTextPrimary,
-                                modifier = Modifier.size(24.dp),
-                            )
-                        },
-                        count = commentCount,
-                        onClick = {},
-                        enabled = false,
-                    )
                 }
             }
         }
     }
-}
-
-@Composable
-private fun BottomSocialChip(
-    icon: @Composable () -> Unit,
-    count: Int,
-    onClick: () -> Unit,
-    enabled: Boolean,
-) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 6.dp),
-    ) {
-        icon()
-        if (count > 0) {
-            Spacer(modifier = Modifier.width(2.dp))
-            Text(
-                text = formatSocialCount(count),
-                fontSize = 13.sp,
-                color = XhsTextPrimary,
-                fontWeight = FontWeight.Medium,
-            )
-        }
-    }
-}
-
-private fun formatSocialCount(count: Int): String = when {
-    count <= 0 -> ""
-    count < 10000 -> count.toString()
-    else -> String.format("%.1fw", count / 10000f)
 }
 
 fun formatRelativeTime(iso: String): String {

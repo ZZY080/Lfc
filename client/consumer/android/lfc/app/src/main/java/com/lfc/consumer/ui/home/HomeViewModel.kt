@@ -809,6 +809,7 @@ class HomeViewModel(
                     isPostLoading = false,
                     isPostCommentsLoading = false,
                 )
+                updatePostViewCount(post.id, post.viewCount)
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isPostLoading = false,
@@ -871,10 +872,24 @@ class HomeViewModel(
         }
     }
 
+    private fun updatePostViewCount(postId: Int, viewCount: Int) {
+        fun mapPost(item: PostDto) = if (item.id == postId) item.copy(viewCount = viewCount) else item
+        val current = _uiState.value
+        _uiState.value = current.copy(
+            feed = current.feed.copy(posts = current.feed.posts.map(::mapPost)),
+            search = current.search.copy(posts = current.search.posts.map(::mapPost)),
+            profileNotes = current.profileNotes.map(::mapPost),
+            myPosts = current.myPosts.map(::mapPost),
+            profileFavoritePosts = current.profileFavoritePosts.map(::mapPost),
+            profileLikedPosts = current.profileLikedPosts.map(::mapPost),
+        )
+    }
+
     private fun updatePostSocialState(postId: Int, state: PostSocialStateDto) {
         val current = _uiState.value
         val post = current.selectedPost?.takeIf { it.id == postId }
             ?: current.feed.posts.find { it.id == postId }
+            ?: current.search.posts.find { it.id == postId }
             ?: current.profileNotes.find { it.id == postId }
             ?: current.profileFavoritePosts.find { it.id == postId }
             ?: current.profileLikedPosts.find { it.id == postId }
@@ -903,8 +918,9 @@ class HomeViewModel(
         fun mapPost(item: PostDto) = if (item.id == postId) item.withSocialState() else item
 
         val updatedPost = post?.withSocialState()
-        val next = _uiState.value.copy(
+        _uiState.value = _uiState.value.copy(
             feed = current.feed.copy(posts = current.feed.posts.map(::mapPost)),
+            search = current.search.copy(posts = current.search.posts.map(::mapPost)),
             profileNotes = current.profileNotes.map(::mapPost),
             myPosts = current.myPosts.map(::mapPost),
             profileFavoritePosts = if (updatedPost != null) {
@@ -918,18 +934,23 @@ class HomeViewModel(
                 current.profileLikedPosts.map(::mapPost)
             },
         )
-        _uiState.value = next
     }
+
+    private fun librarySortKey(savedAt: String?, createdAt: String): String = savedAt ?: createdAt
 
     private fun syncPostLibraryList(
         list: List<PostDto>,
         post: PostDto,
         include: Boolean,
     ): List<PostDto> = when {
-        include -> if (list.any { it.id == post.id }) {
-            list.map { if (it.id == post.id) post else it }
-        } else {
-            listOf(post) + list
+        include -> {
+            val next = post.copy(savedAt = post.savedAt ?: java.time.Instant.now().toString())
+            val merged = if (list.any { it.id == post.id }) {
+                list.map { if (it.id == post.id) next else it }
+            } else {
+                listOf(next) + list
+            }
+            merged.sortedByDescending { librarySortKey(it.savedAt, it.createdAt) }
         }
         else -> list.filter { it.id != post.id }
     }
@@ -991,6 +1012,7 @@ class HomeViewModel(
         val activity = current.selectedActivity?.takeIf { it.id == activityId }
             ?: current.activities.find { it.id == activityId }
             ?: current.activityFeed.activities.find { it.id == activityId }
+            ?: current.search.activities.find { it.id == activityId }
             ?: current.profileActivities.find { it.id == activityId }
             ?: current.profileFavoriteActivities.find { it.id == activityId }
             ?: current.profileLikedActivities.find { it.id == activityId }
@@ -1023,6 +1045,9 @@ class HomeViewModel(
             activityFeed = current.activityFeed.copy(
                 activities = current.activityFeed.activities.map(::mapActivity),
             ),
+            search = current.search.copy(
+                activities = current.search.activities.map(::mapActivity),
+            ),
             profileActivities = current.profileActivities.map(::mapActivity),
             profileFavoriteActivities = if (updatedActivity != null) {
                 syncActivityLibraryList(current.profileFavoriteActivities, updatedActivity, state.isFavorited)
@@ -1042,10 +1067,14 @@ class HomeViewModel(
         activity: ActivityDto,
         include: Boolean,
     ): List<ActivityDto> = when {
-        include -> if (list.any { it.id == activity.id }) {
-            list.map { if (it.id == activity.id) activity else it }
-        } else {
-            listOf(activity) + list
+        include -> {
+            val next = activity.copy(savedAt = activity.savedAt ?: java.time.Instant.now().toString())
+            val merged = if (list.any { it.id == activity.id }) {
+                list.map { if (it.id == activity.id) next else it }
+            } else {
+                listOf(next) + list
+            }
+            merged.sortedByDescending { librarySortKey(it.savedAt, it.createdAt) }
         }
         else -> list.filter { it.id != activity.id }
     }

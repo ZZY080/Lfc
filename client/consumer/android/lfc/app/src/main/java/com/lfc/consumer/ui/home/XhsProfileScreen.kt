@@ -166,8 +166,8 @@ fun buildProfileLibraryFeed(
         activities.map { ProfileLibraryFeedItem.ActivityItem(it) })
         .sortedByDescending { item ->
             when (item) {
-                is ProfileLibraryFeedItem.PostItem -> item.post.createdAt
-                is ProfileLibraryFeedItem.ActivityItem -> item.activity.createdAt
+                is ProfileLibraryFeedItem.PostItem -> item.post.savedAt ?: item.post.createdAt
+                is ProfileLibraryFeedItem.ActivityItem -> item.activity.savedAt ?: item.activity.createdAt
             }
         }
 }
@@ -187,6 +187,7 @@ private fun profileTabsFor(mode: XhsProfileMode): List<ProfileTabItem> = when (m
         ProfileTabItem("笔记", 0),
         ProfileTabItem("活动", 1),
         ProfileTabItem("收藏", PROFILE_FAVORITES_TAB),
+        ProfileTabItem("赞", PROFILE_LIKES_TAB),
     )
 }
 

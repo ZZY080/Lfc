@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { ActivityLikeEntity } from '@module/activity/entity/activity-like.entity';
@@ -65,6 +69,22 @@ export class ConsumerActivitySocialService {
     }));
   }
 
+  async countReceivedEngagement(authorId: number) {
+    const [likes, favorites] = await Promise.all([
+      this.likeRepository
+        .createQueryBuilder('like')
+        .innerJoin('like.activity', 'activity')
+        .where('activity.authorId = :authorId', { authorId })
+        .getCount(),
+      this.favoriteRepository
+        .createQueryBuilder('favorite')
+        .innerJoin('favorite.activity', 'activity')
+        .where('activity.authorId = :authorId', { authorId })
+        .getCount(),
+    ]);
+    return likes + favorites;
+  }
+
   private async countByActivityIds(
     repository: Repository<ActivityLikeEntity | ActivityFavoriteEntity>,
     activityIds: number[],
@@ -86,6 +106,12 @@ export class ConsumerActivitySocialService {
     );
   }
 
+  private assertActivitySocialAllowed(activity: ActivityEntity) {
+    if (activity.status !== ActivityStatus.APPROVED) {
+      throw new BadRequestException('仅已审核通过的活动可以点赞或收藏');
+    }
+  }
+
   async toggleLike(userId: number, activityId: number) {
     const activity = await this.activityRepository.findOne({
       where: { id: activityId },
@@ -100,6 +126,7 @@ export class ConsumerActivitySocialService {
     if (existing) {
       await this.likeRepository.remove(existing);
     } else {
+      this.assertActivitySocialAllowed(activity);
       await this.likeRepository.save(
         this.likeRepository.create({ activityId, userId }),
       );
@@ -129,6 +156,7 @@ export class ConsumerActivitySocialService {
     if (existing) {
       await this.favoriteRepository.remove(existing);
     } else {
+      this.assertActivitySocialAllowed(activity);
       await this.favoriteRepository.save(
         this.favoriteRepository.create({ activityId, userId }),
       );
@@ -152,15 +180,27 @@ export class ConsumerActivitySocialService {
   ) {
     const { page: normalizedPage, limit: normalizedLimit, skip } =
       normalizePagination(page, limit);
-    const [likes, total] = await this.likeRepository.findAndCount({
-      where: { userId },
-      order: { createdAt: 'DESC' },
-      skip,
-      take: normalizedLimit,
-    });
+
+    const baseQb = this.likeRepository
+      .createQueryBuilder('like')
+      .innerJoin('like.activity', 'activity')
+      .where('like.userId = :userId', { userId })
+      .andWhere('activity.status = :status', { status: ActivityStatus.APPROVED });
+
+    const total = await baseQb.getCount();
+    const likes = await baseQb
+      .orderBy('like.createdAt', 'DESC')
+      .skip(skip)
+      .take(normalizedLimit)
+      .getMany();
+
+    const savedAtMap = new Map(
+      likes.map((item) => [item.activityId, item.createdAt]),
+    );
     const items = await this.findActivitiesByIds(
       likes.map((item) => item.activityId),
       viewerId,
+      savedAtMap,
     );
     return createPaginatedResult(items, total, normalizedPage, normalizedLimit);
   }
@@ -173,20 +213,36 @@ export class ConsumerActivitySocialService {
   ) {
     const { page: normalizedPage, limit: normalizedLimit, skip } =
       normalizePagination(page, limit);
-    const [favorites, total] = await this.favoriteRepository.findAndCount({
-      where: { userId },
-      order: { createdAt: 'DESC' },
-      skip,
-      take: normalizedLimit,
-    });
+
+    const baseQb = this.favoriteRepository
+      .createQueryBuilder('favorite')
+      .innerJoin('favorite.activity', 'activity')
+      .where('favorite.userId = :userId', { userId })
+      .andWhere('activity.status = :status', { status: ActivityStatus.APPROVED });
+
+    const total = await baseQb.getCount();
+    const favorites = await baseQb
+      .orderBy('favorite.createdAt', 'DESC')
+      .skip(skip)
+      .take(normalizedLimit)
+      .getMany();
+
+    const savedAtMap = new Map(
+      favorites.map((item) => [item.activityId, item.createdAt]),
+    );
     const items = await this.findActivitiesByIds(
       favorites.map((item) => item.activityId),
       viewerId,
+      savedAtMap,
     );
     return createPaginatedResult(items, total, normalizedPage, normalizedLimit);
   }
 
-  private async findActivitiesByIds(activityIds: number[], viewerId?: number) {
+  private async findActivitiesByIds(
+    activityIds: number[],
+    viewerId?: number,
+    savedAtMap?: Map<number, Date>,
+  ) {
     if (activityIds.length === 0) {
       return [];
     }
@@ -207,6 +263,14 @@ export class ConsumerActivitySocialService {
           : false,
       }));
 
-    return this.enrichActivities(ordered, viewerId);
+    const enriched = await this.enrichActivities(ordered, viewerId);
+    if (!savedAtMap) {
+      return enriched;
+    }
+
+    return enriched.map((activity) => ({
+      ...activity,
+      savedAt: savedAtMap.get(activity.id)?.toISOString(),
+    }));
   }
 }

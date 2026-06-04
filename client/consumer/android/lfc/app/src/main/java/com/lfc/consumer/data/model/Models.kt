@@ -26,8 +26,10 @@ data class PostDto(
     val likeCount: Int = 0,
     val favoriteCount: Int = 0,
     val commentCount: Int = 0,
+    val viewCount: Int = 0,
     val isLiked: Boolean = false,
     val isFavorited: Boolean = false,
+    val savedAt: String? = null,
     val author: UserDto? = null,
     val product: PostProductDto? = null,
 )
@@ -185,6 +187,7 @@ data class ActivityDto(
     val favoriteCount: Int = 0,
     val isLiked: Boolean = false,
     val isFavorited: Boolean = false,
+    val savedAt: String? = null,
 )
 
 data class ActivityParticipantDto(

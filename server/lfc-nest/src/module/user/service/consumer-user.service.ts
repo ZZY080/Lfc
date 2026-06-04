@@ -166,6 +166,7 @@ export class ConsumerUserService {
       isSelf,
       page,
       limit,
+      viewerId,
     );
   }
 
@@ -358,6 +359,14 @@ export class ConsumerUserService {
   }
 
   private async countLikeAndFavorite(userId: number) {
+    const [postEngagement, activityEngagement] = await Promise.all([
+      this.countPostLikeAndFavorite(userId),
+      this.consumerActivitySocialService.countReceivedEngagement(userId),
+    ]);
+    return postEngagement + activityEngagement;
+  }
+
+  private async countPostLikeAndFavorite(userId: number) {
     const raw = await this.postRepository
       .createQueryBuilder('post')
       .select('COALESCE(SUM(post.likeCount), 0)', 'likes')

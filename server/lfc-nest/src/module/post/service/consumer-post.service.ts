@@ -177,6 +177,8 @@ export class ConsumerPostService {
     if (!post) {
       throw new NotFoundException('信息不存在');
     }
+    await this.postRepository.increment({ id }, 'viewCount', 1);
+    post.viewCount = (post.viewCount ?? 0) + 1;
     const [enriched] = await this.enrichPostsWithProduct([post], userId);
     return enriched;
   }
@@ -218,13 +220,17 @@ export class ConsumerPostService {
   }
 
   async remove(userId: number, id: number) {
-    const post = await this.findOne(id);
+    const post = await this.postRepository.findOne({
+      where: { id },
+      relations: ['author'],
+    });
+    if (!post) {
+      throw new NotFoundException('信息不存在');
+    }
     if (post.authorId !== userId) {
       throw new ForbiddenException('无权删除该信息');
     }
-    await this.postRepository.remove(
-      await this.postRepository.findOneOrFail({ where: { id } }),
-    );
+    await this.postRepository.remove(post);
     return { message: '删除成功' };
   }
 
