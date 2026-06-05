@@ -68,6 +68,8 @@ fun ActivityFeedScreen(
     onLoadMore: () -> Unit,
     onJoin: (Int) -> Unit,
     onActivityClick: (Int) -> Unit,
+    isPaymentProcessing: Boolean = false,
+    payingActivityId: Int? = null,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -82,6 +84,8 @@ fun ActivityFeedScreen(
             onLoadMore = onLoadMore,
             onJoin = onJoin,
             onActivityClick = onActivityClick,
+            isPaymentProcessing = isPaymentProcessing,
+            payingActivityId = payingActivityId,
             modifier = Modifier.fillMaxSize(),
         )
     }
@@ -95,6 +99,8 @@ private fun ActivityFeedContent(
     onLoadMore: () -> Unit,
     onJoin: (Int) -> Unit,
     onActivityClick: (Int) -> Unit,
+    isPaymentProcessing: Boolean,
+    payingActivityId: Int?,
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
@@ -173,8 +179,11 @@ private fun ActivityFeedContent(
                 }
                 else -> {
                     items(feedState.activities, key = { it.id }) { activity ->
+                        val isJoinBusy = isPaymentProcessing &&
+                            (payingActivityId == null || payingActivityId == activity.id)
                         ActivityCard(
                             activity = activity,
+                            isJoinBusy = isJoinBusy,
                             onClick = { onActivityClick(activity.id) },
                             onJoin = { onJoin(activity.id) },
                         )
@@ -215,6 +224,7 @@ private fun ActivityFeedContent(
 @Composable
 private fun ActivityCard(
     activity: ActivityDto,
+    isJoinBusy: Boolean,
     onClick: () -> Unit,
     onJoin: () -> Unit,
 ) {
@@ -414,7 +424,7 @@ private fun ActivityCard(
                     }
                     Button(
                         onClick = onJoin,
-                        enabled = !activity.isJoined,
+                        enabled = !activity.isJoined && !isJoinBusy,
                         colors = ButtonDefaults.buttonColors(
                             containerColor = if (activity.isJoined) Color(0xFFE8E8E8) else XhsRed,
                             disabledContainerColor = Color(0xFFE8E8E8),
@@ -423,12 +433,20 @@ private fun ActivityCard(
                         shape = RoundedCornerShape(20.dp),
                         modifier = Modifier.height(38.dp),
                     ) {
-                        Text(
-                            text = joinLabel,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (activity.isJoined) XhsTextSecondary else Color.White,
-                        )
+                        if (isJoinBusy && !activity.isJoined) {
+                            CircularProgressIndicator(
+                                color = Color.White,
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                            )
+                        } else {
+                            Text(
+                                text = joinLabel,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (activity.isJoined) XhsTextSecondary else Color.White,
+                            )
+                        }
                     }
                 }
             }

@@ -10,6 +10,21 @@ import {
 } from 'class-validator';
 import { PaymentOrderTab } from '@shared/enum/payment.enum';
 
+export class PaymentTransactionListQuerySchema {
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(30)
+  limit?: number;
+}
+
 export class PaymentOrderListQuerySchema {
   @IsOptional()
   @IsEnum(PaymentOrderTab)

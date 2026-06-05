@@ -17,6 +17,7 @@ import {
   ApplyAfterSalesBodySchema,
   CreateOrderReviewBodySchema,
   PaymentOrderListQuerySchema,
+  PaymentTransactionListQuerySchema,
 } from '@module/payment/schema/payment-order.schema';
 import { PaymentOrderTab } from '@shared/enum/payment.enum';
 
@@ -52,6 +53,20 @@ export class ConsumerPaymentController {
   @UseGuards(JwtAuthGuard)
   getOrderTabCounts(@CurrentUser('userId') userId: number) {
     return this.consumerPaymentService.getOrderTabCounts(userId);
+  }
+
+  /** 支付/退款流水（买家视角） */
+  @Get('transactions')
+  @UseGuards(JwtAuthGuard)
+  listTransactions(
+    @CurrentUser('userId') userId: number,
+    @Query() query: PaymentTransactionListQuerySchema,
+  ) {
+    return this.consumerPaymentService.listTransactions(
+      userId,
+      query.page,
+      query.limit,
+    );
   }
 
   /** 创建活动报名 C2C 支付订单（支付给活动发起人） */

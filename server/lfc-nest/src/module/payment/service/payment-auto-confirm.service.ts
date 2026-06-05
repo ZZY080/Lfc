@@ -24,6 +24,10 @@ export class PaymentAutoConfirmService implements OnModuleInit, OnModuleDestroy 
 
   private async runAutoConfirm() {
     try {
+      const expiredCount = await this.paymentOrderService.closeExpiredPendingOrders();
+      if (expiredCount > 0) {
+        this.logger.log(`已关闭超时待支付订单 ${expiredCount} 笔`);
+      }
       const confirmCount = await this.paymentOrderService.processAutoConfirmOrders();
       if (confirmCount > 0) {
         this.logger.log(`自动确认收货并完成分账 ${confirmCount} 笔`);

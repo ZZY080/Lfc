@@ -70,6 +70,7 @@ fun ActivityDetailScreen(
     activity: ActivityDto?,
     isLoading: Boolean,
     isJoining: Boolean,
+    isPaymentProcessing: Boolean = false,
     currentUserId: Int? = null,
     isAuthorFollowing: Boolean = false,
     onBack: () -> Unit,
@@ -178,6 +179,7 @@ fun ActivityDetailScreen(
                         isJoined = activity.isJoined,
                         isSelf = isSelf,
                         isJoining = isJoining,
+                        isPaymentProcessing = isPaymentProcessing,
                         likeCount = activity.likeCount,
                         favoriteCount = activity.favoriteCount,
                         isLiked = activity.isLiked,
@@ -501,6 +503,7 @@ private fun ActivityDetailBottomBar(
     isJoined: Boolean,
     isSelf: Boolean,
     isJoining: Boolean,
+    isPaymentProcessing: Boolean,
     likeCount: Int,
     favoriteCount: Int,
     isLiked: Boolean,
@@ -510,6 +513,7 @@ private fun ActivityDetailBottomBar(
     onFavorite: () -> Unit,
     onJoin: () -> Unit,
 ) {
+    val joinBusy = isJoining || isPaymentProcessing
     val isPaid = fee?.toDoubleOrNull()?.let { it > 0 } == true
     val joinLabel = when {
         isSelf -> "我的活动"
@@ -569,7 +573,7 @@ private fun ActivityDetailBottomBar(
                 },
                 count = likeCount,
                 onClick = onLike,
-                enabled = !isSocialSubmitting && !isJoining,
+                enabled = !isSocialSubmitting && !joinBusy,
             )
             XhsDetailSocialChip(
                 icon = {
@@ -582,18 +586,18 @@ private fun ActivityDetailBottomBar(
                 },
                 count = favoriteCount,
                 onClick = onFavorite,
-                enabled = !isSocialSubmitting && !isJoining,
+                enabled = !isSocialSubmitting && !joinBusy,
             )
             Spacer(modifier = Modifier.width(8.dp))
             Button(
                 onClick = onJoin,
-                enabled = !isJoining && !isSelf && !isJoined,
+                enabled = !joinBusy && !isSelf && !isJoined,
                 colors = buttonColors,
                 shape = RoundedCornerShape(22.dp),
                 modifier = Modifier.height(44.dp),
                 elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp),
             ) {
-                if (isJoining) {
+                if (joinBusy) {
                     CircularProgressIndicator(
                         color = Color.White,
                         modifier = Modifier.size(20.dp),

@@ -1,4 +1,5 @@
 import { PaymentChannel } from '@shared/enum/payment.enum';
+import { PaymentTransactionType } from '@shared/enum/payment.enum';
 import { AlipayAppPayResult } from '@integration/alipay/dto/alipay.dto';
 
 export interface CreatePaymentResultDto {
@@ -83,4 +84,21 @@ export interface CreateOrderReviewDto {
 
 export interface ApplyAfterSalesDto {
   reason: string;
+}
+
+export interface PaymentTransactionItemDto {
+  txKey: string;
+  type: PaymentTransactionType;
+  typeLabel: string;
+  direction: 'OUT' | 'IN';
+  amount: string;
+  outTradeNo: string;
+  tradeNo: string | null;
+  subject: string;
+  bizType: string;
+  bizId: number;
+  bizTitle: string;
+  coverImage: string | null;
+  counterpartyName: string;
+  occurredAt: Date;
 }

@@ -129,6 +129,18 @@ export class ConsumerPostProductService {
   }
 
   async completePurchaseAfterPayment(userId: number, postId: number) {
+    const updateResult = await this.productRepository.update(
+      { postId, status: PostProductStatus.ON_SALE },
+      {
+        status: PostProductStatus.SOLD,
+        buyerId: userId,
+        soldAt: new Date(),
+      },
+    );
+    if (updateResult.affected && updateResult.affected > 0) {
+      return this.requireProductByPost(postId);
+    }
+
     const product = await this.productRepository.findOne({
       where: { postId },
       relations: ['post'],
@@ -136,23 +148,13 @@ export class ConsumerPostProductService {
     if (!product) {
       throw new NotFoundException('商品不存在');
     }
-    if (product.post.authorId === userId) {
-      throw new BadRequestException('不能购买自己的商品');
+    if (product.status === PostProductStatus.SOLD && product.buyerId === userId) {
+      return product;
     }
     if (product.status === PostProductStatus.SOLD) {
-      if (product.buyerId === userId) {
-        return product;
-      }
       throw new ConflictException('商品已售出');
     }
-    if (product.status !== PostProductStatus.ON_SALE) {
-      throw new BadRequestException('商品当前不可购买');
-    }
-
-    product.status = PostProductStatus.SOLD;
-    product.buyerId = userId;
-    product.soldAt = new Date();
-    return this.productRepository.save(product);
+    throw new BadRequestException('商品当前不可购买');
   }
 
   async revertPurchaseAfterRefund(postId: number, buyerId: number) {

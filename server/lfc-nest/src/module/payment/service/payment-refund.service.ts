@@ -73,6 +73,7 @@ export class PaymentRefundService {
     await this.revertFulfillment(order);
 
     order.status = PaymentOrderStatus.REFUNDED;
+    order.activeKey = null;
     await this.paymentOrderRepository.save(order);
 
     this.logger.log(

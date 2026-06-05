@@ -325,6 +325,32 @@ data class OrderCenterUiState(
     val actingOutTradeNo: String? = null,
 )
 
+data class PaymentTransactionItemDto(
+    val txKey: String,
+    val type: String,
+    val typeLabel: String,
+    val direction: String,
+    val amount: String,
+    val outTradeNo: String,
+    val tradeNo: String? = null,
+    val subject: String,
+    val bizType: String,
+    val bizId: Int,
+    val bizTitle: String,
+    val coverImage: String? = null,
+    val counterpartyName: String,
+    val occurredAt: String,
+)
+
+data class PaymentTransactionLedgerUiState(
+    val items: List<PaymentTransactionItemDto> = emptyList(),
+    val page: Int = 1,
+    val hasMore: Boolean = true,
+    val isRefreshing: Boolean = false,
+    val isLoadingMore: Boolean = false,
+    val isInitialLoading: Boolean = false,
+)
+
 data class ProfileSearchUiState(
     val keyword: String = "",
     val results: List<PostDto> = emptyList(),

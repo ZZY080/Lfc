@@ -9,9 +9,11 @@ import { ConsumerPaymentService } from '@module/payment/service/consumer-payment
 import { PaymentOrderService } from '@module/payment/service/payment-order.service';
 import { PaymentPayoutService } from '@module/payment/service/payment-payout.service';
 import { PaymentFeeService } from '@module/payment/service/payment-fee.service';
+import { PaymentOrderLockService } from '@module/payment/service/payment-order-lock.service';
 import { PaymentRefundService } from '@module/payment/service/payment-refund.service';
 import { PaymentAutoConfirmService } from '@module/payment/service/payment-auto-confirm.service';
 import { PaymentOrderQueryService } from '@module/payment/service/payment-order-query.service';
+import { PaymentTransactionQueryService } from '@module/payment/service/payment-transaction-query.service';
 import { PaymentReviewService } from '@module/payment/service/payment-review.service';
 import { PaymentAfterSalesService } from '@module/payment/service/payment-after-sales.service';
 import { ActivityModule } from '@module/activity/activity.module';
@@ -41,10 +43,12 @@ import { ActivityEntity } from '@module/activity/entity/activity.entity';
   controllers: [ConsumerPaymentController],
   providers: [
     PaymentOrderService,
+    PaymentOrderLockService,
     PaymentPayoutService,
     PaymentFeeService,
     PaymentAutoConfirmService,
     PaymentOrderQueryService,
+    PaymentTransactionQueryService,
     PaymentReviewService,
     PaymentAfterSalesService,
     PaymentRefundService,

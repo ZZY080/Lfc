@@ -33,6 +33,11 @@ export enum PaymentBizType {
   POST_PRODUCT_PURCHASE = 'POST_PRODUCT_PURCHASE',
 }
 
+export enum PaymentTransactionType {
+  PAYMENT = 'PAYMENT',
+  REFUND = 'REFUND',
+}
+
 export enum PaymentChannel {
   ALIPAY = 'ALIPAY',
   WECHAT = 'WECHAT',

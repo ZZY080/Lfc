@@ -7,6 +7,7 @@ import {
   ManyToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
+  VersionColumn,
 } from 'typeorm';
 import {
   PaymentBizType,
@@ -23,6 +24,11 @@ export class PaymentOrderEntity {
   @Index({ unique: true })
   @Column({ name: 'out_trade_no', length: 64 })
   outTradeNo: string;
+
+  /** 非终态订单唯一键，终态时置空 */
+  @Index({ unique: true })
+  @Column({ name: 'active_key', type: 'varchar', length: 128, nullable: true })
+  activeKey: string | null;
 
   @Column({ name: 'user_id' })
   userId: number;
@@ -76,6 +82,15 @@ export class PaymentOrderEntity {
   @Column({ name: 'trade_no', type: 'varchar', length: 64, nullable: true })
   tradeNo: string | null;
 
+  @Index({ unique: true })
+  @Column({
+    name: 'channel_trade_key',
+    type: 'varchar',
+    length: 96,
+    nullable: true,
+  })
+  channelTradeKey: string | null;
+
   @Column({ name: 'paid_at', type: 'datetime', nullable: true })
   paidAt: Date | null;
 
@@ -94,4 +109,7 @@ export class PaymentOrderEntity {
 
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
+
+  @VersionColumn({ default: 0 })
+  version: number;
 }

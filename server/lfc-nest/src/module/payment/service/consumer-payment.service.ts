@@ -16,6 +16,7 @@ import { UserAlipayService } from '@module/user/service/user-alipay.service';
 import { CreatePaymentResultDto } from '@module/payment/dto/payment.dto';
 import { PaymentFeeService } from '@module/payment/service/payment-fee.service';
 import { PaymentOrderQueryService } from '@module/payment/service/payment-order-query.service';
+import { PaymentTransactionQueryService } from '@module/payment/service/payment-transaction-query.service';
 import { PaymentReviewService } from '@module/payment/service/payment-review.service';
 import { PaymentAfterSalesService } from '@module/payment/service/payment-after-sales.service';
 import { PaymentOrderTab } from '@shared/enum/payment.enum';
@@ -29,6 +30,7 @@ export class ConsumerPaymentService {
   constructor(
     private readonly paymentOrderService: PaymentOrderService,
     private readonly paymentOrderQueryService: PaymentOrderQueryService,
+    private readonly paymentTransactionQueryService: PaymentTransactionQueryService,
     private readonly paymentReviewService: PaymentReviewService,
     private readonly paymentAfterSalesService: PaymentAfterSalesService,
     private readonly alipayService: AlipayService,
@@ -55,26 +57,13 @@ export class ConsumerPaymentService {
     await this.consumerActivityService.assertCanJoin(userId, activityId);
     await this.userAlipayService.assertCanReceive(activity.authorId, '活动发起人');
 
-    const pendingOrder = await this.paymentOrderService.findPendingOrder({
-      userId,
-      bizType: PaymentBizType.ACTIVITY_JOIN,
-      bizId: activityId,
-      channel,
-    });
-    if (pendingOrder) {
-      return this.buildPaymentResult(pendingOrder);
-    }
-
     const amount = fee.toFixed(2);
-    const outTradeNo = this.paymentOrderService.generateOutTradeNo(userId);
     const subject = `活动报名-${activity.title}`.slice(0, 120);
 
-    const order = await this.paymentOrderService.createPendingOrder({
-      outTradeNo,
+    const order = await this.paymentOrderService.acquireActivityJoinOrder({
       userId,
+      activityId,
       payeeId: activity.authorId,
-      bizType: PaymentBizType.ACTIVITY_JOIN,
-      bizId: activityId,
       amount,
       subject,
       channel,
@@ -99,25 +88,12 @@ export class ConsumerPaymentService {
     const amount = this.consumerPostProductService.getProductPrice(product).toFixed(2);
     await this.userAlipayService.assertCanReceive(post.authorId, '卖家');
 
-    const pendingOrder = await this.paymentOrderService.findPendingOrder({
-      userId,
-      bizType: PaymentBizType.POST_PRODUCT_PURCHASE,
-      bizId: postId,
-      channel,
-    });
-    if (pendingOrder) {
-      return this.buildPaymentResult(pendingOrder);
-    }
-
-    const outTradeNo = this.paymentOrderService.generateOutTradeNo(userId);
     const subject = `闲置转卖-${post.title}`.slice(0, 120);
 
-    const order = await this.paymentOrderService.createPendingOrder({
-      outTradeNo,
+    const order = await this.paymentOrderService.acquirePostProductOrder({
       userId,
+      postId,
       payeeId: post.authorId,
-      bizType: PaymentBizType.POST_PRODUCT_PURCHASE,
-      bizId: postId,
       amount,
       subject,
       channel,
@@ -190,6 +166,14 @@ export class ConsumerPaymentService {
 
   getPaymentConfig() {
     return this.paymentFeeService.getPublicConfig();
+  }
+
+  listTransactions(userId: number, page?: number, limit?: number) {
+    return this.paymentTransactionQueryService.listForUser(
+      userId,
+      page,
+      limit,
+    );
   }
 
   private buildPaymentResult(

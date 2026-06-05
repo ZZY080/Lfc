@@ -16,6 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -50,6 +51,7 @@ fun SettingsScreen(
     platformFeeRateLabel: String? = null,
     onBack: () -> Unit,
     onOpenOrders: () -> Unit,
+    onOpenTransactions: () -> Unit,
     onPrivacyChange: (
         showCommentsPublic: Boolean,
         showFavoritesPublic: Boolean,
@@ -125,6 +127,35 @@ fun SettingsScreen(
                         )
                         Text(
                             text = "我的订单",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
+                            color = XhsTextPrimary,
+                            modifier = Modifier.padding(start = 12.dp),
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color.White,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = onOpenTransactions),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            Icons.Default.AccountBalanceWallet,
+                            contentDescription = null,
+                            tint = XhsRed,
+                            modifier = Modifier.size(22.dp),
+                        )
+                        Text(
+                            text = "收支流水",
                             fontWeight = FontWeight.Bold,
                             fontSize = 15.sp,
                             color = XhsTextPrimary,

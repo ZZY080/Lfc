@@ -150,6 +150,7 @@ fun ProductDetailScreen(
     post: PostDto?,
     isLoading: Boolean,
     isPurchasing: Boolean,
+    isPaymentProcessing: Boolean = false,
     isConfirmingReceipt: Boolean = false,
     platformFeeRateLabel: String? = null,
     autoConfirmDays: Int = 7,
@@ -288,6 +289,7 @@ fun ProductDetailScreen(
                         product = product,
                         isSelf = isSelf,
                         isPurchasing = isPurchasing,
+                        isPaymentProcessing = isPaymentProcessing,
                         isConfirmingReceipt = isConfirmingReceipt,
                         purchaseOrder = purchaseOrder,
                         onContactSeller = onContactSeller,
@@ -585,12 +587,14 @@ private fun ProductDetailBottomBar(
     product: PostProductDto,
     isSelf: Boolean,
     isPurchasing: Boolean,
+    isPaymentProcessing: Boolean,
     isConfirmingReceipt: Boolean,
     purchaseOrder: PaymentOrderDetailDto?,
     onContactSeller: () -> Unit,
     onPurchase: () -> Unit,
     onConfirmReceipt: () -> Unit,
 ) {
+    val purchaseBusy = isPurchasing || isPaymentProcessing
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shadowElevation = 8.dp,
@@ -680,7 +684,7 @@ private fun ProductDetailBottomBar(
 
                     Button(
                         onClick = onPurchase,
-                        enabled = !isPurchasing,
+                        enabled = !purchaseBusy,
                         modifier = Modifier
                             .weight(1.15f)
                             .height(44.dp),
@@ -688,7 +692,7 @@ private fun ProductDetailBottomBar(
                         shape = RoundedCornerShape(22.dp),
                         elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp),
                     ) {
-                        if (isPurchasing) {
+                        if (purchaseBusy) {
                             CircularProgressIndicator(
                                 color = Color.White,
                                 modifier = Modifier.size(20.dp),

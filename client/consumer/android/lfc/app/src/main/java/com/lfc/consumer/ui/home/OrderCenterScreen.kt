@@ -76,7 +76,9 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 @Composable
 fun OrderCenterScreen(
     state: OrderCenterUiState,
+    isPaymentProcessing: Boolean = false,
     onBack: () -> Unit,
+    onOpenTransactions: () -> Unit = {},
     onTabSelected: (String) -> Unit,
     onRefresh: () -> Unit,
     onLoadMore: () -> Unit,
@@ -145,7 +147,16 @@ fun OrderCenterScreen(
                 fontWeight = FontWeight.Bold,
                 fontSize = 17.sp,
                 color = XhsTextPrimary,
+                modifier = Modifier.weight(1f),
             )
+            TextButton(onClick = onOpenTransactions) {
+                Text(
+                    text = "收支流水",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = XhsRed,
+                )
+            }
         }
         HorizontalDivider(color = XhsDivider)
 
@@ -227,6 +238,8 @@ fun OrderCenterScreen(
                             OrderListItemCard(
                                 order = order,
                                 isActing = state.actingOutTradeNo == order.outTradeNo,
+                                isPaymentBlocked = isPaymentProcessing &&
+                                    state.actingOutTradeNo != order.outTradeNo,
                                 onClick = { onOrderClick(order) },
                                 onPay = { onPayOrder(order) },
                                 onCancel = { onCancelOrder(order) },
@@ -363,6 +376,7 @@ fun OrderCenterScreen(
 private fun OrderListItemCard(
     order: PaymentOrderListItemDto,
     isActing: Boolean,
+    isPaymentBlocked: Boolean,
     onClick: () -> Unit,
     onPay: () -> Unit,
     onCancel: () -> Unit,
@@ -462,6 +476,7 @@ private fun OrderListItemCard(
                 if (order.canPay) {
                     OutlinedButton(
                         onClick = onCancel,
+                        enabled = !isPaymentBlocked,
                         shape = RoundedCornerShape(18.dp),
                         modifier = Modifier.height(34.dp),
                         contentPadding = PaddingValues(horizontal = 14.dp),
@@ -471,6 +486,7 @@ private fun OrderListItemCard(
                     Spacer(modifier = Modifier.width(8.dp))
                     Button(
                         onClick = onPay,
+                        enabled = !isPaymentBlocked,
                         colors = ButtonDefaults.buttonColors(containerColor = XhsRed),
                         shape = RoundedCornerShape(18.dp),
                         modifier = Modifier.height(34.dp),

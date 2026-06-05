@@ -74,6 +74,36 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     await this.client.expire(key, ttlSeconds);
   }
 
+  /** SET key value EX ttl NX — 成功返回 true */
+  async setNx(
+    key: string,
+    value: string,
+    ttlSeconds: number,
+  ): Promise<boolean> {
+    const result = await this.client.set(key, value, 'EX', ttlSeconds, 'NX');
+    return result === 'OK';
+  }
+
+  /** 获取分布式锁，成功返回 token，失败返回 null */
+  async acquireLock(key: string, ttlSeconds: number): Promise<string | null> {
+    const token = `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+    const acquired = await this.setNx(key, token, ttlSeconds);
+    return acquired ? token : null;
+  }
+
+  /** 仅持有 token 时可释放锁 */
+  async releaseLock(key: string, token: string): Promise<boolean> {
+    const script = `
+      if redis.call("get", KEYS[1]) == ARGV[1] then
+        return redis.call("del", KEYS[1])
+      else
+        return 0
+      end
+    `;
+    const result = await this.client.eval(script, 1, key, token);
+    return Number(result) === 1;
+  }
+
   getClient(): Redis {
     return this.client;
   }

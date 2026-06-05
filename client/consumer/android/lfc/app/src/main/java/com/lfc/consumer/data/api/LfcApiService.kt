@@ -35,6 +35,7 @@ import com.lfc.consumer.data.model.PaymentOrderDetailDto
 import com.lfc.consumer.data.model.PaymentOrderListItemDto
 import com.lfc.consumer.data.model.PaymentOrderResultDto
 import com.lfc.consumer.data.model.PaymentOrderTabCountsDto
+import com.lfc.consumer.data.model.PaymentTransactionItemDto
 import com.lfc.consumer.data.model.CreateOrderReviewRequest
 import com.lfc.consumer.data.model.ApplyAfterSalesRequest
 import com.lfc.consumer.data.model.UpdateActivityRequest
@@ -289,6 +290,12 @@ interface LfcApiService {
 
     @GET("consumer/payment/orders/counts")
     suspend fun getPaymentOrderTabCounts(): PaymentOrderTabCountsDto
+
+    @GET("consumer/payment/transactions")
+    suspend fun getPaymentTransactions(
+        @Query("page") page: Int,
+        @Query("limit") limit: Int,
+    ): PaginatedResponse<PaymentTransactionItemDto>
 
     @POST("consumer/payment/orders/{outTradeNo}/cancel")
     suspend fun cancelPaymentOrder(@Path("outTradeNo") outTradeNo: String): PaymentOrderDetailDto

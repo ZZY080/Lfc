@@ -180,6 +180,8 @@ fun HomeScreen(
                             onActivityClick = { activityId ->
                                 navController.navigate("activity_detail/$activityId")
                             },
+                            isPaymentProcessing = uiState.isPaymentProcessing,
+                            payingActivityId = uiState.payingActivityId,
                             modifier = Modifier
                                 .fillMaxSize()
                                 .padding(bottom = padding.calculateBottomPadding()),
@@ -416,6 +418,7 @@ fun HomeScreen(
                     post = uiState.selectedPost,
                     isLoading = uiState.isPostLoading,
                     isPurchasing = uiState.isPurchasingProduct,
+                    isPaymentProcessing = uiState.isPaymentProcessing,
                     isConfirmingReceipt = uiState.isConfirmingReceipt,
                     platformFeeRateLabel = uiState.paymentConfig?.platformFeeRateLabel,
                     autoConfirmDays = uiState.paymentConfig?.autoConfirmDays ?: 7,
@@ -518,6 +521,9 @@ fun HomeScreen(
                     onOpenOrders = {
                         navController.navigate("orders")
                     },
+                    onOpenTransactions = {
+                        navController.navigate("payment_transactions")
+                    },
                     onPrivacyChange = viewModel::updatePrivacySettings,
                     onAuthorizeAlipay = viewModel::authorizeAlipayAccount,
                     onBindAlipay = viewModel::bindAlipayAccount,
@@ -531,7 +537,11 @@ fun HomeScreen(
                 }
                 OrderCenterScreen(
                     state = uiState.orderCenter,
+                    isPaymentProcessing = uiState.isPaymentProcessing,
                     onBack = { navController.popBackStack() },
+                    onOpenTransactions = {
+                        navController.navigate("payment_transactions")
+                    },
                     onTabSelected = viewModel::selectOrderTab,
                     onRefresh = { viewModel.loadOrders(refresh = true) },
                     onLoadMore = viewModel::loadMoreOrders,
@@ -546,6 +556,18 @@ fun HomeScreen(
                     onConfirmReceipt = viewModel::confirmReceiptFromList,
                     onReviewOrder = viewModel::submitOrderReview,
                     onApplyAfterSales = viewModel::applyOrderAfterSales,
+                )
+            }
+
+            composable("payment_transactions") {
+                LaunchedEffect(Unit) {
+                    viewModel.refreshPaymentTransactionLedger()
+                }
+                PaymentTransactionLedgerScreen(
+                    state = uiState.paymentTransactionLedger,
+                    onBack = { navController.popBackStack() },
+                    onRefresh = { viewModel.refreshPaymentTransactionLedger() },
+                    onLoadMore = viewModel::loadMorePaymentTransactions,
                 )
             }
 
@@ -586,6 +608,7 @@ fun HomeScreen(
                     activity = uiState.selectedActivity,
                     isLoading = uiState.isActivityLoading,
                     isJoining = uiState.isJoiningActivity,
+                    isPaymentProcessing = uiState.isPaymentProcessing,
                     isSocialSubmitting = uiState.isActivitySocialSubmitting,
                     currentUserId = uiState.myProfile?.id,
                     isAuthorFollowing = uiState.detailAuthorFollowing ?: false,
