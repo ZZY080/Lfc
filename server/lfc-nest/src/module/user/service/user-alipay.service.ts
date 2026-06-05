@@ -46,7 +46,7 @@ export class UserAlipayService {
     user.alipayRealName = oauthUser.nickName;
     user.alipayBoundAt = new Date();
 
-    await this.tryBindRoyaltyRelation(user);
+    await this.bindRoyaltyRelation(user);
 
     await this.userRepository.save(user);
     return this.toBindingDto(user);
@@ -68,7 +68,7 @@ export class UserAlipayService {
     user.alipayRealName = alipayRealName?.trim() || null;
     user.alipayBoundAt = new Date();
 
-    await this.tryBindRoyaltyRelation(user);
+    await this.bindRoyaltyRelation(user);
 
     await this.userRepository.save(user);
 
@@ -91,6 +91,11 @@ export class UserAlipayService {
     if (!user.alipayUserId && !user.alipayLoginId) {
       throw new BadRequestException(
         `${roleLabel}需先在设置中授权绑定支付宝收款账号`,
+      );
+    }
+    if (!user.alipayRoyaltyBoundAt) {
+      throw new BadRequestException(
+        `${roleLabel}的支付宝分账关系未建立，请在设置中重新绑定收款账号`,
       );
     }
     return user;
@@ -136,19 +141,6 @@ export class UserAlipayService {
         }
       }
       throw error;
-    }
-  }
-
-  private async tryBindRoyaltyRelation(user: UserEntity) {
-    if (!this.alipayService.isConfigured()) {
-      return;
-    }
-    try {
-      await this.bindRoyaltyRelation(user);
-    } catch (error) {
-      this.logger.warn(
-        `支付宝分账关系绑定失败，将跳过并保留授权绑定。userId=${user.id}, error=${String(error)}`,
-      );
     }
   }
 

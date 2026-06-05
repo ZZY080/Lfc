@@ -10,12 +10,10 @@ import { PaymentAfterSalesEntity } from '@module/payment/entity/payment-after-sa
 import { PaymentOrderEntity } from '@module/payment/entity/payment-order.entity';
 import {
   PaymentAfterSalesStatus,
-  PaymentBizType,
   PaymentOrderStatus,
 } from '@shared/enum/payment.enum';
 import { ApplyAfterSalesBodySchema } from '@module/payment/schema/payment-order.schema';
-import { ConsumerPostProductService } from '@module/post/service/consumer-post-product.service';
-import { ConsumerActivityService } from '@module/activity/service/consumer-activity.service';
+import { PaymentRefundService } from '@module/payment/service/payment-refund.service';
 
 @Injectable()
 export class PaymentAfterSalesService {
@@ -24,8 +22,7 @@ export class PaymentAfterSalesService {
     private readonly afterSalesRepository: Repository<PaymentAfterSalesEntity>,
     @InjectRepository(PaymentOrderEntity)
     private readonly paymentOrderRepository: Repository<PaymentOrderEntity>,
-    private readonly consumerPostProductService: ConsumerPostProductService,
-    private readonly consumerActivityService: ConsumerActivityService,
+    private readonly paymentRefundService: PaymentRefundService,
   ) {}
 
   async apply(userId: number, outTradeNo: string, body: ApplyAfterSalesBodySchema) {
@@ -98,12 +95,10 @@ export class PaymentAfterSalesService {
       throw new BadRequestException('未支付订单请直接取消');
     }
     if (
-      order.bizType === PaymentBizType.POST_PRODUCT_PURCHASE &&
-      order.status === PaymentOrderStatus.PAID
+      order.status === PaymentOrderStatus.PAID ||
+      order.status === PaymentOrderStatus.CONFIRMED ||
+      order.status === PaymentOrderStatus.SETTLED
     ) {
-      return;
-    }
-    if (order.status === PaymentOrderStatus.SETTLED) {
       return;
     }
     throw new BadRequestException('当前订单状态不可申请售后');
@@ -117,17 +112,7 @@ export class PaymentAfterSalesService {
     await this.afterSalesRepository.save(afterSales);
 
     try {
-      if (order.bizType === PaymentBizType.POST_PRODUCT_PURCHASE) {
-        await this.consumerPostProductService.revertPurchaseAfterRefund(
-          order.bizId,
-          order.userId,
-        );
-      } else if (order.bizType === PaymentBizType.ACTIVITY_JOIN) {
-        await this.consumerActivityService.leave(order.userId, order.bizId);
-      }
-
-      order.status = PaymentOrderStatus.REFUNDED;
-      await this.paymentOrderRepository.save(order);
+      await this.paymentRefundService.refundOrder(order, afterSales.reason);
 
       afterSales.status = PaymentAfterSalesStatus.REFUNDED;
       afterSales.processedAt = new Date();

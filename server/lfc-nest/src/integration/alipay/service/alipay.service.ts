@@ -27,6 +27,18 @@ export interface AlipayRoyaltySettleResult {
   settleNo: string | null;
 }
 
+export interface AlipayRefundRoyaltyParam {
+  payeeUserId?: string | null;
+  payeeLoginId?: string | null;
+  amount: string;
+}
+
+export interface AlipayRefundResult {
+  outRequestNo: string;
+  tradeNo: string | null;
+  refundAmount: string;
+}
+
 @Injectable()
 export class AlipayService {
   private readonly logger = new Logger(AlipayService.name);
@@ -214,6 +226,66 @@ export class AlipayService {
       outRequestNo: input.outRequestNo,
       tradeNo: input.tradeNo,
       settleNo: payload.settle_no ? String(payload.settle_no) : null,
+    };
+  }
+
+  async refundTrade(input: {
+    outTradeNo: string;
+    tradeNo?: string | null;
+    refundAmount: string;
+    outRequestNo: string;
+    refundReason?: string;
+    royaltyReturn?: AlipayRefundRoyaltyParam | null;
+  }): Promise<AlipayRefundResult> {
+    this.assertConfigured();
+
+    const bizContent: Record<string, unknown> = {
+      out_trade_no: input.outTradeNo,
+      refund_amount: input.refundAmount,
+      out_request_no: input.outRequestNo,
+    };
+    if (input.tradeNo) {
+      bizContent.trade_no = input.tradeNo;
+    }
+    if (input.refundReason?.trim()) {
+      bizContent.refund_reason = input.refundReason.trim().slice(0, 256);
+    }
+    if (input.royaltyReturn) {
+      const royaltyItem: Record<string, string> = {
+        royalty_type: 'transfer',
+        amount: input.royaltyReturn.amount,
+        desc: '退款分账回退'.slice(0, 64),
+      };
+      if (input.royaltyReturn.payeeUserId) {
+        royaltyItem.trans_out_type = 'userId';
+        royaltyItem.trans_out = input.royaltyReturn.payeeUserId;
+      } else if (input.royaltyReturn.payeeLoginId) {
+        royaltyItem.trans_out_type = 'loginName';
+        royaltyItem.trans_out = input.royaltyReturn.payeeLoginId;
+      } else {
+        throw new BadRequestException('缺少分账回退收款方信息');
+      }
+      bizContent.refund_royalty_parameters = [royaltyItem];
+    }
+
+    const payload = await executeAlipayOpenApi({
+      gateway: this.alipayConfig.gateway,
+      appId: this.alipayConfig.appId,
+      privateKey: this.alipayConfig.privateKey,
+      method: 'alipay.trade.refund',
+      bizContent,
+    });
+
+    const code = String(payload.code ?? '');
+    if (code !== '10000') {
+      const subMsg = String(payload.sub_msg ?? payload.msg ?? '退款失败');
+      throw new BadRequestException(subMsg);
+    }
+
+    return {
+      outRequestNo: input.outRequestNo,
+      tradeNo: payload.trade_no ? String(payload.trade_no) : input.tradeNo ?? null,
+      refundAmount: input.refundAmount,
     };
   }
 

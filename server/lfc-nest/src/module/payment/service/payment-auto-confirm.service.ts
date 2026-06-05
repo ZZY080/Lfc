@@ -24,12 +24,16 @@ export class PaymentAutoConfirmService implements OnModuleInit, OnModuleDestroy 
 
   private async runAutoConfirm() {
     try {
-      const count = await this.paymentOrderService.processAutoConfirmOrders();
-      if (count > 0) {
-        this.logger.log(`自动确认收货并完成分账 ${count} 笔`);
+      const confirmCount = await this.paymentOrderService.processAutoConfirmOrders();
+      if (confirmCount > 0) {
+        this.logger.log(`自动确认收货并完成分账 ${confirmCount} 笔`);
+      }
+      const retryCount = await this.paymentOrderService.retryPendingSettlement();
+      if (retryCount > 0) {
+        this.logger.log(`分账重试成功 ${retryCount} 笔`);
       }
     } catch (error) {
-      this.logger.warn(`自动确认收货任务失败: ${String(error)}`);
+      this.logger.warn(`自动确认/分账任务失败: ${String(error)}`);
     }
   }
 }

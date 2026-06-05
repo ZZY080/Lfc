@@ -31,21 +31,21 @@ export class PaymentPayoutService {
     private readonly paymentFeeService: PaymentFeeService,
   ) {}
 
-  async settlePaymentOrder(order: PaymentOrderEntity): Promise<void> {
+  async settlePaymentOrder(order: PaymentOrderEntity): Promise<boolean> {
     if (order.status === PaymentOrderStatus.SETTLED) {
-      return;
+      return true;
     }
 
     const existing = await this.payoutRepository.findOne({
       where: { paymentOrderId: order.id },
     });
     if (existing?.status === PaymentPayoutStatus.SUCCESS) {
-      return;
+      return true;
     }
 
     if (!order.tradeNo) {
       await this.saveFailedPayout(order, existing, '缺少支付宝交易号，无法分账');
-      return;
+      return false;
     }
 
     const payee = await this.userRepository.findOne({
@@ -56,7 +56,7 @@ export class PaymentPayoutService {
         `分账失败: 收款方未绑定支付宝 payeeId=${order.payeeId} order=${order.outTradeNo}`,
       );
       await this.saveFailedPayout(order, existing, '收款方未绑定支付宝账号');
-      return;
+      return false;
     }
 
     const settlement = this.paymentFeeService.calculateSettlement(order.amount);
@@ -93,6 +93,7 @@ export class PaymentPayoutService {
       payout.errorMessage = null;
       payout.settledAt = new Date();
       await this.payoutRepository.save(payout);
+      return true;
     } catch (error) {
       const message =
         error instanceof BadRequestException

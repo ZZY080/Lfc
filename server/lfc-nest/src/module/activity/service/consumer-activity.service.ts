@@ -318,6 +318,13 @@ export class ConsumerActivityService {
     return value.toFixed(2);
   }
 
+  async isJoined(userId: number, activityId: number): Promise<boolean> {
+    const participant = await this.participantRepository.findOne({
+      where: { activityId, userId },
+    });
+    return Boolean(participant);
+  }
+
   async leave(userId: number, activityId: number) {
     const participant = await this.participantRepository.findOne({
       where: { activityId, userId },

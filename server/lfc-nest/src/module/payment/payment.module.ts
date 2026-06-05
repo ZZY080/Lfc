@@ -9,6 +9,7 @@ import { ConsumerPaymentService } from '@module/payment/service/consumer-payment
 import { PaymentOrderService } from '@module/payment/service/payment-order.service';
 import { PaymentPayoutService } from '@module/payment/service/payment-payout.service';
 import { PaymentFeeService } from '@module/payment/service/payment-fee.service';
+import { PaymentRefundService } from '@module/payment/service/payment-refund.service';
 import { PaymentAutoConfirmService } from '@module/payment/service/payment-auto-confirm.service';
 import { PaymentOrderQueryService } from '@module/payment/service/payment-order-query.service';
 import { PaymentReviewService } from '@module/payment/service/payment-review.service';
@@ -46,6 +47,7 @@ import { ActivityEntity } from '@module/activity/entity/activity.entity';
     PaymentOrderQueryService,
     PaymentReviewService,
     PaymentAfterSalesService,
+    PaymentRefundService,
     ConsumerPaymentService,
   ],
   exports: [
