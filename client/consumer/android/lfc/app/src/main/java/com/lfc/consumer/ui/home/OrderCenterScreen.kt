@@ -402,7 +402,7 @@ private fun OrderListItemCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = if (order.bizType == "ACTIVITY_JOIN") "校园活动" else "闲置商品",
+                    text = paymentBizTypeLabel(order.bizType),
                     fontSize = 12.sp,
                     color = XhsTextSecondary,
                 )
@@ -416,7 +416,7 @@ private fun OrderListItemCard(
                     if (order.fulfillment != null) {
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "· 履约保障",
+                            text = "· ${fulfillmentBadgeLabel(order.bizType)}",
                             fontSize = 11.sp,
                             color = Color(0xFF1677FF),
                         )

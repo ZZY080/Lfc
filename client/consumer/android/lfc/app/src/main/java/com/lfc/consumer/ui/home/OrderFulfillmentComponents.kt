@@ -60,7 +60,7 @@ fun OrderCenterFulfillmentBanner(modifier: Modifier = Modifier) {
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "闲置商品：支付后平台托管，确认收货后分账给卖家；活动报名：锁定名额，活动结束后分账给发起人。未履约均可申请退款。",
+                    text = "闲置商品：支付后平台托管，确认收货后分账给卖家；活动报名：锁定名额，活动结束后分账给发起人；增值服务（擦亮/推广）：支付后立即生效，无需等待履约。",
                     fontSize = 12.sp,
                     lineHeight = 18.sp,
                     color = XhsTextSecondary,
@@ -166,28 +166,32 @@ fun OrderBizMetaLines(
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier) {
-        if (order.bizType == "ACTIVITY_JOIN") {
-            order.bizStartTime?.let { start ->
-                order.bizEndTime?.let { end ->
+        if (order.bizType == "ACTIVITY_JOIN" || order.bizType == "ACTIVITY_PROMOTE") {
+            if (order.bizType == "ACTIVITY_JOIN") {
+                order.bizStartTime?.let { start ->
+                    order.bizEndTime?.let { end ->
+                        Text(
+                            text = "活动时间 ${formatOrderDateTime(start)} ~ ${formatOrderDateTime(end)}",
+                            fontSize = 12.sp,
+                            color = XhsTextSecondary,
+                            lineHeight = 18.sp,
+                        )
+                    }
+                }
+                order.bizLocation?.takeIf { it.isNotBlank() }?.let { location ->
+                    Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "活动时间 ${formatOrderDateTime(start)} ~ ${formatOrderDateTime(end)}",
+                        text = "活动地点 $location",
                         fontSize = 12.sp,
                         color = XhsTextSecondary,
-                        lineHeight = 18.sp,
+                        maxLines = 1,
                     )
                 }
             }
-            order.bizLocation?.takeIf { it.isNotBlank() }?.let { location ->
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "活动地点 $location",
-                    fontSize = 12.sp,
-                    color = XhsTextSecondary,
-                    maxLines = 1,
-                )
-            }
         }
-        order.autoConfirmAt?.takeIf { order.status == "PAID" }?.let { deadline ->
+        order.autoConfirmAt?.takeIf {
+            order.status == "PAID" && requiresBuyerFulfillment(order.bizType)
+        }?.let { deadline ->
             Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = if (order.bizType == "ACTIVITY_JOIN") {

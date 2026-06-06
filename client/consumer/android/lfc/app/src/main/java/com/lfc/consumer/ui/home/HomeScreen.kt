@@ -551,6 +551,8 @@ fun HomeScreen(
                         when (order.bizType) {
                             "POST_PRODUCT_PURCHASE" -> navController.navigate("product_detail/${order.bizId}")
                             "ACTIVITY_JOIN" -> navController.navigate("activity_detail/${order.bizId}")
+                            "POST_BOOST" -> navController.navigate("post_detail/${order.bizId}")
+                            "ACTIVITY_PROMOTE" -> navController.navigate("activity_detail/${order.bizId}")
                         }
                     },
                     onPayOrder = viewModel::payOrderFromList,

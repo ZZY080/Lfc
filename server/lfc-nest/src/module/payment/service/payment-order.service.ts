@@ -833,6 +833,7 @@ export class PaymentOrderService {
 
     order.status = PaymentOrderStatus.SETTLED;
     order.settledAt = new Date();
+    order.activeKey = null;
     await this.paymentOrderRepository.save(order);
     return true;
   }

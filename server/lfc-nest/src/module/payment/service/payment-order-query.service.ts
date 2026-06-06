@@ -27,6 +27,10 @@ import {
   buildOrderFulfillmentGuarantee,
   canApplyActivityAfterSales,
 } from '@module/payment/util/payment-fulfillment.util';
+import {
+  isPlatformDirectRevenueBizType,
+  supportsOrderReviewAndAfterSales,
+} from '@module/payment/util/payment-order.util';
 
 @Injectable()
 export class PaymentOrderQueryService {
@@ -129,6 +133,12 @@ export class PaymentOrderQueryService {
         qb.andWhere('paymentOrder.status = :status', {
           status: PaymentOrderStatus.SETTLED,
         })
+          .andWhere('paymentOrder.bizType IN (:...reviewBizTypes)', {
+            reviewBizTypes: [
+              PaymentBizType.POST_PRODUCT_PURCHASE,
+              PaymentBizType.ACTIVITY_JOIN,
+            ],
+          })
           .leftJoin(
             'payment_order_review',
             'orderReview',
@@ -169,12 +179,28 @@ export class PaymentOrderQueryService {
     }
 
     const orderIds = orders.map((item) => item.id);
-    const postIds = orders
-      .filter((item) => item.bizType === PaymentBizType.POST_PRODUCT_PURCHASE)
-      .map((item) => item.bizId);
-    const activityIds = orders
-      .filter((item) => item.bizType === PaymentBizType.ACTIVITY_JOIN)
-      .map((item) => item.bizId);
+    const postIds = [
+      ...new Set(
+        orders
+          .filter(
+            (item) =>
+              item.bizType === PaymentBizType.POST_PRODUCT_PURCHASE ||
+              item.bizType === PaymentBizType.POST_BOOST,
+          )
+          .map((item) => item.bizId),
+      ),
+    ];
+    const activityIds = [
+      ...new Set(
+        orders
+          .filter(
+            (item) =>
+              item.bizType === PaymentBizType.ACTIVITY_JOIN ||
+              item.bizType === PaymentBizType.ACTIVITY_PROMOTE,
+          )
+          .map((item) => item.bizId),
+      ),
+    ];
     const payeeIds = [...new Set(orders.map((item) => item.payeeId))];
 
     const [posts, activities, payees, reviews, afterSalesList] =
@@ -216,14 +242,17 @@ export class PaymentOrderQueryService {
 
     return orders.map((order) => {
       const post =
-        order.bizType === PaymentBizType.POST_PRODUCT_PURCHASE
+        order.bizType === PaymentBizType.POST_PRODUCT_PURCHASE ||
+        order.bizType === PaymentBizType.POST_BOOST
           ? postMap.get(order.bizId)
           : undefined;
       const activity =
-        order.bizType === PaymentBizType.ACTIVITY_JOIN
+        order.bizType === PaymentBizType.ACTIVITY_JOIN ||
+        order.bizType === PaymentBizType.ACTIVITY_PROMOTE
           ? activityMap.get(order.bizId)
           : undefined;
       const payee = payeeMap.get(order.payeeId);
+      const isPlatformRevenue = isPlatformDirectRevenueBizType(order.bizType);
       const afterSales = afterSalesMap.get(order.id);
       const hasReview = reviewSet.has(order.id);
       const canConfirmReceipt =
@@ -232,12 +261,12 @@ export class PaymentOrderQueryService {
         order.status === PaymentOrderStatus.PAID;
       const canPay = order.status === PaymentOrderStatus.PENDING;
       const canReview =
-        order.status === PaymentOrderStatus.SETTLED && !hasReview;
-      const canApplyAfterSales = this.canApplyAfterSales(
-        order,
-        afterSales,
-        activity,
-      );
+        order.status === PaymentOrderStatus.SETTLED &&
+        !hasReview &&
+        supportsOrderReviewAndAfterSales(order.bizType);
+      const canApplyAfterSales =
+        supportsOrderReviewAndAfterSales(order.bizType) &&
+        this.canApplyAfterSales(order, afterSales, activity);
       const fulfillment = buildOrderFulfillmentGuarantee({
         order,
         post,
@@ -258,9 +287,11 @@ export class PaymentOrderQueryService {
         coverImage:
           post?.images?.[0] ?? activity?.images?.[0] ?? null,
         payeeId: order.payeeId,
-        payeeName: payee?.nickname?.trim() || `同学${order.payeeId}`,
+        payeeName: isPlatformRevenue
+          ? '莲峰校园平台'
+          : payee?.nickname?.trim() || `同学${order.payeeId}`,
         payeeRoleLabel: buildCounterpartyRoleLabel(order.bizType),
-        payeeAvatarUrl: payee?.avatarUrl ?? null,
+        payeeAvatarUrl: isPlatformRevenue ? null : payee?.avatarUrl ?? null,
         platformFee: order.platformFee ?? null,
         payeeAmount: order.payeeAmount ?? null,
         paidAt: order.paidAt,
@@ -344,12 +375,18 @@ export class PaymentOrderQueryService {
       case PaymentOrderStatus.PENDING:
         return '待付款';
       case PaymentOrderStatus.PAID:
+        if (isPlatformDirectRevenueBizType(order.bizType)) {
+          return '生效中';
+        }
         return order.bizType === PaymentBizType.POST_PRODUCT_PURCHASE
           ? '待收货'
           : '待履约';
       case PaymentOrderStatus.CONFIRMED:
         return '待分账';
       case PaymentOrderStatus.SETTLED:
+        if (isPlatformDirectRevenueBizType(order.bizType)) {
+          return '已完成';
+        }
         return order.bizType === PaymentBizType.ACTIVITY_JOIN
           ? '已完成'
           : '交易完成';

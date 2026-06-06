@@ -190,7 +190,7 @@ private fun PaymentTransactionItemCard(item: PaymentTransactionItemDto) {
     val isRefund = item.type.equals("REFUND", ignoreCase = true)
     val amountPrefix = if (item.direction.equals("IN", ignoreCase = true)) "+" else "-"
     val amountColor = if (isRefund) Color(0xFF1F8A4C) else XhsRed
-    val bizLabel = if (item.bizType == "ACTIVITY_JOIN") "校园活动" else "闲置商品"
+    val bizLabel = paymentBizTypeLabel(item.bizType)
 
     Surface(
         modifier = Modifier.fillMaxWidth(),

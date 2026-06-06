@@ -7,6 +7,7 @@ import {
   PaymentBizType,
   PaymentOrderStatus,
 } from '@shared/enum/payment.enum';
+import { isPlatformDirectRevenueBizType } from '@module/payment/util/payment-order.util';
 
 export interface FulfillmentStepDto {
   label: string;
@@ -53,6 +54,61 @@ export function buildOrderFulfillmentGuarantee(input: {
   const { order, post, activity, afterSales, autoConfirmDays } = input;
   const isProduct = order.bizType === PaymentBizType.POST_PRODUCT_PURCHASE;
   const isActivity = order.bizType === PaymentBizType.ACTIVITY_JOIN;
+  const isPostBoost = order.bizType === PaymentBizType.POST_BOOST;
+  const isActivityPromote = order.bizType === PaymentBizType.ACTIVITY_PROMOTE;
+
+  if (isPostBoost || isActivityPromote) {
+    const promotionSteps: [string, string, string, string] = isPostBoost
+      ? ['支付下单', '立即擦亮', '优先展示', '订单完成']
+      : ['支付下单', '立即推广', '优先展示', '订单完成'];
+    const bizTitle = post?.title ?? activity?.title ?? order.subject;
+
+    switch (order.status) {
+      case PaymentOrderStatus.PENDING:
+        return {
+          title: '服务说明',
+          summary: isPostBoost
+            ? '支付成功后笔记立即进入擦亮状态，无需等待确认收货'
+            : '支付成功后活动立即进入推广位，无需等待活动结束',
+          steps: buildSteps(promotionSteps, 0),
+        };
+      case PaymentOrderStatus.PAID:
+        return {
+          title: '服务说明',
+          summary: isPostBoost
+            ? `正在生效：${bizTitle}`
+            : `正在推广：${bizTitle}`,
+          steps: buildSteps(promotionSteps, 2),
+        };
+      case PaymentOrderStatus.SETTLED:
+        return {
+          title: '服务说明',
+          summary: isPostBoost
+            ? '擦亮已生效，可在笔记详情查看推广状态'
+            : '推广已生效，可在活动 Tab 查看推广标识',
+          steps: buildSteps(promotionSteps, 4),
+        };
+      case PaymentOrderStatus.REFUNDED:
+        return {
+          title: '服务说明',
+          summary: '订单已退款，擦亮/推广未生效或已撤销',
+          steps: buildSteps(promotionSteps, 4),
+        };
+      case PaymentOrderStatus.CLOSED:
+        return {
+          title: '服务说明',
+          summary: '订单已关闭，未发生实际扣款',
+          steps: buildSteps(promotionSteps, 0),
+        };
+      default:
+        return {
+          title: '服务说明',
+          summary: bizTitle,
+          steps: buildSteps(promotionSteps, 0),
+        };
+    }
+  }
+
   const productSteps: [string, string, string, string] = [
     '支付下单',
     '平台托管',
@@ -173,6 +229,9 @@ export function buildOrderFulfillmentGuarantee(input: {
 }
 
 export function buildCounterpartyRoleLabel(bizType: PaymentBizType): string {
+  if (isPlatformDirectRevenueBizType(bizType)) {
+    return '收款方';
+  }
   return bizType === PaymentBizType.ACTIVITY_JOIN ? '发起人' : '卖家';
 }
 

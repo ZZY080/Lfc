@@ -13,6 +13,7 @@ import {
 import { PostEntity } from '@module/post/entity/post.entity';
 import { ActivityEntity } from '@module/activity/entity/activity.entity';
 import { UserEntity } from '@module/user/entity/user.entity';
+import { isPlatformDirectRevenueBizType } from '@module/payment/util/payment-order.util';
 
 interface PaymentTransactionRow {
   tx_type: PaymentTransactionType;
@@ -133,12 +134,28 @@ export class PaymentTransactionQueryService {
       return [];
     }
 
-    const postIds = rows
-      .filter((item) => item.biz_type === PaymentBizType.POST_PRODUCT_PURCHASE)
-      .map((item) => item.biz_id);
-    const activityIds = rows
-      .filter((item) => item.biz_type === PaymentBizType.ACTIVITY_JOIN)
-      .map((item) => item.biz_id);
+    const postIds = [
+      ...new Set(
+        rows
+          .filter(
+            (item) =>
+              item.biz_type === PaymentBizType.POST_PRODUCT_PURCHASE ||
+              item.biz_type === PaymentBizType.POST_BOOST,
+          )
+          .map((item) => item.biz_id),
+      ),
+    ];
+    const activityIds = [
+      ...new Set(
+        rows
+          .filter(
+            (item) =>
+              item.biz_type === PaymentBizType.ACTIVITY_JOIN ||
+              item.biz_type === PaymentBizType.ACTIVITY_PROMOTE,
+          )
+          .map((item) => item.biz_id),
+      ),
+    ];
     const payeeIds = [...new Set(rows.map((item) => item.payee_id))];
 
     const [posts, activities, payees] = await Promise.all([
@@ -159,14 +176,17 @@ export class PaymentTransactionQueryService {
 
     return rows.map((row) => {
       const post =
-        row.biz_type === PaymentBizType.POST_PRODUCT_PURCHASE
+        row.biz_type === PaymentBizType.POST_PRODUCT_PURCHASE ||
+        row.biz_type === PaymentBizType.POST_BOOST
           ? postMap.get(row.biz_id)
           : undefined;
       const activity =
-        row.biz_type === PaymentBizType.ACTIVITY_JOIN
+        row.biz_type === PaymentBizType.ACTIVITY_JOIN ||
+        row.biz_type === PaymentBizType.ACTIVITY_PROMOTE
           ? activityMap.get(row.biz_id)
           : undefined;
       const payee = payeeMap.get(row.payee_id);
+      const isPlatformRevenue = isPlatformDirectRevenueBizType(row.biz_type);
       const isRefund = row.tx_type === PaymentTransactionType.REFUND;
 
       return {
@@ -182,7 +202,9 @@ export class PaymentTransactionQueryService {
         bizId: row.biz_id,
         bizTitle: post?.title ?? activity?.title ?? row.subject,
         coverImage: post?.images?.[0] ?? activity?.images?.[0] ?? null,
-        counterpartyName: payee?.nickname?.trim() || `同学${row.payee_id}`,
+        counterpartyName: isPlatformRevenue
+          ? '莲峰校园平台'
+          : payee?.nickname?.trim() || `同学${row.payee_id}`,
         occurredAt: row.occurred_at,
       };
     });

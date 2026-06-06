@@ -44,3 +44,18 @@ export function shouldEnableAlipayRoyalty(bizType: PaymentBizType): boolean {
       bizType === PaymentBizType.ACTIVITY_JOIN)
   );
 }
+
+/** 需要买家等待确认收货 / 活动履约的 C2C 订单 */
+export function requiresBuyerFulfillment(bizType: PaymentBizType): boolean {
+  return (
+    bizType === PaymentBizType.POST_PRODUCT_PURCHASE ||
+    bizType === PaymentBizType.ACTIVITY_JOIN
+  );
+}
+
+/** 支持评价 / 售后的 C2C 订单 */
+export function supportsOrderReviewAndAfterSales(
+  bizType: PaymentBizType,
+): boolean {
+  return requiresBuyerFulfillment(bizType);
+}
