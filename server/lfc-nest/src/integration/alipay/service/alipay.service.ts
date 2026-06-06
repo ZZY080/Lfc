@@ -360,6 +360,31 @@ export class AlipayService {
     return { orderStr };
   }
 
+  /** 主动查询 App 支付订单状态（notify 不可达时的补偿） */
+  async queryAppPayTrade(outTradeNo: string): Promise<{
+    tradeStatus: string | null;
+    tradeNo: string | null;
+    totalAmount: string | null;
+  }> {
+    this.assertConfigured();
+    const payload = await executeAlipayOpenApi({
+      gateway: this.alipayConfig.gateway,
+      appId: this.alipayConfig.appId,
+      privateKey: this.alipayConfig.privateKey,
+      method: 'alipay.trade.query',
+      bizContent: { out_trade_no: outTradeNo },
+    });
+    const code = String(payload.code ?? '');
+    if (code !== '10000') {
+      return { tradeStatus: null, tradeNo: null, totalAmount: null };
+    }
+    return {
+      tradeStatus: payload.trade_status ? String(payload.trade_status) : null,
+      tradeNo: payload.trade_no ? String(payload.trade_no) : null,
+      totalAmount: payload.total_amount ? String(payload.total_amount) : null,
+    };
+  }
+
   verifyNotify(payload: AlipayNotifyPayload): boolean {
     this.assertConfigured();
     try {

@@ -2,8 +2,10 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
+  forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -19,6 +21,7 @@ import { NotificationService } from '@module/message/service/notification.servic
 import { UserAlipayService } from '@module/user/service/user-alipay.service';
 import { UserEntity } from '@module/user/entity/user.entity';
 import { ConsumerActivitySocialService } from '@module/activity/service/consumer-activity-social.service';
+import { ConsumerPromotionService } from '@module/promotion/service/consumer-promotion.service';
 import {
   createPaginatedResult,
   normalizePagination,
@@ -39,6 +42,8 @@ export class ConsumerActivityService {
     private readonly notificationService: NotificationService,
     private readonly userAlipayService: UserAlipayService,
     private readonly consumerActivitySocialService: ConsumerActivitySocialService,
+    @Inject(forwardRef(() => ConsumerPromotionService))
+    private readonly consumerPromotionService: ConsumerPromotionService,
   ) {}
 
   async create(userId: number, body: CreateActivityBodyDto) {
@@ -71,23 +76,69 @@ export class ConsumerActivityService {
     const activities = await this.activityRepository.find({
       where: { status: ActivityStatus.APPROVED },
       relations: ['author', 'participants', 'participants.user'],
-      order: { startTime: 'ASC' },
+      order: { createdAt: 'DESC' },
     });
-    return this.consumerActivitySocialService.enrichActivities(activities);
+    const enriched = await this.consumerActivitySocialService.enrichActivities(activities);
+    return this.consumerPromotionService.attachActivitiesPromotion(enriched);
   }
 
   async findApprovedPaginated(page?: number, limit?: number, userId?: number) {
-    const { page: normalizedPage, limit: normalizedLimit, skip } =
-      normalizePagination(page, limit);
-    const [activities, total] = await this.activityRepository.findAndCount({
-      where: { status: ActivityStatus.APPROVED },
-      relations: ['author', 'participants', 'participants.user'],
-      order: { startTime: 'ASC' },
-      skip,
-      take: normalizedLimit,
-    });
+    const { page: normalizedPage, limit: normalizedLimit } = normalizePagination(
+      page,
+      limit,
+    );
+    const maxSlots = (await this.consumerPromotionService.getPublicConfig())
+      .activityMaxFeedSlots;
+    const activePromotedCount =
+      await this.consumerPromotionService.countActivePromotedActivities();
+    const firstPagePromotedCount =
+      this.consumerPromotionService.getFirstPagePromotedSlotCount(
+        activePromotedCount,
+      );
+
+    let promotedActivities: ActivityEntity[] = [];
+    if (normalizedPage === 1 && firstPagePromotedCount > 0) {
+      promotedActivities =
+        await this.consumerPromotionService.findActivePromotedActivities(
+          maxSlots,
+        );
+    }
+    const promotedIds = promotedActivities.map((item) => item.id);
+
+    const regularSkip =
+      normalizedPage <= 1
+        ? 0
+        : (normalizedPage - 1) * normalizedLimit - firstPagePromotedCount;
+    const regularTake =
+      normalizedPage === 1
+        ? Math.max(normalizedLimit - promotedActivities.length, 0)
+        : normalizedLimit;
+
+    const regularQb = this.activityRepository
+      .createQueryBuilder('activity')
+      .leftJoinAndSelect('activity.author', 'author')
+      .leftJoinAndSelect('activity.participants', 'participants')
+      .leftJoinAndSelect('participants.user', 'participantUser')
+      .where('activity.status = :status', { status: ActivityStatus.APPROVED });
+
+    if (promotedIds.length > 0) {
+      regularQb.andWhere('activity.id NOT IN (:...promotedIds)', { promotedIds });
+    }
+
+    const [regularActivities, totalRegular] = await regularQb
+      .orderBy('activity.createdAt', 'DESC')
+      .skip(Math.max(regularSkip, 0))
+      .take(regularTake)
+      .getManyAndCount();
+
+    const total = totalRegular + activePromotedCount;
+    const pageActivities =
+      normalizedPage === 1
+        ? [...promotedActivities, ...regularActivities]
+        : regularActivities;
+
     const items = await this.consumerActivitySocialService.enrichActivities(
-      activities.map((activity) => ({
+      pageActivities.map((activity) => ({
         ...activity,
         isJoined: userId
           ? activity.participants.some((item) => item.userId === userId)
@@ -95,8 +146,9 @@ export class ConsumerActivityService {
       })),
       userId,
     );
+
     return createPaginatedResult(
-      items,
+      this.consumerPromotionService.attachActivitiesPromotion(items, userId),
       total,
       normalizedPage,
       normalizedLimit,
@@ -182,7 +234,7 @@ export class ConsumerActivityService {
       [{ ...activity, isJoined }],
       userId,
     );
-    return enriched;
+    return this.consumerPromotionService.attachActivityPromotion(enriched, userId);
   }
 
   isUserJoined(activity: ActivityEntity, userId: number): boolean {

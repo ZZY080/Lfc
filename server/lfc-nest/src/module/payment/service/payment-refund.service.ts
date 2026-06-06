@@ -1,7 +1,9 @@
 import {
   BadRequestException,
+  Inject,
   Injectable,
   Logger,
+  forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -17,6 +19,7 @@ import {
 import { AlipayService } from '@integration/alipay/service/alipay.service';
 import { ConsumerPostProductService } from '@module/post/service/consumer-post-product.service';
 import { ConsumerActivityService } from '@module/activity/service/consumer-activity.service';
+import { ConsumerPromotionService } from '@module/promotion/service/consumer-promotion.service';
 import { UserEntity } from '@module/user/entity/user.entity';
 import { PostProductStatus } from '@shared/enum/product.enum';
 
@@ -34,6 +37,8 @@ export class PaymentRefundService {
     private readonly alipayService: AlipayService,
     private readonly consumerPostProductService: ConsumerPostProductService,
     private readonly consumerActivityService: ConsumerActivityService,
+    @Inject(forwardRef(() => ConsumerPromotionService))
+    private readonly consumerPromotionService: ConsumerPromotionService,
   ) {}
 
   async refundOrder(order: PaymentOrderEntity, reason: string): Promise<void> {
@@ -125,6 +130,26 @@ export class PaymentRefundService {
     }
     if (order.bizType === PaymentBizType.ACTIVITY_JOIN) {
       return this.consumerActivityService.isJoined(order.userId, order.bizId);
+    }
+    if (order.bizType === PaymentBizType.POST_BOOST) {
+      if (!order.paidAt) {
+        return false;
+      }
+      return this.consumerPromotionService.isPostBoostFulfilled(
+        order.userId,
+        order.bizId,
+        order.paidAt,
+      );
+    }
+    if (order.bizType === PaymentBizType.ACTIVITY_PROMOTE) {
+      if (!order.paidAt) {
+        return false;
+      }
+      return this.consumerPromotionService.isActivityPromoteFulfilled(
+        order.userId,
+        order.bizId,
+        order.paidAt,
+      );
     }
     return false;
   }

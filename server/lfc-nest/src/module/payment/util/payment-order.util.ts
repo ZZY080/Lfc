@@ -27,3 +27,20 @@ export const PAYMENT_PRODUCT_LOCK_TTL_SECONDS = 20 * 60;
 export const PAYMENT_CREATE_LOCK_TTL_SECONDS = 15;
 
 export const PAYMENT_NOTIFY_PROCESS_LOCK_TTL_SECONDS = 60;
+
+/** 增值服（擦亮/推广）：用户付给平台商户号，全额留商户账户，不走 C2C 分账 */
+export function isPlatformDirectRevenueBizType(bizType: PaymentBizType): boolean {
+  return (
+    bizType === PaymentBizType.POST_BOOST ||
+    bizType === PaymentBizType.ACTIVITY_PROMOTE
+  );
+}
+
+/** C2C 下单是否开启支付宝分账（闲置购买 / 活动报名） */
+export function shouldEnableAlipayRoyalty(bizType: PaymentBizType): boolean {
+  return (
+    !isPlatformDirectRevenueBizType(bizType) &&
+    (bizType === PaymentBizType.POST_PRODUCT_PURCHASE ||
+      bizType === PaymentBizType.ACTIVITY_JOIN)
+  );
+}

@@ -47,4 +47,21 @@ export class PostEntity {
 
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
+
+  /** 擦亮加权截止时间 */
+  @Column({ name: 'boosted_until', type: 'datetime', nullable: true })
+  boostedUntil: Date | null;
+
+  @Column({ name: 'last_boosted_at', type: 'datetime', nullable: true })
+  lastBoostedAt: Date | null;
+
+  /** 当前擦亮出价（元），用于推广位排序与竞价 */
+  @Column({
+    name: 'boost_bid_amount',
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    default: 0,
+  })
+  boostBidAmount: string;
 }

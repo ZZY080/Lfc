@@ -8,6 +8,7 @@ import {
   alipayConfiguration,
   wechatPayConfiguration,
   paymentConfiguration,
+  promotionConfiguration,
 } from '@config/configuration';
 import { MysqlModule } from '@integration/mysql/mysql.module';
 import { RedisModule } from '@integration/redis/redis.module';
@@ -20,6 +21,7 @@ import { AliyunModule } from '@integration/aliyun/aliyun.module';
 import { AlipayModule } from '@integration/alipay/alipay.module';
 import { WechatPayModule } from '@integration/wechat-pay/wechat-pay.module';
 import { PaymentModule } from '@module/payment/payment.module';
+import { PromotionModule } from '@module/promotion/promotion.module';
 
 @Module({
   imports: [
@@ -32,6 +34,7 @@ import { PaymentModule } from '@module/payment/payment.module';
         alipayConfiguration,
         wechatPayConfiguration,
         paymentConfiguration,
+        promotionConfiguration,
       ],
       envFilePath: `.env.${process.env.NODE_ENV}`,
     }),
@@ -55,6 +58,7 @@ import { PaymentModule } from '@module/payment/payment.module';
     MessageModule,
     UserModule,
     PaymentModule,
+    PromotionModule,
   ],
 })
 export class AppModule {}

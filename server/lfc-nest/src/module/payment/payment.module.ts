@@ -16,8 +16,10 @@ import { PaymentOrderQueryService } from '@module/payment/service/payment-order-
 import { PaymentTransactionQueryService } from '@module/payment/service/payment-transaction-query.service';
 import { PaymentReviewService } from '@module/payment/service/payment-review.service';
 import { PaymentAfterSalesService } from '@module/payment/service/payment-after-sales.service';
+import { PaymentCheckoutService } from '@module/payment/service/payment-checkout.service';
 import { ActivityModule } from '@module/activity/activity.module';
 import { PostModule } from '@module/post/post.module';
+import { PromotionModule } from '@module/promotion/promotion.module';
 import { AlipayModule } from '@integration/alipay/alipay.module';
 import { UserAlipayModule } from '@module/user/user-alipay.module';
 import { UserEntity } from '@module/user/entity/user.entity';
@@ -37,6 +39,7 @@ import { ActivityEntity } from '@module/activity/entity/activity.entity';
     ]),
     forwardRef(() => ActivityModule),
     forwardRef(() => PostModule),
+    forwardRef(() => PromotionModule),
     forwardRef(() => UserAlipayModule),
     forwardRef(() => AlipayModule),
   ],
@@ -52,12 +55,14 @@ import { ActivityEntity } from '@module/activity/entity/activity.entity';
     PaymentReviewService,
     PaymentAfterSalesService,
     PaymentRefundService,
+    PaymentCheckoutService,
     ConsumerPaymentService,
   ],
   exports: [
     PaymentOrderService,
     PaymentPayoutService,
     PaymentFeeService,
+    PaymentCheckoutService,
     ConsumerPaymentService,
   ],
 })

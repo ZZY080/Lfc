@@ -52,13 +52,65 @@ import androidx.compose.ui.unit.sp
 import com.lfc.consumer.ui.theme.XhsRed
 import com.lfc.consumer.ui.theme.XhsTextPrimary
 import com.lfc.consumer.ui.theme.XhsTextSecondary
+import java.time.Instant
+import java.time.LocalDateTime
+import java.time.OffsetDateTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 enum class CarouselIndicatorStyle {
     Dots,
     Counter,
 }
 
-fun formatXhsTime(iso: String): String = iso.replace("T", " ").take(19)
+private val apiLocalDateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd['T'][ ]HH:mm:ss")
+private val xhsDisplayFormatter =
+    DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").withZone(ZoneId.systemDefault())
+private val xhsDateFormatter =
+    DateTimeFormatter.ofPattern("yyyy-MM-dd").withZone(ZoneId.systemDefault())
+
+/** 解析后端 ISO 时间（含 Z / 偏移量 / 无时区字符串）为 Instant */
+fun parseApiInstant(iso: String): Instant? {
+    val trimmed = iso.trim()
+    if (trimmed.isEmpty()) return null
+    return try {
+        when {
+            trimmed.endsWith("Z", ignoreCase = true) -> Instant.parse(trimmed)
+            trimmed.length > 19 && (trimmed[19] == '+' || trimmed[19] == '-') ->
+                OffsetDateTime.parse(trimmed, DateTimeFormatter.ISO_OFFSET_DATE_TIME).toInstant()
+            else -> {
+                val normalized = trimmed.replace(" ", "T").substringBefore(".")
+                LocalDateTime.parse(normalized.take(19), apiLocalDateTimeFormatter)
+                    .atZone(ZoneId.of("Asia/Shanghai"))
+                    .toInstant()
+            }
+        }
+    } catch (_: Exception) {
+        null
+    }
+}
+
+fun formatXhsTime(iso: String): String {
+    val instant = parseApiInstant(iso)
+    return if (instant != null) {
+        xhsDisplayFormatter.format(instant)
+    } else {
+        iso.replace("T", " ").take(19)
+    }
+}
+
+fun formatRelativeTime(iso: String): String {
+    val instant = parseApiInstant(iso) ?: return formatXhsTime(iso).take(16)
+    val now = Instant.now()
+    val minutes = java.time.Duration.between(instant, now).toMinutes()
+    return when {
+        minutes < 1 -> "刚刚"
+        minutes < 60 -> "${minutes}分钟前"
+        minutes < 60 * 24 -> "${minutes / 60}小时前"
+        minutes < 60 * 24 * 7 -> "${minutes / (60 * 24)}天前"
+        else -> xhsDateFormatter.format(instant)
+    }
+}
 
 @Composable
 fun XhsDetailImageCarousel(

@@ -1,11 +1,13 @@
 import {
   BadRequestException,
+  Inject,
   Injectable,
   ServiceUnavailableException,
+  forwardRef,
 } from '@nestjs/common';
 import {
-  PaymentBizType,
   PaymentChannel,
+  PaymentOrderStatus,
 } from '@shared/enum/payment.enum';
 import { AlipayService } from '@integration/alipay/service/alipay.service';
 import { ConsumerActivityService } from '@module/activity/service/consumer-activity.service';
@@ -19,11 +21,14 @@ import { PaymentOrderQueryService } from '@module/payment/service/payment-order-
 import { PaymentTransactionQueryService } from '@module/payment/service/payment-transaction-query.service';
 import { PaymentReviewService } from '@module/payment/service/payment-review.service';
 import { PaymentAfterSalesService } from '@module/payment/service/payment-after-sales.service';
+import { PaymentOrderEntity } from '@module/payment/entity/payment-order.entity';
+import { PaymentCheckoutService } from '@module/payment/service/payment-checkout.service';
 import { PaymentOrderTab } from '@shared/enum/payment.enum';
 import {
   ApplyAfterSalesBodySchema,
   CreateOrderReviewBodySchema,
 } from '@module/payment/schema/payment-order.schema';
+import { ConsumerPromotionService } from '@module/promotion/service/consumer-promotion.service';
 
 @Injectable()
 export class ConsumerPaymentService {
@@ -33,12 +38,15 @@ export class ConsumerPaymentService {
     private readonly paymentTransactionQueryService: PaymentTransactionQueryService,
     private readonly paymentReviewService: PaymentReviewService,
     private readonly paymentAfterSalesService: PaymentAfterSalesService,
+    private readonly paymentCheckoutService: PaymentCheckoutService,
     private readonly alipayService: AlipayService,
     private readonly userAlipayService: UserAlipayService,
     private readonly paymentFeeService: PaymentFeeService,
     private readonly consumerActivityService: ConsumerActivityService,
     private readonly consumerPostService: ConsumerPostService,
     private readonly consumerPostProductService: ConsumerPostProductService,
+    @Inject(forwardRef(() => ConsumerPromotionService))
+    private readonly consumerPromotionService: ConsumerPromotionService,
   ) {}
 
   async createActivityJoinOrder(
@@ -102,7 +110,67 @@ export class ConsumerPaymentService {
     return this.buildPaymentResult(order);
   }
 
+  /** 笔记擦亮增值服支付（直收入商户，不分账） */
+  async createPostBoostOrder(
+    userId: number,
+    postId: number,
+    bidAmount?: string,
+  ): Promise<CreatePaymentResultDto> {
+    const result = await this.consumerPromotionService.createPostBoostOrder(
+      userId,
+      postId,
+      bidAmount,
+    );
+    return result.payment;
+  }
+
+  /** 活动推广增值服支付（直收入商户，不分账） */
+  async createActivityPromoteOrder(
+    userId: number,
+    activityId: number,
+    bidAmount?: string,
+  ): Promise<CreatePaymentResultDto> {
+    const result = await this.consumerPromotionService.createActivityPromoteOrder(
+      userId,
+      activityId,
+      bidAmount,
+    );
+    return result.payment;
+  }
+
   findOrderForUser(userId: number, outTradeNo: string) {
+    return this.paymentOrderService.findOrderForUser(userId, outTradeNo);
+  }
+
+  /** 主动向支付宝查单并同步本地订单（notify 延迟/不可达时补偿） */
+  async syncOrderFromAlipay(userId: number, outTradeNo: string) {
+    const order = await this.paymentOrderService.findOrderForUser(
+      userId,
+      outTradeNo,
+    );
+    if (order.status !== PaymentOrderStatus.PENDING) {
+      return order;
+    }
+    if (!this.alipayService.isConfigured()) {
+      return order;
+    }
+
+    const trade = await this.alipayService.queryAppPayTrade(outTradeNo);
+    const paidStatus =
+      trade.tradeStatus === 'TRADE_SUCCESS' ||
+      trade.tradeStatus === 'TRADE_FINISHED';
+    if (!paidStatus || !trade.totalAmount) {
+      return order;
+    }
+
+    await this.paymentOrderService.completePaidOrder({
+      outTradeNo,
+      channel: PaymentChannel.ALIPAY,
+      channelTradeNo: trade.tradeNo,
+      amount: trade.totalAmount,
+      idempotencyKey: `alipay:sync:${outTradeNo}`,
+    });
+
     return this.paymentOrderService.findOrderForUser(userId, outTradeNo);
   }
 
@@ -176,43 +244,8 @@ export class ConsumerPaymentService {
     );
   }
 
-  private buildPaymentResult(
-    order: {
-      outTradeNo: string;
-      amount: string;
-      platformFee?: string;
-      payeeAmount?: string;
-      subject: string;
-      status: string;
-      payeeId: number;
-      bizType?: PaymentBizType;
-    },
-  ): CreatePaymentResultDto {
-    const settlement = this.paymentFeeService.calculateSettlement(order.amount);
-    const platformFee = order.platformFee || settlement.platformFee;
-    const payeeAmount = order.payeeAmount || settlement.payeeAmount;
-    const config = this.paymentFeeService.getPublicConfig();
-    const base = {
-      outTradeNo: order.outTradeNo,
-      channel: PaymentChannel.ALIPAY,
-      amount: order.amount,
-      platformFee,
-      payeeAmount,
-      platformFeeRateLabel: config.platformFeeRateLabel,
-      subject: order.subject,
-      status: order.status,
-      payeeId: order.payeeId,
-    };
-
-    const { orderStr } = this.alipayService.createAppPayOrder({
-      outTradeNo: order.outTradeNo,
-      totalAmount: order.amount,
-      subject: order.subject,
-      enableRoyalty:
-        order.bizType === PaymentBizType.POST_PRODUCT_PURCHASE ||
-        order.bizType === PaymentBizType.ACTIVITY_JOIN,
-    });
-    return { ...base, alipay: { orderStr } };
+  private buildPaymentResult(order: PaymentOrderEntity): CreatePaymentResultDto {
+    return this.paymentCheckoutService.buildPaymentResultForOrder(order);
   }
 
   private assertAlipayConfigured() {

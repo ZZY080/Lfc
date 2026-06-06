@@ -11,6 +11,7 @@ import { ConsumerPostService } from '@module/post/service/consumer-post.service'
 import { ConsumerPostSocialService } from '@module/post/service/consumer-post-social.service';
 import { ConsumerPostProductService } from '@module/post/service/consumer-post-product.service';
 import { UserAlipayModule } from '@module/user/user-alipay.module';
+import { PromotionModule } from '@module/promotion/promotion.module';
 import { RoleAuthzService } from '@shared/auth/role-authz.service';
 
 @Module({
@@ -24,6 +25,7 @@ import { RoleAuthzService } from '@shared/auth/role-authz.service';
       UserEntity,
     ]),
     forwardRef(() => UserAlipayModule),
+    forwardRef(() => PromotionModule),
   ],
   controllers: [ConsumerPostController],
   providers: [

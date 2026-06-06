@@ -28,8 +28,19 @@ import com.lfc.consumer.ui.theme.LfcTheme
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
+    override fun onResume() {
+        super.onResume()
+        com.lfc.consumer.payment.AlipayPaymentHost.attach(this)
+    }
+
+    override fun onDestroy() {
+        com.lfc.consumer.payment.AlipayPaymentHost.detach(this)
+        super.onDestroy()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        com.lfc.consumer.payment.AlipayPaymentHost.attach(this)
         enableEdgeToEdge()
 
         val tokenManager = TokenManager(applicationContext)

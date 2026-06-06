@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.lfc.consumer.data.model.displayName
 import com.lfc.consumer.data.model.isPaidActivity
+import com.lfc.consumer.data.model.promotionBadge
 import com.lfc.consumer.data.model.ActivityDto
 import com.lfc.consumer.data.model.ActivityFeedUiState
 import com.lfc.consumer.ui.theme.XhsBackground
@@ -79,6 +80,15 @@ fun ActivityFeedScreen(
             .background(XhsBackground),
     ) {
         XhsPageTitle("校园活动")
+        Text(
+            text = "推广内容已明确标注，优先展示不代表官方背书",
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 6.dp),
+            color = XhsTextSecondary,
+            fontSize = 11.sp,
+        )
         ActivityFeedContent(
             feedState = feedState,
             onRefresh = onRefresh,
@@ -277,6 +287,15 @@ private fun ActivityCard(
                     color = Color.White,
                     fontSize = 10.sp,
                 )
+
+                activity.promotionBadge()?.let { badge ->
+                    XhsPromotionBadge(
+                        label = badge,
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(8.dp),
+                    )
+                }
 
                 if (participantCount > 0) {
                     Row(

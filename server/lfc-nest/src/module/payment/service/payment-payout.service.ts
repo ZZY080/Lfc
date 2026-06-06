@@ -17,6 +17,7 @@ import {
   PaymentBizType,
   PaymentOrderStatus,
 } from '@shared/enum/payment.enum';
+import { isPlatformDirectRevenueBizType } from '@module/payment/util/payment-order.util';
 
 @Injectable()
 export class PaymentPayoutService {
@@ -61,6 +62,15 @@ export class PaymentPayoutService {
 
     const settlement = this.paymentFeeService.calculateSettlement(order.amount);
     const payeeAmount = order.payeeAmount || settlement.payeeAmount;
+
+    // 擦亮/推广等增值服：下单时未开启分账，资金已在商户支付宝账户，无需再调分账 API
+    if (
+      isPlatformDirectRevenueBizType(order.bizType) ||
+      Number.parseFloat(payeeAmount) <= 0
+    ) {
+      return true;
+    }
+
     const platformFee = order.platformFee || settlement.platformFee;
 
     const outBizNo = existing?.outBizNo ?? this.generateOutBizNo(order.id);
@@ -110,6 +120,9 @@ export class PaymentPayoutService {
   }
 
   requiresConfirmBeforeSettle(bizType: PaymentBizType): boolean {
+    if (isPlatformDirectRevenueBizType(bizType)) {
+      return false;
+    }
     return (
       bizType === PaymentBizType.POST_PRODUCT_PURCHASE ||
       bizType === PaymentBizType.ACTIVITY_JOIN

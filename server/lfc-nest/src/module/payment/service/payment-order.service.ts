@@ -2,9 +2,11 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  Inject,
   Injectable,
   Logger,
   NotFoundException,
+  forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import {
@@ -29,11 +31,12 @@ import { PaymentOrderLockService } from '@module/payment/service/payment-order-l
 import { RedisService } from '@integration/redis/service/redis.service';
 import { PaymentOrderDetailDto } from '@module/payment/dto/payment.dto';
 import { PaymentFeeService } from '@module/payment/service/payment-fee.service';
-import { Inject } from '@nestjs/common';
+import { ConsumerPromotionService } from '@module/promotion/service/consumer-promotion.service';
 import { paymentConfiguration } from '@config/configuration';
 import type { IPaymentConfig } from '@config/configuration';
 import {
   buildPaymentActiveKey,
+  isPlatformDirectRevenueBizType,
   PAYMENT_PENDING_TTL_MS,
 } from '@module/payment/util/payment-order.util';
 
@@ -43,6 +46,26 @@ export interface CreatePendingPaymentOrderInput {
   payeeId: number;
   bizType: PaymentBizType;
   bizId: number;
+  amount: string;
+  subject: string;
+  channel: PaymentChannel;
+  platformFee?: string;
+  payeeAmount?: string;
+}
+
+export interface AcquirePostBoostOrderInput {
+  userId: number;
+  postId: number;
+  payeeId: number;
+  amount: string;
+  subject: string;
+  channel: PaymentChannel;
+}
+
+export interface AcquireActivityPromoteOrderInput {
+  userId: number;
+  activityId: number;
+  payeeId: number;
   amount: string;
   subject: string;
   channel: PaymentChannel;
@@ -89,6 +112,8 @@ export class PaymentOrderService {
     private readonly paymentOrderLockService: PaymentOrderLockService,
     private readonly paymentFeeService: PaymentFeeService,
     private readonly redisService: RedisService,
+    @Inject(forwardRef(() => ConsumerPromotionService))
+    private readonly consumerPromotionService: ConsumerPromotionService,
     @Inject(paymentConfiguration.KEY)
     private readonly paymentConfig: IPaymentConfig,
   ) {}
@@ -166,14 +191,35 @@ export class PaymentOrderService {
         input.activityId,
       );
 
-      const existingActive = await this.findActiveOrderForUser(
-        input.userId,
-        PaymentBizType.ACTIVITY_JOIN,
-        input.activityId,
-        input.channel,
-      );
-      if (existingActive) {
-        return existingActive;
+      const pending = await this.findPendingOrder({
+        userId: input.userId,
+        bizType: PaymentBizType.ACTIVITY_JOIN,
+        bizId: input.activityId,
+        channel: input.channel,
+      });
+      if (pending) {
+        if (pending.amount === input.amount) {
+          return pending;
+        }
+        await this.closeOrder(pending);
+      }
+
+      const existingPaid = await this.paymentOrderRepository.findOne({
+        where: {
+          userId: input.userId,
+          bizType: PaymentBizType.ACTIVITY_JOIN,
+          bizId: input.activityId,
+          channel: input.channel,
+          status: In([
+            PaymentOrderStatus.PAID,
+            PaymentOrderStatus.CONFIRMED,
+            PaymentOrderStatus.SETTLED,
+          ]),
+        },
+        order: { createdAt: 'DESC' },
+      });
+      if (existingPaid) {
+        return existingPaid;
       }
 
       if (
@@ -194,6 +240,86 @@ export class PaymentOrderService {
         amount: input.amount,
         subject: input.subject,
         channel: input.channel,
+      });
+    });
+  }
+
+  async acquirePostBoostOrder(
+    input: AcquirePostBoostOrderInput,
+  ): Promise<PaymentOrderEntity> {
+    const scopeKey = `${input.userId}:${PaymentBizType.POST_BOOST}:${input.postId}`;
+    return this.paymentOrderLockService.withCreateLock(scopeKey, async () => {
+      await this.closeStalePendingOrdersForUser(
+        input.userId,
+        PaymentBizType.POST_BOOST,
+        input.postId,
+      );
+
+      const pending = await this.findPendingOrder({
+        userId: input.userId,
+        bizType: PaymentBizType.POST_BOOST,
+        bizId: input.postId,
+        channel: input.channel,
+      });
+      if (pending) {
+        if (pending.amount === input.amount) {
+          return pending;
+        }
+        await this.closeOrder(pending);
+      }
+
+      return this.createPendingOrder({
+        outTradeNo: this.generateOutTradeNo(input.userId),
+        userId: input.userId,
+        payeeId: input.payeeId,
+        bizType: PaymentBizType.POST_BOOST,
+        bizId: input.postId,
+        amount: input.amount,
+        subject: input.subject,
+        channel: input.channel,
+        // 增值服：全额记平台收入，不触发后续分账
+        platformFee: input.amount,
+        payeeAmount: '0.00',
+      });
+    });
+  }
+
+  async acquireActivityPromoteOrder(
+    input: AcquireActivityPromoteOrderInput,
+  ): Promise<PaymentOrderEntity> {
+    const scopeKey = `${input.userId}:${PaymentBizType.ACTIVITY_PROMOTE}:${input.activityId}`;
+    return this.paymentOrderLockService.withCreateLock(scopeKey, async () => {
+      await this.closeStalePendingOrdersForUser(
+        input.userId,
+        PaymentBizType.ACTIVITY_PROMOTE,
+        input.activityId,
+      );
+
+      const pending = await this.findPendingOrder({
+        userId: input.userId,
+        bizType: PaymentBizType.ACTIVITY_PROMOTE,
+        bizId: input.activityId,
+        channel: input.channel,
+      });
+      if (pending) {
+        if (pending.amount === input.amount) {
+          return pending;
+        }
+        await this.closeOrder(pending);
+      }
+
+      return this.createPendingOrder({
+        outTradeNo: this.generateOutTradeNo(input.userId),
+        userId: input.userId,
+        payeeId: input.payeeId,
+        bizType: PaymentBizType.ACTIVITY_PROMOTE,
+        bizId: input.activityId,
+        amount: input.amount,
+        subject: input.subject,
+        channel: input.channel,
+        // 增值服：全额记平台收入，不触发后续分账
+        platformFee: input.amount,
+        payeeAmount: '0.00',
       });
     });
   }
@@ -274,7 +400,13 @@ export class PaymentOrderService {
   async createPendingOrder(
     input: CreatePendingPaymentOrderInput,
   ): Promise<PaymentOrderEntity> {
-    const settlement = this.paymentFeeService.calculateSettlement(input.amount);
+    const settlement =
+      input.platformFee != null && input.payeeAmount != null
+        ? {
+            platformFee: input.platformFee,
+            payeeAmount: input.payeeAmount,
+          }
+        : this.paymentFeeService.calculateSettlement(input.amount);
     const activeKey = buildPaymentActiveKey(
       input.bizType,
       input.bizId,
@@ -905,6 +1037,20 @@ export class PaymentOrderService {
         await this.consumerPostProductService.completePurchaseAfterPayment(
           order.userId,
           order.bizId,
+        );
+        return;
+      case PaymentBizType.POST_BOOST:
+        await this.consumerPromotionService.applyPostBoostAfterPayment(
+          order.userId,
+          order.bizId,
+          order.amount,
+        );
+        return;
+      case PaymentBizType.ACTIVITY_PROMOTE:
+        await this.consumerPromotionService.applyActivityPromoteAfterPayment(
+          order.userId,
+          order.bizId,
+          order.amount,
         );
         return;
       default:

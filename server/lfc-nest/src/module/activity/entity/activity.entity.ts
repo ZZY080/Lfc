@@ -65,4 +65,21 @@ export class ActivityEntity {
 
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
+
+  /** 活动 Tab 推广位截止时间 */
+  @Column({ name: 'promoted_until', type: 'datetime', nullable: true })
+  promotedUntil: Date | null;
+
+  @Column({ name: 'last_promoted_at', type: 'datetime', nullable: true })
+  lastPromotedAt: Date | null;
+
+  /** 当前推广出价（元），用于推广位排序与竞价 */
+  @Column({
+    name: 'promote_bid_amount',
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    default: 0,
+  })
+  promoteBidAmount: string;
 }

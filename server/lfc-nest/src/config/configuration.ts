@@ -108,6 +108,65 @@ const paymentConfiguration = registerAs(
   }),
 );
 
+const promotionConfiguration = registerAs(
+  'promotion',
+  async (): Promise<IPromotionConfig> => ({
+    postBoostHours: parsePromotionHours(process.env.PROMOTION_POST_BOOST_HOURS, 48),
+    postCooldownHours: parsePromotionHours(
+      process.env.PROMOTION_POST_COOLDOWN_HOURS,
+      48,
+    ),
+    postActiveLabel: process.env.PROMOTION_POST_ACTIVE_LABEL?.trim() || '擦亮中',
+    postActionLabel: process.env.PROMOTION_POST_ACTION_LABEL?.trim() || '擦亮笔记',
+    postMaxFeedSlots: parsePromotionSlots(
+      process.env.PROMOTION_POST_MAX_FEED_SLOTS,
+    ),
+    activityPromoteHours: parsePromotionHours(
+      process.env.PROMOTION_ACTIVITY_PROMOTE_HOURS,
+      72,
+    ),
+    activityCooldownHours: parsePromotionHours(
+      process.env.PROMOTION_ACTIVITY_COOLDOWN_HOURS,
+      168,
+    ),
+    activityMaxFeedSlots: parsePromotionSlots(
+      process.env.PROMOTION_ACTIVITY_MAX_FEED_SLOTS,
+    ),
+    activityActiveLabel:
+      process.env.PROMOTION_ACTIVITY_ACTIVE_LABEL?.trim() || '推广',
+    activityActionLabel:
+      process.env.PROMOTION_ACTIVITY_ACTION_LABEL?.trim() || '推广活动',
+    paidEnabled: process.env.PROMOTION_PAID_ENABLED === 'true',
+    postBoostPrice: parsePromotionMoney(process.env.PROMOTION_POST_BOOST_PRICE, '2.00'),
+    activityPromotePrice: parsePromotionMoney(
+      process.env.PROMOTION_ACTIVITY_PROMOTE_PRICE,
+      '3.00',
+    ),
+    bidIncrement: parsePromotionMoney(process.env.PROMOTION_BID_INCREMENT, '0.50'),
+    platformPayeeId: parsePromotionPlatformPayeeId(
+      process.env.PROMOTION_PLATFORM_PAYEE_ID,
+    ),
+  }),
+);
+
+interface IPromotionConfig {
+  postBoostHours: number;
+  postCooldownHours: number;
+  postActiveLabel: string;
+  postActionLabel: string;
+  postMaxFeedSlots: number;
+  activityPromoteHours: number;
+  activityCooldownHours: number;
+  activityMaxFeedSlots: number;
+  activityActiveLabel: string;
+  activityActionLabel: string;
+  paidEnabled: boolean;
+  postBoostPrice: string;
+  activityPromotePrice: string;
+  bidIncrement: string;
+  platformPayeeId: number;
+}
+
 interface IPaymentConfig {
   platformFeeRate: number;
   platformFeeMin: number;
@@ -144,6 +203,44 @@ function parseAutoConfirmDays(value?: string): number {
   return parsed;
 }
 
+function parsePromotionHours(value: string | undefined, fallback: number): number {
+  const parsed = Number.parseInt(value ?? String(fallback), 10);
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    return fallback;
+  }
+  if (parsed > 24 * 14) {
+    return 24 * 14;
+  }
+  return parsed;
+}
+
+function parsePromotionSlots(value?: string): number {
+  const parsed = Number.parseInt(value ?? '2', 10);
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    return 2;
+  }
+  if (parsed > 5) {
+    return 5;
+  }
+  return parsed;
+}
+
+function parsePromotionMoney(value: string | undefined, fallback: string): string {
+  const parsed = Number.parseFloat(value ?? fallback);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return fallback;
+  }
+  return parsed.toFixed(2);
+}
+
+function parsePromotionPlatformPayeeId(value?: string): number {
+  const parsed = Number.parseInt(value ?? '1', 10);
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    return 1;
+  }
+  return parsed;
+}
+
 function normalizePem(value?: string): string {
   if (!value) {
     return '';
@@ -169,6 +266,7 @@ export {
   alipayConfiguration,
   wechatPayConfiguration,
   paymentConfiguration,
+  promotionConfiguration,
 };
 
 export type {
@@ -178,4 +276,5 @@ export type {
   IAlipayConfig,
   IWechatPayConfig,
   IPaymentConfig,
+  IPromotionConfig,
 };

@@ -52,6 +52,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.lfc.consumer.data.model.ActivityDto
 import com.lfc.consumer.data.model.hasOnSaleProduct
+import com.lfc.consumer.data.model.promotionBadge
 import com.lfc.consumer.data.model.PostDto
 import com.lfc.consumer.data.model.displayName
 import com.lfc.consumer.ui.theme.XhsRed
@@ -95,6 +96,7 @@ fun XhsFeedCard(
         isLiked = post.isLiked,
         id = post.id,
         productPrice = productPrice,
+        promotionBadge = post.promotionBadge(),
         modifier = modifier,
         onClick = onClick,
     )
@@ -111,6 +113,7 @@ fun XhsFeedCard(
     isLiked: Boolean = false,
     id: Int,
     productPrice: String? = null,
+    promotionBadge: String? = null,
     modifier: Modifier = Modifier,
     onClick: () -> Unit = {},
 ) {
@@ -152,6 +155,14 @@ fun XhsFeedCard(
                         color = Color.White,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
+                    )
+                }
+                if (!promotionBadge.isNullOrBlank()) {
+                    XhsPromotionBadge(
+                        label = promotionBadge,
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(8.dp),
                     )
                 }
             }
@@ -251,6 +262,15 @@ fun XhsProfileFeedCard(
                     ) {
                         Text("置顶", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                     }
+                }
+
+                post.promotionBadge()?.let { badge ->
+                    XhsPromotionBadge(
+                        label = badge,
+                        modifier = Modifier
+                            .align(if (isPinned) Alignment.TopEnd else Alignment.TopStart)
+                            .padding(6.dp),
+                    )
                 }
 
                 if (post.viewCount > 0) {
@@ -364,6 +384,15 @@ fun XhsProfileActivityCard(
                     color = Color.White,
                     fontSize = 9.sp,
                 )
+
+                activity.promotionBadge()?.let { badge ->
+                    XhsPromotionBadge(
+                        label = badge,
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(6.dp),
+                    )
+                }
 
                 if (participantCount > 0) {
                     Row(

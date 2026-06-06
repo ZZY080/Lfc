@@ -1,8 +1,10 @@
 import {
   BadRequestException,
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
+  forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -18,6 +20,7 @@ import {
 import { ConsumerPostSocialService } from '@module/post/service/consumer-post-social.service';
 import { ConsumerPostProductService } from '@module/post/service/consumer-post-product.service';
 import { UserAlipayService } from '@module/user/service/user-alipay.service';
+import { ConsumerPromotionService } from '@module/promotion/service/consumer-promotion.service';
 import { PostProductEntity } from '@module/post/entity/post-product.entity';
 import { PostProductStatus } from '@shared/enum/product.enum';
 import {
@@ -37,6 +40,8 @@ export class ConsumerPostService {
     private readonly postSocialService: ConsumerPostSocialService,
     private readonly postProductService: ConsumerPostProductService,
     private readonly userAlipayService: UserAlipayService,
+    @Inject(forwardRef(() => ConsumerPromotionService))
+    private readonly consumerPromotionService: ConsumerPromotionService,
   ) {}
 
   async create(userId: number, body: CreatePostBodyDto) {
@@ -73,8 +78,96 @@ export class ConsumerPostService {
   ): Promise<PostFeedResultDto> {
     const page = query.page ?? 1;
     const limit = Math.min(query.limit ?? 10, 30);
-    const skip = (page - 1) * limit;
     const sort = query.sort ?? (query.tab === '最新' ? 'latest' : 'recommend');
+
+    if (sort === 'latest') {
+      return this.findFeedPaginated(query, userId, page, limit, 'latest');
+    }
+    return this.findRecommendFeedWithBoostSlots(query, userId, page, limit);
+  }
+
+  private async findFeedPaginated(
+    query: PostFeedQueryDto,
+    userId: number | undefined,
+    page: number,
+    limit: number,
+    sort: 'latest' | 'recommend',
+  ): Promise<PostFeedResultDto> {
+    const skip = (page - 1) * limit;
+    const qb = this.buildFeedQueryBuilder(query);
+    this.applyFeedOrdering(qb, sort);
+    const [items, total] = await qb.skip(skip).take(limit).getManyAndCount();
+    const enrichedItems = await this.enrichPostsWithProduct(items, userId);
+
+    return {
+      items: enrichedItems,
+      total,
+      page,
+      limit,
+      hasMore: skip + items.length < total,
+    };
+  }
+
+  private async findRecommendFeedWithBoostSlots(
+    query: PostFeedQueryDto,
+    userId: number | undefined,
+    page: number,
+    limit: number,
+  ): Promise<PostFeedResultDto> {
+    const maxSlots = (await this.consumerPromotionService.getPublicConfig())
+      .postMaxFeedSlots;
+    const activeBoostedCount =
+      await this.consumerPromotionService.countActiveBoostedPosts();
+    const firstPageBoostedCount =
+      this.consumerPromotionService.getFirstPageBoostedSlotCount(
+        activeBoostedCount,
+      );
+
+    let boostedPosts: PostEntity[] = [];
+    if (page === 1 && firstPageBoostedCount > 0) {
+      const boostedQb = this.buildFeedQueryBuilder(query);
+      boostedQb
+        .andWhere('post.boosted_until > :now', { now: new Date() })
+        .orderBy('post.boostBidAmount', 'DESC')
+        .addOrderBy('post.lastBoostedAt', 'DESC')
+        .take(maxSlots);
+      boostedPosts = await boostedQb.getMany();
+    }
+    const boostedIds = boostedPosts.map((item) => item.id);
+
+    const regularSkip =
+      page <= 1 ? 0 : (page - 1) * limit - firstPageBoostedCount;
+    const regularTake =
+      page === 1
+        ? Math.max(limit - boostedPosts.length, 0)
+        : limit;
+
+    const regularQb = this.buildFeedQueryBuilder(query);
+    if (boostedIds.length > 0) {
+      regularQb.andWhere('post.id NOT IN (:...boostedIds)', { boostedIds });
+    }
+    this.applyFeedOrdering(regularQb, 'latest');
+
+    const [regularPosts, totalRegular] = await regularQb
+      .skip(Math.max(regularSkip, 0))
+      .take(regularTake)
+      .getManyAndCount();
+
+    const total = totalRegular + activeBoostedCount;
+    const pagePosts =
+      page === 1 ? [...boostedPosts, ...regularPosts] : regularPosts;
+    const enrichedItems = await this.enrichPostsWithProduct(pagePosts, userId);
+
+    return {
+      items: enrichedItems,
+      total,
+      page,
+      limit,
+      hasMore: page * limit < total,
+    };
+  }
+
+  private buildFeedQueryBuilder(query: PostFeedQueryDto) {
     const isMarketplaceTab =
       query.tab != null && ConsumerPostService.MARKETPLACE_TABS.has(query.tab);
 
@@ -101,22 +194,25 @@ export class ConsumerPostService {
       });
     }
 
+    return qb;
+  }
+
+  private applyFeedOrdering(
+    qb: ReturnType<Repository<PostEntity>['createQueryBuilder']>,
+    sort: 'latest' | 'recommend',
+  ) {
     if (sort === 'latest') {
       qb.orderBy('post.createdAt', 'DESC');
-    } else {
-      qb.orderBy('post.id', 'DESC');
+      return;
     }
 
-    const [items, total] = await qb.skip(skip).take(limit).getManyAndCount();
-    const enrichedItems = await this.enrichPostsWithProduct(items, userId);
-
-    return {
-      items: enrichedItems,
-      total,
-      page,
-      limit,
-      hasMore: skip + items.length < total,
-    };
+    qb.addSelect(
+      'CASE WHEN post.boosted_until IS NOT NULL AND post.boosted_until > CURRENT_TIMESTAMP THEN 1 ELSE 0 END',
+      'boost_rank',
+    )
+      .orderBy('boost_rank', 'DESC')
+      .addOrderBy('post.lastBoostedAt', 'DESC')
+      .addOrderBy('post.id', 'DESC');
   }
 
   findMine(userId: number, keyword?: string) {
@@ -249,10 +345,14 @@ export class ConsumerPostService {
     const socialPosts = await this.postSocialService.enrichPosts(posts, userId);
     return socialPosts.map((post) => {
       const product = productMap.get(post.id);
-      return {
+      const withProduct = {
         ...post,
         product: product ? this.postProductService.toDto(product) : null,
       };
+      return this.consumerPromotionService.attachPostPromotion(
+        withProduct as PostEntity,
+        userId,
+      );
     });
   }
 

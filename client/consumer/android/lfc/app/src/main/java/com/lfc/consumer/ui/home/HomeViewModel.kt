@@ -26,6 +26,11 @@ import com.lfc.consumer.data.model.CreateConversationRequest
 import com.lfc.consumer.data.model.NotificationDto
 import com.lfc.consumer.data.model.ChatProductPayload
 import com.lfc.consumer.data.model.PostDto
+import com.lfc.consumer.data.model.PromotionConfigDto
+import com.lfc.consumer.data.model.PromotionMetaDto
+import com.lfc.consumer.data.model.PromotionOrderRequest
+import com.lfc.consumer.data.model.effectiveActivityPromotePrice
+import com.lfc.consumer.data.model.effectivePostBoostPrice
 import com.lfc.consumer.data.model.toChatProductPayload
 import com.lfc.consumer.data.model.toJson
 import com.lfc.consumer.data.model.isPaidActivity
@@ -39,7 +44,9 @@ import com.lfc.consumer.data.model.ProfileTabsUiState
 import com.lfc.consumer.data.model.UpdateProfileRequest
 import com.lfc.consumer.data.model.PaymentConfigDto
 import com.lfc.consumer.data.model.PaymentOrderDetailDto
+import com.lfc.consumer.data.model.PaymentOrderResultDto
 import com.lfc.consumer.data.model.PaymentOrderListItemDto
+import com.lfc.consumer.data.model.alipayOrderStr
 import com.lfc.consumer.data.model.OrderCenterUiState
 import com.lfc.consumer.data.model.PaymentTransactionLedgerUiState
 import com.lfc.consumer.data.model.ProfileSearchUiState
@@ -52,7 +59,9 @@ import com.lfc.consumer.data.model.UserProfileDto
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -63,9 +72,7 @@ import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.asRequestBody
 import retrofit2.HttpException
-import com.lfc.consumer.payment.AlipayAuthResult
 import com.lfc.consumer.payment.AlipayHelper
-import com.lfc.consumer.payment.AlipayPayResult
 import com.google.gson.JsonParser
 
 data class HomeUiState(
@@ -122,6 +129,8 @@ data class HomeUiState(
     val isPrivacyUpdating: Boolean = false,
     val detailAuthorFollowing: Boolean? = null,
     val paymentConfig: PaymentConfigDto? = null,
+    val promotionConfig: PromotionConfigDto? = null,
+    val isPromotionSubmitting: Boolean = false,
     val orderCenter: OrderCenterUiState = OrderCenterUiState(),
     val paymentTransactionLedger: PaymentTransactionLedgerUiState = PaymentTransactionLedgerUiState(),
 )
@@ -136,11 +145,16 @@ class HomeViewModel(
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
-    private var alipayPayHandler: (suspend (String) -> AlipayPayResult)? = null
-    private var alipayAuthHandler: (suspend (String) -> AlipayAuthResult)? = null
-
     private val paymentGate = Any()
     private var paymentGateKey: String? = null
+
+    init {
+        loadPaymentConfig()
+        loadPromotionConfig()
+        loadFeed(refresh = true)
+        loadActivityFeed(refresh = true)
+        refreshProfileData()
+    }
 
     private fun tryAcquirePaymentGate(key: String): Boolean = synchronized(paymentGate) {
         if (paymentGateKey != null) {
@@ -191,32 +205,167 @@ class HomeViewModel(
         )
     }
 
-    fun setAlipayPayHandler(handler: (suspend (String) -> AlipayPayResult)?) {
-        alipayPayHandler = handler
-    }
-
-    fun setAlipayAuthHandler(handler: (suspend (String) -> AlipayAuthResult)?) {
-        alipayAuthHandler = handler
-    }
-
     val userSession: StateFlow<UserSession?> = tokenManager.userSessionFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     val searchHistory: StateFlow<List<String>> = searchHistoryStore.historyFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    init {
+    fun refreshAll() {
         loadPaymentConfig()
+        loadPromotionConfig()
         loadFeed(refresh = true)
         loadActivityFeed(refresh = true)
         refreshProfileData()
     }
 
-    fun refreshAll() {
-        loadPaymentConfig()
+    private fun loadPromotionConfig() {
+        viewModelScope.launch {
+            runCatching { api.getPromotionConfig() }
+                .onSuccess { config ->
+                    _uiState.value = _uiState.value.copy(promotionConfig = config)
+                }
+        }
+    }
+
+    fun boostPost(postId: Int, bidAmount: String? = null) {
+        val gateKey = "boost:$postId"
+        if (!tryAcquirePaymentGate(gateKey)) {
+            rejectDuplicatePayment()
+            return
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            _uiState.value = _uiState.value.copy(isPromotionSubmitting = true)
+            try {
+                val config = _uiState.value.promotionConfig ?: api.getPromotionConfig().also { loaded ->
+                    _uiState.value = _uiState.value.copy(promotionConfig = loaded)
+                }
+                val postPromotion =
+                    _uiState.value.selectedPost?.takeIf { it.id == postId }?.promotion
+                val requiresPayment =
+                    config.paidEnabled || postPromotion?.requiresPayment == true
+
+                if (requiresPayment) {
+                    val chargeAmount = bidAmount
+                        ?: if (config.postSlotsFull) config.effectivePostBoostPrice() else null
+                    val order = api.createPostBoostPaymentOrder(
+                        postId,
+                        PromotionOrderRequest(bidAmount = chargeAmount),
+                    )
+                    _uiState.value = _uiState.value.copy(isPromotionSubmitting = false)
+                    val paid = launchPaymentOrder(order)
+                    if (!paid) return@launch
+                    refreshPostPromotion(postId, "支付成功，笔记已擦亮")
+                } else {
+                    val result = api.boostPost(postId)
+                    applyPostPromotion(postId, result.promotion)
+                    _uiState.value = _uiState.value.copy(message = result.message)
+                }
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(error = parseError(e, "擦亮失败"))
+            } finally {
+                _uiState.value = _uiState.value.copy(isPromotionSubmitting = false)
+                releasePaymentGate(gateKey)
+            }
+        }
+    }
+
+    fun promoteActivity(activityId: Int, bidAmount: String? = null) {
+        val gateKey = "promote:$activityId"
+        if (!tryAcquirePaymentGate(gateKey)) {
+            rejectDuplicatePayment()
+            return
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            _uiState.value = _uiState.value.copy(isPromotionSubmitting = true)
+            try {
+                val config = _uiState.value.promotionConfig ?: api.getPromotionConfig().also { loaded ->
+                    _uiState.value = _uiState.value.copy(promotionConfig = loaded)
+                }
+                val activityPromotion =
+                    _uiState.value.selectedActivity?.takeIf { it.id == activityId }?.promotion
+                val requiresPayment =
+                    config.paidEnabled || activityPromotion?.requiresPayment == true
+
+                if (requiresPayment) {
+                    val chargeAmount = bidAmount
+                        ?: if (config.activitySlotsFull) config.effectiveActivityPromotePrice() else null
+                    val order = api.createActivityPromotePaymentOrder(
+                        activityId,
+                        PromotionOrderRequest(bidAmount = chargeAmount),
+                    )
+                    _uiState.value = _uiState.value.copy(isPromotionSubmitting = false)
+                    val paid = launchPaymentOrder(order)
+                    if (!paid) return@launch
+                    refreshActivityPromotion(activityId, "支付成功，活动已推广")
+                } else {
+                    val result = api.promoteActivity(activityId)
+                    applyActivityPromotion(activityId, result.promotion)
+                    _uiState.value = _uiState.value.copy(message = result.message)
+                }
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(error = parseError(e, "推广失败"))
+            } finally {
+                _uiState.value = _uiState.value.copy(isPromotionSubmitting = false)
+                releasePaymentGate(gateKey)
+            }
+        }
+    }
+
+    private suspend fun refreshPostPromotion(postId: Int, message: String) {
+        val post = api.getPost(postId)
+        applyPostPromotion(postId, post.promotion ?: PromotionMetaDto())
+        loadPromotionConfig()
+        _uiState.value = _uiState.value.copy(message = message)
+    }
+
+    private suspend fun refreshActivityPromotion(activityId: Int, message: String) {
+        val activity = api.getActivity(activityId)
+        applyActivityPromotion(activityId, activity.promotion ?: PromotionMetaDto())
+        loadPromotionConfig()
+        _uiState.value = _uiState.value.copy(message = message)
+    }
+
+    private fun applyPostPromotion(postId: Int, promotion: PromotionMetaDto) {
+        fun patchPost(post: PostDto) =
+            if (post.id == postId) post.copy(promotion = promotion) else post
+
+        val state = _uiState.value
+        _uiState.value = state.copy(
+            selectedPost = state.selectedPost?.let(::patchPost),
+            feed = state.feed.copy(posts = state.feed.posts.map(::patchPost)),
+            posts = state.posts.map(::patchPost),
+            myPosts = state.myPosts.map(::patchPost),
+            profileNotes = state.profileNotes.map(::patchPost),
+            profileFavoritePosts = state.profileFavoritePosts.map(::patchPost),
+            profileLikedPosts = state.profileLikedPosts.map(::patchPost),
+            search = state.search.copy(
+                posts = state.search.posts.map(::patchPost),
+            ),
+        )
         loadFeed(refresh = true)
+    }
+
+    private fun applyActivityPromotion(activityId: Int, promotion: PromotionMetaDto) {
+        fun patchActivity(activity: ActivityDto) =
+            if (activity.id == activityId) activity.copy(promotion = promotion) else activity
+
+        val state = _uiState.value
+        _uiState.value = state.copy(
+            selectedActivity = state.selectedActivity?.let(::patchActivity),
+            activityFeed = state.activityFeed.copy(
+                activities = state.activityFeed.activities.map(::patchActivity),
+            ),
+            activities = state.activities.map(::patchActivity),
+            myActivities = state.myActivities.map(::patchActivity),
+            profileActivities = state.profileActivities.map(::patchActivity),
+            profileFavoriteActivities = state.profileFavoriteActivities.map(::patchActivity),
+            profileLikedActivities = state.profileLikedActivities.map(::patchActivity),
+            search = state.search.copy(
+                activities = state.search.activities.map(::patchActivity),
+            ),
+        )
         loadActivityFeed(refresh = true)
-        refreshProfileData()
     }
 
     private fun loadPaymentConfig() {
@@ -714,24 +863,15 @@ class HomeViewModel(
             rejectDuplicatePayment()
             return
         }
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             beginPaymentUi(activityId = id, isJoining = true)
             try {
                 val activity = _uiState.value.selectedActivity?.takeIf { it.id == id }
                     ?: api.getActivity(id)
                 if (activity.isPaidActivity()) {
                     val order = api.createActivityPaymentOrder(id)
-                    if (order.status.equals("PAID", ignoreCase = true)) {
-                        refreshAll()
-                        if (_uiState.value.selectedActivity?.id == id) {
-                            _uiState.value = _uiState.value.copy(
-                                selectedActivity = api.getActivity(id),
-                            )
-                        }
-                        _uiState.value = _uiState.value.copy(message = "支付成功，已完成报名")
-                        return@launch
-                    }
-                    val paid = payWithAlipay(order.outTradeNo, order.alipay.orderStr)
+                    endPaymentUi(activityId = id)
+                    val paid = launchPaymentOrder(order)
                     if (!paid) return@launch
                     refreshAll()
                     if (_uiState.value.selectedActivity?.id == id) {
@@ -765,19 +905,12 @@ class HomeViewModel(
             rejectDuplicatePayment()
             return
         }
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             beginPaymentUi(postId = postId, isPurchasing = true)
             try {
                 val order = api.createPostProductOrder(postId)
-                if (order.status.equals("PAID", ignoreCase = true)) {
-                    loadProductDetail(postId)
-                    refreshAll()
-                    _uiState.value = _uiState.value.copy(
-                        message = "支付成功，商品已标记为已售",
-                    )
-                    return@launch
-                }
-                val paid = payWithAlipay(order.outTradeNo, order.alipay.orderStr)
+                endPaymentUi(postId = postId)
+                val paid = launchPaymentOrder(order)
                 if (!paid) return@launch
                 loadProductDetail(postId)
                 refreshAll()
@@ -793,36 +926,60 @@ class HomeViewModel(
         }
     }
 
+    private suspend fun launchPaymentOrder(order: PaymentOrderResultDto): Boolean {
+        if (isOrderAlreadyPaid(order.status)) {
+            return true
+        }
+        return payWithAlipay(order.outTradeNo, order.alipayOrderStr())
+    }
+
+    private fun isOrderAlreadyPaid(status: String): Boolean {
+        return status.equals("PAID", ignoreCase = true) ||
+            isPaymentConfirmedStatus(status)
+    }
+
     private suspend fun payWithAlipay(outTradeNo: String, orderStr: String): Boolean {
         if (orderStr.isBlank()) {
-            _uiState.value = _uiState.value.copy(error = "支付宝下单失败，请稍后重试")
-            return false
-        }
-        val handler = alipayPayHandler
-        if (handler == null) {
-            _uiState.value = _uiState.value.copy(error = "无法调起支付宝，请重试")
+            withContext(Dispatchers.Main.immediate) {
+                _uiState.value = _uiState.value.copy(error = "支付宝下单失败，请稍后重试")
+            }
             return false
         }
         val result = try {
-            handler(orderStr)
+            AlipayHelper.pay(orderStr)
         } catch (e: Exception) {
-            _uiState.value = _uiState.value.copy(
-                error = e.message?.takeIf { it.isNotBlank() } ?: "支付宝调起失败",
-            )
+            withContext(Dispatchers.Main.immediate) {
+                _uiState.value = _uiState.value.copy(
+                    error = e.message?.takeIf { it.isNotBlank() } ?: "支付宝调起失败",
+                )
+            }
+            return false
+        }
+        if (result.resultStatus == "4000" || result.resultStatus == "ERROR") {
+            withContext(Dispatchers.Main.immediate) {
+                _uiState.value = _uiState.value.copy(
+                    error = AlipayHelper.resultMessage(result).ifBlank { "支付宝调起失败" },
+                )
+            }
             return false
         }
         val shouldPoll = result.resultStatus == "9000" || result.resultStatus == "8000"
         val paid = shouldPoll && waitForPayment(outTradeNo)
         if (!paid) {
             val hint = AlipayHelper.resultMessage(result).ifBlank { "支付未完成，可稍后重试" }
-            _uiState.value = _uiState.value.copy(message = hint)
+            withContext(Dispatchers.Main.immediate) {
+                _uiState.value = _uiState.value.copy(message = hint)
+            }
         }
         return paid
     }
 
     private suspend fun waitForPayment(outTradeNo: String): Boolean {
         repeat(20) {
-            val order = api.getPaymentOrder(outTradeNo)
+            val order = withContext(Dispatchers.IO) {
+                runCatching { api.syncPaymentOrder(outTradeNo) }
+                    .getOrElse { api.getPaymentOrder(outTradeNo) }
+            }
             if (isPaymentConfirmedStatus(order.status)) {
                 return true
             }
@@ -2151,22 +2308,18 @@ class HomeViewModel(
             rejectDuplicatePayment()
             return
         }
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             beginPaymentUi()
             _uiState.value = _uiState.value.copy(
                 orderCenter = _uiState.value.orderCenter.copy(actingOutTradeNo = order.outTradeNo),
             )
             try {
                 val payment = api.repayPaymentOrder(order.outTradeNo)
-                if (payment.status.equals("PAID", ignoreCase = true) ||
-                    isPaymentConfirmedStatus(payment.status)
-                ) {
-                    refreshOrderCenter()
-                    refreshAll()
-                    _uiState.value = _uiState.value.copy(message = "支付成功")
-                    return@launch
-                }
-                val paid = payWithAlipay(payment.outTradeNo, payment.alipay.orderStr)
+                endPaymentUi()
+                _uiState.value = _uiState.value.copy(
+                    orderCenter = _uiState.value.orderCenter.copy(actingOutTradeNo = null),
+                )
+                val paid = launchPaymentOrder(payment)
                 if (paid) {
                     refreshOrderCenter()
                     refreshAll()
@@ -2400,13 +2553,8 @@ class HomeViewModel(
                     _uiState.value = _uiState.value.copy(error = "获取支付宝授权信息失败")
                     return@launch
                 }
-                val handler = alipayAuthHandler
-                if (handler == null) {
-                    _uiState.value = _uiState.value.copy(error = "无法调起支付宝，请重试")
-                    return@launch
-                }
                 val result = try {
-                    handler(authInfo)
+                    AlipayHelper.auth(authInfo)
                 } catch (e: Exception) {
                     _uiState.value = _uiState.value.copy(
                         error = e.message?.takeIf { it.isNotBlank() } ?: "支付宝调起失败",

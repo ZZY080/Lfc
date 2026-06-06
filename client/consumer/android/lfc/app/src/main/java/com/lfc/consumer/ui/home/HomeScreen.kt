@@ -13,7 +13,6 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -29,8 +28,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.zIndex
-import com.lfc.consumer.payment.AlipayHelper
-import com.lfc.consumer.util.findActivity
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -44,7 +41,11 @@ import com.lfc.consumer.ui.navigation.weChatPopExitTransition
 import com.lfc.consumer.data.model.ActivityDto
 import com.lfc.consumer.data.model.PostDto
 import com.lfc.consumer.data.model.ProfileTabUiState
+import com.lfc.consumer.data.model.activityPromoteBidHint
+import com.lfc.consumer.data.model.activityPromotePriceHint
 import com.lfc.consumer.data.model.displayName
+import com.lfc.consumer.data.model.postBoostBidHint
+import com.lfc.consumer.data.model.postBoostPriceHint
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.lfc.consumer.ui.theme.XhsRed
 import androidx.compose.ui.unit.sp
@@ -70,47 +71,28 @@ fun HomeScreen(
     val uiState by viewModel.uiState.collectAsState()
     val userSession by viewModel.userSession.collectAsState()
     val context = LocalContext.current
-    val activity = remember(context) { context.findActivity() }
     val searchHistory by viewModel.searchHistory.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
 
-    DisposableEffect(activity, viewModel) {
-        viewModel.setAlipayPayHandler(
-            activity?.let { host ->
-                { orderStr -> AlipayHelper.pay(host, orderStr) }
-            },
-        )
-        viewModel.setAlipayAuthHandler(
-            activity?.let { host ->
-                { authInfo -> AlipayHelper.auth(host, authInfo) }
-            },
-        )
-        onDispose {
-            viewModel.setAlipayPayHandler(null)
-            viewModel.setAlipayAuthHandler(null)
+    fun openProfileQrScan() {
+        showProfileSideMenu = false
+        navController.navigate("profile_qr_scan")
+    }
+
+    fun handleProfileScanTarget(target: ProfileScanTarget) {
+        coroutineScope.launch {
+            val userId = when (target) {
+                is ProfileScanTarget.ById -> target.userId
+                is ProfileScanTarget.ByLfcNo -> viewModel.resolveUserIdByLfcNo(target.lfcNo)
+            }
+            if (userId != null) {
+                navController.navigate("user_profile/$userId")
+            } else {
+                snackbarHostState.showSnackbar("无法识别该用户")
+            }
         }
     }
-    val launchProfileQrScan = rememberProfileQrScanner(
-        onProfileScanned = { target ->
-            coroutineScope.launch {
-                val userId = when (target) {
-                    is ProfileScanTarget.ById -> target.userId
-                    is ProfileScanTarget.ByLfcNo -> viewModel.resolveUserIdByLfcNo(target.lfcNo)
-                }
-                if (userId != null) {
-                    navController.navigate("user_profile/$userId")
-                } else {
-                    snackbarHostState.showSnackbar("无法识别该用户")
-                }
-            }
-        },
-        onError = { message ->
-            coroutineScope.launch {
-                snackbarHostState.showSnackbar(message)
-            }
-        },
-    )
 
     LaunchedEffect(uiState.message, uiState.error) {
         uiState.message?.let {
@@ -252,7 +234,7 @@ fun HomeScreen(
                                 uiState.myProfile?.let { ProfileShareHelper.shareProfile(context, it) }
                             },
                             onShowQr = { navController.navigate("my_qrcode") },
-                            onScanProfile = launchProfileQrScan,
+                            onScanProfile = ::openProfileQrScan,
                             onSettings = { navController.navigate("settings") },
                             onBindAlipay = { navController.navigate("settings") },
                             onGoToMessages = { selectedTab = 2 },
@@ -412,6 +394,18 @@ fun HomeScreen(
                     },
                     currentUserId = uiState.myProfile?.id ?: userSession?.userId,
                     onProductClick = { id -> navController.navigate("product_detail/$id") },
+                    isPromotionSubmitting = uiState.isPromotionSubmitting,
+                    onBoost = { viewModel.boostPost(postId) },
+                    postBoostActionLabel = uiState.promotionConfig?.postActionLabel ?: "擦亮笔记",
+                    postBoostActiveHint = "擦亮 ${uiState.promotionConfig?.postBoostHours ?: 48} 小时内推荐流优先展示",
+                    postBoostPriceHint = uiState.selectedPost?.promotion?.price?.let { price ->
+                        if (uiState.promotionConfig?.postSlotsFull == true) {
+                            uiState.promotionConfig?.postBoostPriceHint()
+                        } else {
+                            "¥$price"
+                        }
+                    } ?: uiState.promotionConfig?.postBoostPriceHint(),
+                    postBoostBidHint = uiState.promotionConfig?.postBoostBidHint(),
                 )
             }
 
@@ -586,6 +580,25 @@ fun HomeScreen(
                 )
             }
 
+            composable("profile_qr_scan") {
+                ProfileQrScanScreen(
+                    onBack = { navController.popBackStack() },
+                    onProfileScanned = { target ->
+                        navController.popBackStack()
+                        handleProfileScanTarget(target)
+                    },
+                    onInvalidCode = { message ->
+                        coroutineScope.launch {
+                            snackbarHostState.showSnackbar(message)
+                        }
+                    },
+                    onShowMyQr = {
+                        navController.popBackStack()
+                        navController.navigate("my_qrcode")
+                    },
+                )
+            }
+
             composable("edit_profile") {
                 EditProfileScreen(
                     profile = uiState.myProfile,
@@ -633,6 +646,18 @@ fun HomeScreen(
                     onFollowToggle = {
                         uiState.selectedActivity?.authorId?.let { viewModel.toggleDetailAuthorFollow(it) }
                     },
+                    isPromotionSubmitting = uiState.isPromotionSubmitting,
+                    onPromote = { viewModel.promoteActivity(activityId) },
+                    activityPromoteActionLabel = uiState.promotionConfig?.activityActionLabel ?: "推广活动",
+                    activityPromoteActiveHint = "推广 ${uiState.promotionConfig?.activityPromoteHours ?: 72} 小时内活动 Tab 优先展示",
+                    activityPromotePriceHint = uiState.selectedActivity?.promotion?.price?.let { price ->
+                        if (uiState.promotionConfig?.activitySlotsFull == true) {
+                            uiState.promotionConfig?.activityPromotePriceHint()
+                        } else {
+                            "¥$price"
+                        }
+                    } ?: uiState.promotionConfig?.activityPromotePriceHint(),
+                    activityPromoteBidHint = uiState.promotionConfig?.activityPromoteBidHint(),
                 )
             }
 
@@ -754,7 +779,7 @@ fun HomeScreen(
             profile = uiState.myProfile?.toXhsProfileData(),
             unreadCount = uiState.unreadCount,
             onDismiss = { showProfileSideMenu = false },
-            onScan = launchProfileQrScan,
+            onScan = ::openProfileQrScan,
             onShowMyQr = {
                 showProfileSideMenu = false
                 navController.navigate("my_qrcode")

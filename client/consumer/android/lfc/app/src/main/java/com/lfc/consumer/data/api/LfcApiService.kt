@@ -14,6 +14,10 @@ import com.lfc.consumer.data.model.SendChatMessageRequest
 import com.lfc.consumer.data.model.CreatePostCommentRequest
 import com.lfc.consumer.data.model.PostCommentDto
 import com.lfc.consumer.data.model.PostDto
+import com.lfc.consumer.data.model.PromotionActionResponseDto
+import com.lfc.consumer.data.model.PromotionConfigDto
+import com.lfc.consumer.data.model.PromotionOrderRequest
+import com.lfc.consumer.data.model.PromotionPaymentResponseDto
 import com.lfc.consumer.data.model.ActivitySocialStateDto
 import com.lfc.consumer.data.model.PostSocialStateDto
 import com.lfc.consumer.data.model.PostFeedResponse
@@ -278,6 +282,27 @@ interface LfcApiService {
     @DELETE("consumer/activity/{id}/join")
     suspend fun leaveActivity(@Path("id") id: Int)
 
+    @GET("consumer/promotion/config")
+    suspend fun getPromotionConfig(): PromotionConfigDto
+
+    @POST("consumer/promotion/post/{postId}/boost")
+    suspend fun boostPost(@Path("postId") postId: Int): PromotionActionResponseDto
+
+    @POST("consumer/promotion/post/{postId}/boost/order")
+    suspend fun createPostBoostOrder(
+        @Path("postId") postId: Int,
+        @Body request: PromotionOrderRequest = PromotionOrderRequest(),
+    ): PromotionPaymentResponseDto
+
+    @POST("consumer/promotion/activity/{activityId}/promote")
+    suspend fun promoteActivity(@Path("activityId") activityId: Int): PromotionActionResponseDto
+
+    @POST("consumer/promotion/activity/{activityId}/promote/order")
+    suspend fun createActivityPromoteOrder(
+        @Path("activityId") activityId: Int,
+        @Body request: PromotionOrderRequest = PromotionOrderRequest(),
+    ): PromotionPaymentResponseDto
+
     @GET("consumer/payment/config")
     suspend fun getPaymentConfig(): PaymentConfigDto
 
@@ -328,6 +353,18 @@ interface LfcApiService {
         @Path("postId") postId: Int,
     ): PaymentOrderResultDto
 
+    @POST("consumer/payment/post/{postId}/boost/order")
+    suspend fun createPostBoostPaymentOrder(
+        @Path("postId") postId: Int,
+        @Body request: PromotionOrderRequest,
+    ): PaymentOrderResultDto
+
+    @POST("consumer/payment/activity/{activityId}/promote/order")
+    suspend fun createActivityPromotePaymentOrder(
+        @Path("activityId") activityId: Int,
+        @Body request: PromotionOrderRequest,
+    ): PaymentOrderResultDto
+
     @GET("consumer/payment/post/{postId}/order")
     suspend fun getPostProductOrder(
         @Path("postId") postId: Int,
@@ -335,6 +372,9 @@ interface LfcApiService {
 
     @GET("consumer/payment/orders/{outTradeNo}")
     suspend fun getPaymentOrder(@Path("outTradeNo") outTradeNo: String): PaymentOrderDetailDto
+
+    @POST("consumer/payment/orders/{outTradeNo}/sync")
+    suspend fun syncPaymentOrder(@Path("outTradeNo") outTradeNo: String): PaymentOrderDetailDto
 
     @POST("consumer/payment/orders/{outTradeNo}/confirm-receipt")
     suspend fun confirmPaymentReceipt(

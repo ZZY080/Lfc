@@ -31,6 +31,8 @@ export enum PaymentAfterSalesStatus {
 export enum PaymentBizType {
   ACTIVITY_JOIN = 'ACTIVITY_JOIN',
   POST_PRODUCT_PURCHASE = 'POST_PRODUCT_PURCHASE',
+  POST_BOOST = 'POST_BOOST',
+  ACTIVITY_PROMOTE = 'ACTIVITY_PROMOTE',
 }
 
 export enum PaymentTransactionType {

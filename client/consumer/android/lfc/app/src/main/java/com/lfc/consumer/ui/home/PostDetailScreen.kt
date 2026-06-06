@@ -78,6 +78,12 @@ fun PostDetailScreen(
     isAuthorFollowing: Boolean = false,
     currentUserId: Int? = null,
     onProductClick: (Int) -> Unit = {},
+    isPromotionSubmitting: Boolean = false,
+    onBoost: (() -> Unit)? = null,
+    postBoostActionLabel: String = "擦亮笔记",
+    postBoostActiveHint: String = "擦亮期间将在推荐流优先展示",
+    postBoostPriceHint: String? = null,
+    postBoostBidHint: String? = null,
 ) {
     var commentInput by remember { mutableStateOf("") }
     var replyToCommentId by remember { mutableStateOf<Int?>(null) }
@@ -98,6 +104,7 @@ fun PostDetailScreen(
                 val displayTitle = postDisplayTitle(post)
                 val displayBody = postDisplayBody(post)
                 val product = post.product
+                val isSelf = currentUserId != null && currentUserId == post.authorId
 
                 Column(modifier = Modifier.fillMaxSize()) {
                     PostDetailHeader(
@@ -140,6 +147,24 @@ fun PostDetailScreen(
                                     post = post,
                                     product = product,
                                     onClick = { onProductClick(post.id) },
+                                )
+                            }
+                        }
+
+                        if (isSelf && onBoost != null) {
+                            item {
+                                PromotionOwnerActionCard(
+                                    promotion = post.promotion,
+                                    actionLabel = postBoostActionLabel,
+                                    activeHint = postBoostActiveHint,
+                                    cooldownHint = post.promotion?.nextAvailableAt?.let {
+                                        "冷却中，下次可擦亮：$it"
+                                    },
+                                    priceHint = postBoostPriceHint,
+                                    bidHint = postBoostBidHint,
+                                    isSubmitting = isPromotionSubmitting,
+                                    onAction = onBoost,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                                 )
                             }
                         }
@@ -337,7 +362,7 @@ private fun PostDetailContentSection(
         }
 
         Text(
-            text = formatRelativeTime(createdAt),
+            text = "发布于 ${formatXhsTime(createdAt)}",
             fontSize = 12.sp,
             color = XhsTextSecondary,
         )
@@ -637,24 +662,5 @@ fun XhsPostDetailBottomBar(
                 }
             }
         }
-    }
-}
-
-fun formatRelativeTime(iso: String): String {
-    return try {
-        val cleaned = iso.replace(" ", "T").substringBefore(".").substringBefore("+").take(19)
-        val local = java.time.LocalDateTime.parse(cleaned)
-        val instant = local.atZone(java.time.ZoneId.systemDefault()).toInstant()
-        val now = java.time.Instant.now()
-        val minutes = java.time.Duration.between(instant, now).toMinutes()
-        when {
-            minutes < 1 -> "刚刚"
-            minutes < 60 -> "${minutes}分钟前"
-            minutes < 60 * 24 -> "${minutes / 60}小时前"
-            minutes < 60 * 24 * 7 -> "${minutes / (60 * 24)}天前"
-            else -> formatXhsTime(iso).take(10)
-        }
-    } catch (_: Exception) {
-        formatXhsTime(iso).take(16)
     }
 }

@@ -32,6 +32,7 @@ data class PostDto(
     val savedAt: String? = null,
     val author: UserDto? = null,
     val product: PostProductDto? = null,
+    val promotion: PromotionMetaDto? = null,
 )
 
 data class PostProductDto(
@@ -166,6 +167,57 @@ data class UploadImageResponse(
     val url: String,
 )
 
+data class PromotionMetaDto(
+    val isActive: Boolean = false,
+    val label: String? = null,
+    val badge: String? = null,
+    val until: String? = null,
+    val canApply: Boolean = false,
+    val nextAvailableAt: String? = null,
+    val cooldownHours: Int = 0,
+    val durationHours: Int = 0,
+    val requiresPayment: Boolean = false,
+    val price: String? = null,
+    val minBidAmount: String? = null,
+    val bidAmount: String? = null,
+)
+
+data class PromotionConfigDto(
+    val postBoostHours: Int = 48,
+    val postCooldownHours: Int = 48,
+    val postActiveLabel: String = "擦亮中",
+    val postActionLabel: String = "擦亮笔记",
+    val activityPromoteHours: Int = 72,
+    val activityCooldownHours: Int = 168,
+    val activityMaxFeedSlots: Int = 2,
+    val activityActiveLabel: String = "推广",
+    val activityActionLabel: String = "推广活动",
+    val postMaxFeedSlots: Int = 2,
+    val paidEnabled: Boolean = false,
+    val postBoostPrice: String = "2.00",
+    val activityPromotePrice: String = "3.00",
+    val bidIncrement: String = "0.50",
+    val lowestPostBoostBid: String? = null,
+    val lowestActivityPromoteBid: String? = null,
+    val postSlotsFull: Boolean = false,
+    val activitySlotsFull: Boolean = false,
+)
+
+data class PromotionOrderRequest(
+    val bidAmount: String? = null,
+)
+
+data class PromotionActionResponseDto(
+    val message: String,
+    val promotion: PromotionMetaDto,
+)
+
+data class PromotionPaymentResponseDto(
+    val message: String,
+    val payment: PaymentOrderResultDto,
+    val promotion: PromotionMetaDto,
+)
+
 data class ActivityDto(
     val id: Int,
     val title: String,
@@ -190,6 +242,7 @@ data class ActivityDto(
     val isLiked: Boolean = false,
     val isFavorited: Boolean = false,
     val savedAt: String? = null,
+    val promotion: PromotionMetaDto? = null,
 )
 
 data class ActivityParticipantDto(
@@ -237,8 +290,10 @@ data class PaymentOrderResultDto(
     val subject: String,
     val status: String,
     val payeeId: Int,
-    val alipay: AlipayPayPayloadDto,
+    val alipay: AlipayPayPayloadDto? = null,
 )
+
+fun PaymentOrderResultDto.alipayOrderStr(): String = alipay?.orderStr.orEmpty()
 
 data class PaymentConfigDto(
     val platformFeeRate: Double,
@@ -467,6 +522,52 @@ fun PostProductDto.isOnSale(): Boolean = status.equals("ON_SALE", ignoreCase = t
 fun PostProductDto.isSold(): Boolean = status.equals("SOLD", ignoreCase = true)
 
 fun PostDto.hasOnSaleProduct(): Boolean = product?.isOnSale() == true
+
+fun PostDto.promotionBadge(): String? = promotion?.badge?.takeIf { promotion?.isActive == true }
+
+fun ActivityDto.promotionBadge(): String? = promotion?.badge?.takeIf { promotion?.isActive == true }
+
+fun PromotionConfigDto.postBoostPriceHint(): String? =
+    if (paidEnabled) "¥${effectivePostBoostPrice()}" else null
+
+fun PromotionConfigDto.activityPromotePriceHint(): String? =
+    if (paidEnabled) "¥${effectiveActivityPromotePrice()}" else null
+
+fun PromotionConfigDto.effectivePostBoostPrice(): String {
+    if (!postSlotsFull) return postBoostPrice
+    val lowest = lowestPostBoostBid?.toDoubleOrNull()
+        ?: postBoostPrice.toDoubleOrNull()
+        ?: return postBoostPrice
+    val increment = bidIncrement.toDoubleOrNull() ?: 0.5
+    return "%.2f".format(lowest + increment)
+}
+
+fun PromotionConfigDto.effectiveActivityPromotePrice(): String {
+    if (!activitySlotsFull) return activityPromotePrice
+    val lowest = lowestActivityPromoteBid?.toDoubleOrNull()
+        ?: activityPromotePrice.toDoubleOrNull()
+        ?: return activityPromotePrice
+    val increment = bidIncrement.toDoubleOrNull() ?: 0.5
+    return "%.2f".format(lowest + increment)
+}
+
+fun PromotionConfigDto.postBoostBidHint(): String? {
+    if (!paidEnabled || !postSlotsFull) return null
+    val lowest = lowestPostBoostBid?.toDoubleOrNull()
+        ?: postBoostPrice.toDoubleOrNull()
+        ?: return null
+    val increment = bidIncrement.toDoubleOrNull() ?: 0.5
+    return "推广位已满，需出价 ¥${"%.2f".format(lowest + increment)} 以上抢位"
+}
+
+fun PromotionConfigDto.activityPromoteBidHint(): String? {
+    if (!paidEnabled || !activitySlotsFull) return null
+    val lowest = lowestActivityPromoteBid?.toDoubleOrNull()
+        ?: activityPromotePrice.toDoubleOrNull()
+        ?: return null
+    val increment = bidIncrement.toDoubleOrNull() ?: 0.5
+    return "推广位已满，需出价 ¥${"%.2f".format(lowest + increment)} 以上抢位"
+}
 
 data class LoginRequest(
     val email: String,

@@ -156,6 +156,17 @@ fun DiscoverFeedScreen(
                     )
                 }
             }
+
+            Text(
+                text = "推广内容已明确标注，优先展示不代表官方背书",
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color.White)
+                    .padding(horizontal = 12.dp)
+                    .padding(bottom = 6.dp),
+                color = XhsTextSecondary,
+                fontSize = 11.sp,
+            )
         }
 
         PullToRefreshBox(

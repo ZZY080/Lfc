@@ -13,6 +13,7 @@ import { AdminActivityService } from '@module/activity/service/admin-activity.se
 import { RoleAuthzService } from '@shared/auth/role-authz.service';
 import { MessageModule } from '@module/message/message.module';
 import { UserAlipayModule } from '@module/user/user-alipay.module';
+import { PromotionModule } from '@module/promotion/promotion.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { UserAlipayModule } from '@module/user/user-alipay.module';
     ]),
     MessageModule,
     forwardRef(() => UserAlipayModule),
+    forwardRef(() => PromotionModule),
   ],
   controllers: [ConsumerActivityController, AdminActivityController],
   providers: [

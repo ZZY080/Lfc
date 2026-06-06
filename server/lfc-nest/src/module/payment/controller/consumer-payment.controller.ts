@@ -20,6 +20,7 @@ import {
   PaymentTransactionListQuerySchema,
 } from '@module/payment/schema/payment-order.schema';
 import { PaymentOrderTab } from '@shared/enum/payment.enum';
+import { PromotionOrderBodyDto } from '@module/promotion/dto/promotion.dto';
 
 @Controller('consumer/payment')
 export class ConsumerPaymentController {
@@ -95,6 +96,36 @@ export class ConsumerPaymentController {
     );
   }
 
+  /** 创建笔记擦亮增值服支付订单（直收入商户） */
+  @Post('post/:postId/boost/order')
+  @UseGuards(JwtAuthGuard)
+  createPostBoostOrder(
+    @CurrentUser('userId') userId: number,
+    @Param('postId', ParseIntPipe) postId: number,
+    @Body() body: PromotionOrderBodyDto,
+  ) {
+    return this.consumerPaymentService.createPostBoostOrder(
+      userId,
+      postId,
+      body.bidAmount,
+    );
+  }
+
+  /** 创建活动推广增值服支付订单（直收入商户） */
+  @Post('activity/:activityId/promote/order')
+  @UseGuards(JwtAuthGuard)
+  createActivityPromoteOrder(
+    @CurrentUser('userId') userId: number,
+    @Param('activityId', ParseIntPipe) activityId: number,
+    @Body() body: PromotionOrderBodyDto,
+  ) {
+    return this.consumerPaymentService.createActivityPromoteOrder(
+      userId,
+      activityId,
+      body.bidAmount,
+    );
+  }
+
   /** 查询当前用户对某商品的支付订单（确认收货用） */
   @Get('post/:postId/order')
   @UseGuards(JwtAuthGuard)
@@ -119,6 +150,16 @@ export class ConsumerPaymentController {
     @Param('outTradeNo') outTradeNo: string,
   ) {
     return this.consumerPaymentService.findOrderForUser(userId, outTradeNo);
+  }
+
+  /** 主动向支付宝查单并同步（支付成功但 notify 未到时补偿） */
+  @Post('orders/:outTradeNo/sync')
+  @UseGuards(JwtAuthGuard)
+  syncOrder(
+    @CurrentUser('userId') userId: number,
+    @Param('outTradeNo') outTradeNo: string,
+  ) {
+    return this.consumerPaymentService.syncOrderFromAlipay(userId, outTradeNo);
   }
 
   /** 取消待付款订单 */
