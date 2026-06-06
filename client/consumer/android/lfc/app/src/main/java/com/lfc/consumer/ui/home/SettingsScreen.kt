@@ -23,7 +23,6 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -58,15 +57,11 @@ fun SettingsScreen(
         showLikesPublic: Boolean,
     ) -> Unit,
     onAuthorizeAlipay: () -> Unit,
-    onBindAlipay: (loginId: String, realName: String?) -> Unit,
     onUnbindAlipay: () -> Unit,
 ) {
     var showCommentsPublic by remember(profile?.id) { mutableStateOf(profile?.showCommentsPublic ?: false) }
     var showFavoritesPublic by remember(profile?.id) { mutableStateOf(profile?.showFavoritesPublic ?: false) }
     var showLikesPublic by remember(profile?.id) { mutableStateOf(profile?.showLikesPublic ?: false) }
-    var showManualAlipayEntry by remember { mutableStateOf(false) }
-    var alipayLoginId by remember(profile?.id) { mutableStateOf("") }
-    var alipayRealName by remember(profile?.id) { mutableStateOf("") }
 
     LaunchedEffect(
         profile?.showCommentsPublic,
@@ -179,7 +174,7 @@ fun SettingsScreen(
                 )
                 Text(
                     text = buildString {
-                        append("发布闲置或收取活动费时需绑定。点击授权将跳转支付宝完成身份验证，")
+                        append("普通支付宝用户即可绑定：点击授权跳转支付宝 App 完成身份验证。")
                         append("买家支付后平台托管，确认收货后通过商家分账转给你（扣除")
                         append(platformFeeRateLabel?.takeIf { it.isNotBlank() } ?: "服务费")
                         append("）。")
@@ -215,47 +210,14 @@ fun SettingsScreen(
                                 modifier = Modifier.fillMaxWidth(),
                                 colors = ButtonDefaults.buttonColors(containerColor = XhsRed),
                             ) {
-                                Text("跳转支付宝授权绑定")
+                                Text("跳转支付宝授权")
                             }
-                            Spacer(modifier = Modifier.height(8.dp))
-                            TextButton(
-                                onClick = { showManualAlipayEntry = !showManualAlipayEntry },
-                                enabled = !isUpdating,
-                            ) {
-                                Text(
-                                    text = if (showManualAlipayEntry) "收起手动填写" else "无法授权？手动填写账号",
-                                    color = XhsTextSecondary,
-                                )
-                            }
-                            if (showManualAlipayEntry) {
-                                Spacer(modifier = Modifier.height(8.dp))
-                                OutlinedTextField(
-                                    value = alipayLoginId,
-                                    onValueChange = { alipayLoginId = it },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    label = { Text("支付宝手机号或邮箱") },
-                                    singleLine = true,
-                                    enabled = !isUpdating,
-                                )
-                                Spacer(modifier = Modifier.height(10.dp))
-                                OutlinedTextField(
-                                    value = alipayRealName,
-                                    onValueChange = { alipayRealName = it },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    label = { Text("支付宝实名（建议填写）") },
-                                    singleLine = true,
-                                    enabled = !isUpdating,
-                                )
-                                Spacer(modifier = Modifier.height(12.dp))
-                                Button(
-                                    onClick = { onBindAlipay(alipayLoginId, alipayRealName) },
-                                    enabled = !isUpdating && alipayLoginId.isNotBlank(),
-                                    modifier = Modifier.fillMaxWidth(),
-                                    colors = ButtonDefaults.buttonColors(containerColor = XhsRed),
-                                ) {
-                                    Text("手动绑定收款账号")
-                                }
-                            }
+                            Text(
+                                text = "需使用本人实名认证的支付宝账号授权",
+                                fontSize = 12.sp,
+                                color = XhsTextSecondary,
+                                modifier = Modifier.padding(top = 10.dp),
+                            )
                         }
                     }
                 }

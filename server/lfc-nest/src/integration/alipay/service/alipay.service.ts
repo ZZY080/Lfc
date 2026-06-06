@@ -20,6 +20,7 @@ import {
   verifyAlipayNotify,
 } from '@integration/alipay/util/alipay-crypto.util';
 import { executeAlipayOpenApi } from '@integration/alipay/util/alipay-openapi.util';
+import { resolveAlipayReceiver } from '@integration/alipay/util/alipay-receiver.util';
 
 export interface AlipayRoyaltySettleResult {
   outRequestNo: string;
@@ -89,8 +90,10 @@ export class AlipayService {
 
     const tokenCode = String(tokenPayload.code ?? '');
     const accessToken = String(tokenPayload.access_token ?? '');
-    const userId = String(tokenPayload.user_id ?? tokenPayload.open_id ?? '');
-    const tokenLooksSuccessful = userId.trim().length > 0;
+    const userId = String(tokenPayload.user_id ?? '').trim();
+    const openId = String(tokenPayload.open_id ?? '').trim();
+    const accountId = userId || openId;
+    const tokenLooksSuccessful = accountId.length > 0;
     if (tokenCode.trim().length > 0 && tokenCode !== '10000') {
       const subCode = String(tokenPayload.sub_code ?? '');
       const msg = String(tokenPayload.msg ?? '');
@@ -129,7 +132,78 @@ export class AlipayService {
       }
     }
 
-    return { userId, nickName };
+    return { userId: accountId, nickName };
+  }
+
+  private buildRoyaltyReceiver(input: {
+    payeeUserId?: string | null;
+    payeeLoginId?: string | null;
+    payeeRealName?: string | null;
+  }): Record<string, string> {
+    const resolved = resolveAlipayReceiver(input);
+    if (!resolved) {
+      throw new BadRequestException('缺少支付宝收款方信息');
+    }
+
+    const receiver: Record<string, string> = {
+      type: resolved.type,
+      account: resolved.account,
+      memo: '莲峰校园C2C收款方',
+    };
+    // userId / openId 绑定分账时不要传 name（OAuth 只能拿到昵称，会触发「全称不匹配」）
+    if (resolved.type === 'loginName') {
+      const realName = input.payeeRealName?.trim();
+      if (!realName) {
+        throw new BadRequestException('手动绑定支付宝时，请填写支付宝实名');
+      }
+      receiver.name = realName;
+    }
+    return receiver;
+  }
+
+  private buildRoyaltyTransferTarget(input: {
+    payeeUserId?: string | null;
+    payeeLoginId?: string | null;
+    payeeRealName?: string | null;
+  }): Record<string, string> {
+    const resolved = resolveAlipayReceiver(input);
+    if (!resolved) {
+      throw new BadRequestException('缺少支付宝收款方信息');
+    }
+
+    const target: Record<string, string> = {};
+    if (resolved.type === 'userId') {
+      target.trans_in_type = 'userId';
+      target.trans_in = resolved.account;
+    } else if (resolved.type === 'openId') {
+      target.trans_in_type = 'openId';
+      target.trans_in = resolved.account;
+    } else {
+      target.trans_in_type = 'loginName';
+      target.trans_in = resolved.account;
+    }
+    if (resolved.type === 'loginName' && input.payeeRealName?.trim()) {
+      target.trans_in_name = input.payeeRealName.trim();
+    }
+    return target;
+  }
+
+  private buildRoyaltyTransferSource(input: {
+    payeeUserId?: string | null;
+    payeeLoginId?: string | null;
+  }): Record<string, string> {
+    const resolved = resolveAlipayReceiver(input);
+    if (!resolved) {
+      throw new BadRequestException('缺少分账回退收款方信息');
+    }
+
+    if (resolved.type === 'userId') {
+      return { trans_out_type: 'userId', trans_out: resolved.account };
+    }
+    if (resolved.type === 'openId') {
+      return { trans_out_type: 'openId', trans_out: resolved.account };
+    }
+    return { trans_out_type: 'loginName', trans_out: resolved.account };
   }
 
   async bindRoyaltyRelation(input: {
@@ -140,21 +214,7 @@ export class AlipayService {
   }): Promise<void> {
     this.assertConfigured();
 
-    const receiver: Record<string, string> = {
-      memo: '莲峰校园C2C收款方',
-    };
-    if (input.payeeUserId) {
-      receiver.type = 'userId';
-      receiver.account = input.payeeUserId;
-    } else if (input.payeeLoginId) {
-      receiver.type = 'loginName';
-      receiver.account = input.payeeLoginId;
-    } else {
-      throw new BadRequestException('缺少支付宝收款方信息');
-    }
-    if (input.payeeRealName?.trim()) {
-      receiver.name = input.payeeRealName.trim();
-    }
+    const receiver = this.buildRoyaltyReceiver(input);
 
     const payload = await executeAlipayOpenApi({
       gateway: this.alipayConfig.gateway,
@@ -169,7 +229,18 @@ export class AlipayService {
 
     const code = String(payload.code ?? '');
     if (code !== '10000') {
+      const subCode = String(payload.sub_code ?? '');
       const subMsg = String(payload.sub_msg ?? payload.msg ?? '分账关系绑定失败');
+      if (subCode === 'USER_NOT_EXIST' || subMsg.includes('分账接收方不存在')) {
+        throw new BadRequestException(
+          '分账接收方不存在：请确认你的支付宝账号已完成实名认证，然后在设置中重新授权绑定',
+        );
+      }
+      if (subCode === 'USERNAME_NOT_MATCH' || subMsg.includes('全称不匹配')) {
+        throw new BadRequestException(
+          '分账接收方全称不匹配：请重新授权绑定，无需填写额外信息',
+        );
+      }
       throw new BadRequestException(subMsg);
     }
   }
@@ -189,19 +260,8 @@ export class AlipayService {
       royalty_type: 'transfer',
       amount: input.payeeAmount,
       desc: input.desc.slice(0, 64),
+      ...this.buildRoyaltyTransferTarget(input),
     };
-    if (input.payeeUserId) {
-      royaltyItem.trans_in_type = 'userId';
-      royaltyItem.trans_in = input.payeeUserId;
-    } else if (input.payeeLoginId) {
-      royaltyItem.trans_in_type = 'loginName';
-      royaltyItem.trans_in = input.payeeLoginId;
-    } else {
-      throw new BadRequestException('缺少支付宝收款方信息');
-    }
-    if (input.payeeRealName?.trim()) {
-      royaltyItem.trans_in_name = input.payeeRealName.trim();
-    }
 
     const payload = await executeAlipayOpenApi({
       gateway: this.alipayConfig.gateway,
@@ -255,16 +315,8 @@ export class AlipayService {
         royalty_type: 'transfer',
         amount: input.royaltyReturn.amount,
         desc: '退款分账回退'.slice(0, 64),
+        ...this.buildRoyaltyTransferSource(input.royaltyReturn),
       };
-      if (input.royaltyReturn.payeeUserId) {
-        royaltyItem.trans_out_type = 'userId';
-        royaltyItem.trans_out = input.royaltyReturn.payeeUserId;
-      } else if (input.royaltyReturn.payeeLoginId) {
-        royaltyItem.trans_out_type = 'loginName';
-        royaltyItem.trans_out = input.royaltyReturn.payeeLoginId;
-      } else {
-        throw new BadRequestException('缺少分账回退收款方信息');
-      }
       bizContent.refund_royalty_parameters = [royaltyItem];
     }
 

@@ -46,6 +46,18 @@ export interface PaymentOrderDetailDto {
   createdAt: Date;
 }
 
+export interface FulfillmentStepDto {
+  label: string;
+  done: boolean;
+  active: boolean;
+}
+
+export interface OrderFulfillmentGuaranteeDto {
+  title: string;
+  summary: string;
+  steps: FulfillmentStepDto[];
+}
+
 export interface PaymentOrderListItemDto {
   outTradeNo: string;
   amount: string;
@@ -58,8 +70,18 @@ export interface PaymentOrderListItemDto {
   coverImage: string | null;
   payeeId: number;
   payeeName: string;
+  payeeRoleLabel: string;
   payeeAvatarUrl: string | null;
+  platformFee: string | null;
+  payeeAmount: string | null;
   paidAt: Date | null;
+  confirmedAt: Date | null;
+  settledAt: Date | null;
+  autoConfirmAt: Date | null;
+  bizStartTime: Date | null;
+  bizEndTime: Date | null;
+  bizLocation: string | null;
+  fulfillment: OrderFulfillmentGuaranteeDto;
   createdAt: Date;
   canPay: boolean;
   canConfirmReceipt: boolean;

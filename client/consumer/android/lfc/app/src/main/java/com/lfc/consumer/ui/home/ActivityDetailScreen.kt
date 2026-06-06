@@ -48,6 +48,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -56,6 +57,7 @@ import com.lfc.consumer.data.model.ActivityDto
 import com.lfc.consumer.data.model.ActivityParticipantDto
 import com.lfc.consumer.data.model.displayName
 import com.lfc.consumer.data.model.isPaidActivity
+import com.lfc.consumer.location.AmapNavigationHelper
 import com.lfc.consumer.ui.theme.XhsBackground
 import com.lfc.consumer.ui.theme.XhsRed
 import com.lfc.consumer.ui.theme.XhsRedContainer
@@ -90,6 +92,7 @@ fun ActivityDetailScreen(
             isLoading -> XhsDetailLoading(Modifier.fillMaxSize())
             activity == null -> XhsDetailEmpty("活动不存在或已删除", Modifier.fillMaxSize())
             else -> {
+                val context = LocalContext.current
                 val authorLabel = activity.author?.displayName() ?: "同学${activity.authorId}"
                 val participants = activity.participants.orEmpty()
                 val images = activity.images.orEmpty()
@@ -144,6 +147,14 @@ fun ActivityDetailScreen(
                                 timeRange = formatActivityTime(activity.startTime, activity.endTime),
                                 isPaid = isPaid,
                                 fee = activity.fee,
+                                onNavigate = {
+                                    AmapNavigationHelper.openNavigation(
+                                        context = context,
+                                        name = activity.location,
+                                        latitude = activity.latitude,
+                                        longitude = activity.longitude,
+                                    )
+                                },
                                 modifier = Modifier.padding(horizontal = 16.dp),
                             )
 
@@ -314,6 +325,7 @@ private fun ActivityDetailInfoCard(
     timeRange: String,
     isPaid: Boolean,
     fee: String?,
+    onNavigate: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Surface(
@@ -328,6 +340,8 @@ private fun ActivityDetailInfoCard(
                 iconBg = Color(0xFFFFEDE6),
                 label = "活动地点",
                 value = location,
+                actionLabel = if (location.isNotBlank()) "点击导航" else null,
+                onClick = if (location.isNotBlank()) onNavigate else null,
             )
             Spacer(modifier = Modifier.height(14.dp))
             ActivityInfoRow(
@@ -358,8 +372,21 @@ private fun ActivityInfoRow(
     iconBg: Color,
     label: String,
     value: String,
+    actionLabel: String? = null,
+    onClick: (() -> Unit)? = null,
 ) {
-    Row(verticalAlignment = Alignment.Top) {
+    Row(
+        verticalAlignment = Alignment.Top,
+        modifier = if (onClick != null) {
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .clickable(onClick = onClick)
+                .padding(vertical = 2.dp)
+        } else {
+            Modifier.fillMaxWidth()
+        },
+    ) {
         Box(
             modifier = Modifier
                 .size(40.dp)
@@ -371,13 +398,27 @@ private fun ActivityInfoRow(
         }
         Spacer(modifier = Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text(label, fontSize = 12.sp, color = XhsTextSecondary)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(label, fontSize = 12.sp, color = XhsTextSecondary)
+                actionLabel?.let {
+                    Text(
+                        text = it,
+                        fontSize = 12.sp,
+                        color = Color(0xFF4A90E2),
+                        fontWeight = FontWeight.Medium,
+                    )
+                }
+            }
             Spacer(modifier = Modifier.height(2.dp))
             Text(
                 value,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Medium,
-                color = XhsTextPrimary,
+                color = if (onClick != null) Color(0xFF1565C0) else XhsTextPrimary,
                 lineHeight = 22.sp,
             )
         }

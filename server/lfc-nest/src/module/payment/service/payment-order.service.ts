@@ -435,9 +435,12 @@ export class PaymentOrderService {
     const now = new Date();
     const orders = await this.paymentOrderRepository.find({
       where: {
-        bizType: PaymentBizType.POST_PRODUCT_PURCHASE,
         status: PaymentOrderStatus.PAID,
         autoConfirmAt: LessThanOrEqual(now),
+        bizType: In([
+          PaymentBizType.POST_PRODUCT_PURCHASE,
+          PaymentBizType.ACTIVITY_JOIN,
+        ]),
       },
       take: 50,
     });
@@ -464,11 +467,11 @@ export class PaymentOrderService {
     const orders = await this.paymentOrderRepository.find({
       where: [
         {
-          bizType: PaymentBizType.ACTIVITY_JOIN,
-          status: PaymentOrderStatus.PAID,
+          bizType: PaymentBizType.POST_PRODUCT_PURCHASE,
+          status: PaymentOrderStatus.CONFIRMED,
         },
         {
-          bizType: PaymentBizType.POST_PRODUCT_PURCHASE,
+          bizType: PaymentBizType.ACTIVITY_JOIN,
           status: PaymentOrderStatus.CONFIRMED,
         },
       ],
@@ -603,7 +606,14 @@ export class PaymentOrderService {
       );
     }
     if (this.paymentPayoutService.requiresConfirmBeforeSettle(order.bizType)) {
-      order.autoConfirmAt = this.buildAutoConfirmDeadline(paidAt);
+      if (order.bizType === PaymentBizType.ACTIVITY_JOIN) {
+        order.autoConfirmAt = await this.buildActivitySettleDeadline(
+          order.bizId,
+          paidAt,
+        );
+      } else {
+        order.autoConfirmAt = this.buildAutoConfirmDeadline(paidAt);
+      }
     }
 
     try {
@@ -854,6 +864,24 @@ export class PaymentOrderService {
     const deadline = new Date(paidAt);
     deadline.setDate(deadline.getDate() + this.paymentConfig.autoConfirmDays);
     return deadline;
+  }
+
+  private async buildActivitySettleDeadline(
+    activityId: number,
+    paidAt: Date,
+  ): Promise<Date> {
+    try {
+      const activity = await this.consumerActivityService.findOne(activityId);
+      const endTime = new Date(activity.endTime);
+      if (!Number.isNaN(endTime.getTime()) && endTime.getTime() > paidAt.getTime()) {
+        return endTime;
+      }
+    } catch (error) {
+      this.logger.warn(
+        `读取活动结束时间失败 activityId=${activityId}: ${String(error)}`,
+      );
+    }
+    return this.buildAutoConfirmDeadline(paidAt);
   }
 
   private isPaidOrBeyond(status: PaymentOrderStatus): boolean {

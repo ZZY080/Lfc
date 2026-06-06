@@ -37,6 +37,10 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.lfc.consumer.ui.navigation.weChatEnterTransition
+import com.lfc.consumer.ui.navigation.weChatExitTransition
+import com.lfc.consumer.ui.navigation.weChatPopEnterTransition
+import com.lfc.consumer.ui.navigation.weChatPopExitTransition
 import com.lfc.consumer.data.model.ActivityDto
 import com.lfc.consumer.data.model.PostDto
 import com.lfc.consumer.data.model.ProfileTabUiState
@@ -139,6 +143,10 @@ fun HomeScreen(
             navController = navController,
             startDestination = "main",
             modifier = Modifier.fillMaxSize(),
+            enterTransition = { weChatEnterTransition() },
+            exitTransition = { weChatExitTransition() },
+            popEnterTransition = { weChatPopEnterTransition() },
+            popExitTransition = { weChatPopExitTransition() },
         ) {
             composable("main") {
                 Box(modifier = Modifier.fillMaxSize()) {
@@ -180,6 +188,7 @@ fun HomeScreen(
                             onActivityClick = { activityId ->
                                 navController.navigate("activity_detail/$activityId")
                             },
+                            currentUserId = uiState.myProfile?.id,
                             isPaymentProcessing = uiState.isPaymentProcessing,
                             payingActivityId = uiState.payingActivityId,
                             modifier = Modifier
@@ -526,7 +535,6 @@ fun HomeScreen(
                     },
                     onPrivacyChange = viewModel::updatePrivacySettings,
                     onAuthorizeAlipay = viewModel::authorizeAlipayAccount,
-                    onBindAlipay = viewModel::bindAlipayAccount,
                     onUnbindAlipay = viewModel::unbindAlipayAccount,
                 )
             }
@@ -660,12 +668,14 @@ fun HomeScreen(
                     alipayBound = uiState.myProfile?.alipayBound == true,
                     onBack = { navController.popBackStack() },
                     onBindAlipay = { navController.navigate("settings") },
-                    onSubmit = { title, description, location, startTime, endTime, maxParticipants, fee, imageUris ->
+                    onSubmit = { title, description, location, latitude, longitude, startTime, endTime, maxParticipants, fee, imageUris ->
                         isSubmitting = true
                         viewModel.createActivity(
                             title = title,
                             description = description,
                             location = location,
+                            latitude = latitude,
+                            longitude = longitude,
                             startTime = startTime,
                             endTime = endTime,
                             maxParticipants = maxParticipants,
@@ -715,7 +725,7 @@ fun HomeScreen(
                     alipayBound = uiState.myProfile?.alipayBound == true,
                     onBack = { navController.popBackStack() },
                     onBindAlipay = { navController.navigate("settings") },
-                    onSubmit = { title, description, location, startTime, endTime, maxParticipants, _, imageUris ->
+                    onSubmit = { title, description, location, latitude, longitude, startTime, endTime, maxParticipants, _, imageUris ->
                         editingActivity?.let { activity ->
                             isSubmitting = true
                             viewModel.updateActivity(
@@ -723,6 +733,8 @@ fun HomeScreen(
                                 title = title,
                                 description = description,
                                 location = location,
+                                latitude = latitude,
+                                longitude = longitude,
                                 startTime = startTime,
                                 endTime = endTime,
                                 maxParticipants = maxParticipants,

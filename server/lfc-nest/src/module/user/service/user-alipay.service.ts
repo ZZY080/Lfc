@@ -9,6 +9,7 @@ import {
   normalizeAlipayLoginId,
 } from '@module/user/util/alipay-account.util';
 import { AlipayService } from '@integration/alipay/service/alipay.service';
+import { isAlipayLegacyUserId } from '@integration/alipay/util/alipay-receiver.util';
 
 @Injectable()
 export class UserAlipayService {
@@ -43,8 +44,13 @@ export class UserAlipayService {
     const user = await this.findUser(userId);
     user.alipayUserId = oauthUser.userId;
     user.alipayLoginId = null;
-    user.alipayRealName = oauthUser.nickName;
+    // OAuth 只能拿到昵称，不能当作支付宝实名用于分账校验
+    user.alipayRealName = null;
     user.alipayBoundAt = new Date();
+
+    this.logger.log(
+      `支付宝 OAuth 授权成功 userId=${userId}, accountType=${isAlipayLegacyUserId(oauthUser.userId) ? 'userId' : 'openId'}`,
+    );
 
     await this.bindRoyaltyRelation(user);
 
@@ -61,11 +67,15 @@ export class UserAlipayService {
     if (!isValidAlipayLoginId(loginId)) {
       throw new BadRequestException('请输入有效的支付宝手机号或邮箱');
     }
+    const realName = alipayRealName?.trim() || null;
+    if (!realName) {
+      throw new BadRequestException('手动绑定支付宝时，请填写支付宝实名');
+    }
 
     const user = await this.findUser(userId);
     user.alipayLoginId = loginId;
     user.alipayUserId = null;
-    user.alipayRealName = alipayRealName?.trim() || null;
+    user.alipayRealName = realName;
     user.alipayBoundAt = new Date();
 
     await this.bindRoyaltyRelation(user);
@@ -124,12 +134,13 @@ export class UserAlipayService {
 
   private async bindRoyaltyRelation(user: UserEntity) {
     const outRequestNo = `ROYALTY${user.id}${Date.now()}`;
+    const royaltyRealName = user.alipayLoginId ? user.alipayRealName : null;
     try {
       await this.alipayService.bindRoyaltyRelation({
         outRequestNo,
         payeeUserId: user.alipayUserId,
         payeeLoginId: user.alipayLoginId,
-        payeeRealName: user.alipayRealName,
+        payeeRealName: royaltyRealName,
       });
       user.alipayRoyaltyBoundAt = new Date();
     } catch (error) {

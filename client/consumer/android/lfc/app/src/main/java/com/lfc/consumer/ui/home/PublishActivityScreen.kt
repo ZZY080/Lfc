@@ -52,6 +52,8 @@ fun PublishActivityScreen(
         title: String,
         description: String,
         location: String,
+        latitude: Double?,
+        longitude: Double?,
         startTime: String,
         endTime: String,
         maxParticipants: Int,
@@ -64,6 +66,8 @@ fun PublishActivityScreen(
     var title by remember { mutableStateOf(initial?.title ?: "") }
     var description by remember { mutableStateOf(initial?.description ?: "") }
     var location by remember { mutableStateOf(initial?.location ?: "") }
+    var latitude by remember { mutableStateOf(initial?.latitude) }
+    var longitude by remember { mutableStateOf(initial?.longitude) }
     var startTime by remember { mutableStateOf(initial?.startTime?.take(16)?.replace(" ", "T") ?: "") }
     var endTime by remember { mutableStateOf(initial?.endTime?.take(16)?.replace(" ", "T") ?: "") }
     var showStartPicker by remember { mutableStateOf(false) }
@@ -84,7 +88,11 @@ fun PublishActivityScreen(
         scope.launch {
             isLocating = true
             AmapLocationHelper.getCurrentLocation(context)
-                .onSuccess { location = it }
+                .onSuccess {
+                    location = it.address
+                    latitude = it.latitude
+                    longitude = it.longitude
+                }
                 .onFailure { locationHint = it.message ?: "定位失败，请检查高德 Key 或定位权限" }
             isLocating = false
         }
@@ -124,6 +132,8 @@ fun PublishActivityScreen(
                         title.trim(),
                         description.trim(),
                         location.trim(),
+                        latitude,
+                        longitude,
                         startTime.trim(),
                         endTime.trim(),
                         maxParticipants.toIntOrNull() ?: 0,
@@ -184,7 +194,11 @@ fun PublishActivityScreen(
                     XhsPublishSectionTitle("时间地点")
                     XhsPublishLocationField(
                         value = location,
-                        onValueChange = { location = it },
+                        onValueChange = { newValue ->
+                            location = newValue
+                            latitude = null
+                            longitude = null
+                        },
                         placeholder = "点击右侧按钮获取当前位置，也可手动输入",
                         isLoading = isLocating,
                         onLocate = ::requestLocate,

@@ -33,8 +33,8 @@ import com.lfc.consumer.ui.theme.XhsTextSecondary
 fun AlipaySetupBanner(
     modifier: Modifier = Modifier,
     title: String = "绑定支付宝，才能收到买家付款",
-    description: String = "莲峰账号仅用于登录。发布闲置或收取活动费时，需绑定你的支付宝账号；买家确认收货后，款项会通过支付宝分账转给你。",
-    actionLabel: String = "去绑定收款账号",
+    description: String = "普通支付宝用户即可：在设置中跳转支付宝 App 授权，无需商户账号。买家确认收货后，款项会通过商家分账转给你。",
+    actionLabel: String = "去支付宝授权",
     onBindClick: () -> Unit,
 ) {
     Surface(
@@ -112,7 +112,7 @@ fun AlipayBoundStatusChip(
 }
 
 const val ALIPAY_BIND_REQUIRED_MESSAGE =
-    "发布付费内容前，请先在「我的 → 设置」绑定支付宝收款账号"
+    "发布付费内容前，请先在「我的 → 设置」跳转支付宝授权"
 
 const val ALIPAY_BIND_HINT_FOR_SELLERS =
-    "若要发布闲置或收取活动费，注册后请在「我的 → 设置」绑定支付宝收款账号"
+    "若要发布闲置或收取活动费，请在「我的 → 设置」跳转支付宝 App 完成授权"

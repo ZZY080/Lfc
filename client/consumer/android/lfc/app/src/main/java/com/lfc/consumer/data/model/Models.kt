@@ -172,6 +172,8 @@ data class ActivityDto(
     val description: String,
     val images: List<String>? = null,
     val location: String,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
     val startTime: String,
     val endTime: String,
     val maxParticipants: Int,
@@ -204,6 +206,8 @@ data class CreateActivityRequest(
     val description: String? = null,
     val images: List<String>? = null,
     val location: String,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
     val startTime: String,
     val endTime: String,
     val maxParticipants: Int = 0,
@@ -215,6 +219,8 @@ data class UpdateActivityRequest(
     val description: String? = null,
     val images: List<String>? = null,
     val location: String? = null,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
     val startTime: String? = null,
     val endTime: String? = null,
     val maxParticipants: Int? = null,
@@ -273,6 +279,18 @@ data class PaymentOrderDetailDto(
     val createdAt: String,
 )
 
+data class FulfillmentStepDto(
+    val label: String,
+    val done: Boolean = false,
+    val active: Boolean = false,
+)
+
+data class OrderFulfillmentGuaranteeDto(
+    val title: String,
+    val summary: String,
+    val steps: List<FulfillmentStepDto> = emptyList(),
+)
+
 data class PaymentOrderListItemDto(
     val outTradeNo: String,
     val amount: String,
@@ -285,8 +303,18 @@ data class PaymentOrderListItemDto(
     val coverImage: String? = null,
     val payeeId: Int,
     val payeeName: String,
+    val payeeRoleLabel: String = "卖家",
     val payeeAvatarUrl: String? = null,
+    val platformFee: String? = null,
+    val payeeAmount: String? = null,
     val paidAt: String? = null,
+    val confirmedAt: String? = null,
+    val settledAt: String? = null,
+    val autoConfirmAt: String? = null,
+    val bizStartTime: String? = null,
+    val bizEndTime: String? = null,
+    val bizLocation: String? = null,
+    val fulfillment: OrderFulfillmentGuaranteeDto? = null,
     val createdAt: String,
     val canPay: Boolean = false,
     val canConfirmReceipt: Boolean = false,
@@ -361,7 +389,7 @@ data class ProfileSearchUiState(
 val ORDER_CENTER_TABS = listOf(
     "all" to "全部",
     "pending_payment" to "待付款",
-    "awaiting_receipt" to "待收货",
+    "awaiting_receipt" to "待履约",
     "review" to "评价",
     "after_sales" to "售后",
 )

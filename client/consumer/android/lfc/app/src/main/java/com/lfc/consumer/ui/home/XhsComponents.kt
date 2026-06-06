@@ -41,8 +41,12 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.PlatformTextStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
@@ -687,6 +691,10 @@ fun XhsProfileAvatar(
         )
         return
     }
+
+    val initial = resolveAvatarInitial(label, size)
+    val fontSize = avatarInitialFontSize(size, initial.length)
+
     Box(
         modifier = modifier
             .size(size.dp)
@@ -695,11 +703,40 @@ fun XhsProfileAvatar(
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            text = label.take(1).uppercase(),
+            text = initial,
             color = Color.White,
             fontWeight = FontWeight.Bold,
-            fontSize = (size / 2.5).sp,
+            fontSize = fontSize,
+            lineHeight = fontSize,
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+            softWrap = false,
+            style = TextStyle(
+                platformStyle = PlatformTextStyle(includeFontPadding = false),
+            ),
+            modifier = Modifier.padding(horizontal = (size * 0.08f).dp),
         )
+    }
+}
+
+private const val DEFAULT_AVATAR_INITIAL = "莲"
+
+private fun resolveAvatarInitial(label: String, @Suppress("UNUSED_PARAMETER") avatarSizeDp: Int): String {
+    val trimmed = label.trim()
+    if (trimmed.isEmpty()) return DEFAULT_AVATAR_INITIAL
+    if (trimmed.startsWith("莲峰校园") || trimmed.startsWith("同学")) {
+        return DEFAULT_AVATAR_INITIAL
+    }
+    return trimmed.first().toString()
+}
+
+private fun avatarInitialFontSize(avatarSizeDp: Int, @Suppress("UNUSED_PARAMETER") initialLength: Int): TextUnit {
+    return when {
+        avatarSizeDp <= 16 -> 8.sp
+        avatarSizeDp <= 20 -> 9.sp
+        avatarSizeDp <= 28 -> 11.sp
+        avatarSizeDp <= 40 -> 14.sp
+        else -> (avatarSizeDp * 0.38f).sp
     }
 }
 

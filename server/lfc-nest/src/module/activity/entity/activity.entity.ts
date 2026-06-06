@@ -29,6 +29,12 @@ export class ActivityEntity {
   @Column()
   location: string;
 
+  @Column({ type: 'double', nullable: true })
+  latitude: number | null;
+
+  @Column({ type: 'double', nullable: true })
+  longitude: number | null;
+
   @Column({ name: 'start_time', type: 'datetime' })
   startTime: Date;
 

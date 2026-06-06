@@ -84,7 +84,7 @@ export class PaymentPayoutService {
         tradeNo: order.tradeNo,
         payeeUserId: payee.alipayUserId,
         payeeLoginId: payee.alipayLoginId,
-        payeeRealName: payee.alipayRealName,
+        payeeRealName: payee.alipayLoginId ? payee.alipayRealName : null,
         payeeAmount,
         desc: order.subject,
       });
@@ -110,7 +110,10 @@ export class PaymentPayoutService {
   }
 
   requiresConfirmBeforeSettle(bizType: PaymentBizType): boolean {
-    return bizType === PaymentBizType.POST_PRODUCT_PURCHASE;
+    return (
+      bizType === PaymentBizType.POST_PRODUCT_PURCHASE ||
+      bizType === PaymentBizType.ACTIVITY_JOIN
+    );
   }
 
   private async saveFailedPayout(

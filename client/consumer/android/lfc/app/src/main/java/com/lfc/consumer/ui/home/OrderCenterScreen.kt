@@ -234,6 +234,9 @@ fun OrderCenterScreen(
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                         modifier = Modifier.fillMaxSize(),
                     ) {
+                        item(key = "fulfillment-banner") {
+                            OrderCenterFulfillmentBanner()
+                        }
                         items(state.orders, key = { it.outTradeNo }) { order ->
                             OrderListItemCard(
                                 order = order,
@@ -338,7 +341,7 @@ fun OrderCenterScreen(
                 Column {
                     Text(
                         text = if (order.bizType == "ACTIVITY_JOIN") {
-                            "活动报名退款将取消你的报名资格"
+                            "活动开始前可申请退款，退款后取消报名资格"
                         } else {
                             "未确认收货前可申请退款，商品将重新上架"
                         },
@@ -403,12 +406,22 @@ private fun OrderListItemCard(
                     fontSize = 12.sp,
                     color = XhsTextSecondary,
                 )
-                Text(
-                    text = order.statusLabel,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = XhsRed,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = order.statusLabel,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = XhsRed,
+                    )
+                    if (order.fulfillment != null) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "· 履约保障",
+                            fontSize = 11.sp,
+                            color = Color(0xFF1677FF),
+                        )
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.height(10.dp))
@@ -441,9 +454,13 @@ private fun OrderListItemCard(
                     )
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        text = "卖家 ${order.payeeName}",
+                        text = "${order.payeeRoleLabel} ${order.payeeName}",
                         fontSize = 12.sp,
                         color = XhsTextSecondary,
+                    )
+                    OrderBizMetaLines(
+                        order = order,
+                        modifier = Modifier.padding(top = 6.dp),
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
@@ -454,6 +471,9 @@ private fun OrderListItemCard(
                     )
                 }
             }
+
+            Spacer(modifier = Modifier.height(10.dp))
+            OrderFulfillmentGuaranteeCard(fulfillment = order.fulfillment)
 
             Spacer(modifier = Modifier.height(12.dp))
             HorizontalDivider(color = Color(0xFFF3F3F3))

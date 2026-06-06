@@ -11,6 +11,10 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.lfc.consumer.ui.navigation.weChatEnterTransition
+import com.lfc.consumer.ui.navigation.weChatExitTransition
+import com.lfc.consumer.ui.navigation.weChatPopEnterTransition
+import com.lfc.consumer.ui.navigation.weChatPopExitTransition
 import com.lfc.consumer.data.local.SearchHistoryStore
 import com.lfc.consumer.data.local.TokenManager
 import com.lfc.consumer.ui.auth.AuthViewModel
@@ -42,6 +46,10 @@ class MainActivity : ComponentActivity() {
                 NavHost(
                     navController = navController,
                     startDestination = startDestination,
+                    enterTransition = { weChatEnterTransition() },
+                    exitTransition = { weChatExitTransition() },
+                    popEnterTransition = { weChatPopEnterTransition() },
+                    popExitTransition = { weChatPopExitTransition() },
                 ) {
                     composable("login") {
                         val authViewModel: AuthViewModel = viewModel(

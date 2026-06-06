@@ -66,6 +66,21 @@ fun defaultActivityStartCalendar(): Calendar = Calendar.getInstance().apply {
     set(Calendar.MILLISECOND, 0)
 }
 
+private const val ACTIVITY_YEAR_AHEAD = 5
+
+private fun activityYearRange(): List<Int> {
+    val currentYear = Calendar.getInstance().get(Calendar.YEAR)
+    return (currentYear..currentYear + ACTIVITY_YEAR_AHEAD).toList()
+}
+
+private fun clampActivityCalendar(calendar: Calendar): Calendar {
+    val now = Calendar.getInstance()
+    if (calendar.before(now)) {
+        return defaultActivityStartCalendar()
+    }
+    return calendar
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ActivityDateTimePickerSheet(
@@ -79,7 +94,9 @@ fun ActivityDateTimePickerSheet(
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val initialCalendar = remember(initialValue) {
-        parseActivityDateTime(initialValue) ?: defaultActivityStartCalendar()
+        clampActivityCalendar(
+            parseActivityDateTime(initialValue) ?: defaultActivityStartCalendar(),
+        )
     }
     var year by remember(initialValue) { mutableIntStateOf(initialCalendar.get(Calendar.YEAR)) }
     var month by remember(initialValue) { mutableIntStateOf(initialCalendar.get(Calendar.MONTH) + 1) }
@@ -87,7 +104,7 @@ fun ActivityDateTimePickerSheet(
     var hour by remember(initialValue) { mutableIntStateOf(initialCalendar.get(Calendar.HOUR_OF_DAY)) }
     var minute by remember(initialValue) { mutableIntStateOf(initialCalendar.get(Calendar.MINUTE)) }
 
-    val years = remember { (Calendar.getInstance().get(Calendar.YEAR)..Calendar.getInstance().get(Calendar.YEAR) + 2).toList() }
+    val years = remember(visible) { activityYearRange() }
     val months = remember { (1..12).toList() }
     val daysInMonth = remember(year, month) { daysInMonth(year, month) }
     val days = remember(daysInMonth) { (1..daysInMonth).toList() }
@@ -125,15 +142,17 @@ fun ActivityDateTimePickerSheet(
                 )
                 TextButton(
                     onClick = {
-                        val calendar = Calendar.getInstance().apply {
-                            set(Calendar.YEAR, year)
-                            set(Calendar.MONTH, month - 1)
-                            set(Calendar.DAY_OF_MONTH, day.coerceIn(1, daysInMonth))
-                            set(Calendar.HOUR_OF_DAY, hour)
-                            set(Calendar.MINUTE, minute)
-                            set(Calendar.SECOND, 0)
-                            set(Calendar.MILLISECOND, 0)
-                        }
+                        val calendar = clampActivityCalendar(
+                            Calendar.getInstance().apply {
+                                set(Calendar.YEAR, year)
+                                set(Calendar.MONTH, month - 1)
+                                set(Calendar.DAY_OF_MONTH, day.coerceIn(1, daysInMonth))
+                                set(Calendar.HOUR_OF_DAY, hour)
+                                set(Calendar.MINUTE, minute)
+                                set(Calendar.SECOND, 0)
+                                set(Calendar.MILLISECOND, 0)
+                            },
+                        )
                         onConfirm(formatActivityDateTimeForApi(calendar))
                     },
                 ) {

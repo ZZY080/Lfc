@@ -37,6 +37,14 @@ export class CreateActivityBodySchema implements CreateActivityBodyDto {
   @MinLength(1)
   location: string;
 
+  @IsOptional()
+  @IsNumber()
+  latitude?: number;
+
+  @IsOptional()
+  @IsNumber()
+  longitude?: number;
+
   @IsDateString()
   startTime: string;
 
@@ -74,6 +82,14 @@ export class UpdateActivityBodySchema implements UpdateActivityBodyDto {
   @IsString()
   @MinLength(1)
   location?: string;
+
+  @IsOptional()
+  @IsNumber()
+  latitude?: number;
+
+  @IsOptional()
+  @IsNumber()
+  longitude?: number;
 
   @IsOptional()
   @IsDateString()

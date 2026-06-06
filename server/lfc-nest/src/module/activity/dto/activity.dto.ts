@@ -3,6 +3,8 @@ export interface CreateActivityBodyDto {
   description?: string;
   images?: string[];
   location: string;
+  latitude?: number;
+  longitude?: number;
   startTime: string;
   endTime: string;
   maxParticipants?: number;
@@ -14,6 +16,8 @@ export interface UpdateActivityBodyDto {
   description?: string;
   images?: string[];
   location?: string;
+  latitude?: number;
+  longitude?: number;
   startTime?: string;
   endTime?: string;
   maxParticipants?: number;

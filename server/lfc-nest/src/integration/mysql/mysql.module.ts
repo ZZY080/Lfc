@@ -18,6 +18,8 @@ import { UserFollowEntity } from '@module/user/entity/user-follow.entity';
 import { MessageEntity } from '@module/message/entity/message.entity';
 import { PaymentOrderEntity } from '@module/payment/entity/payment-order.entity';
 import { PaymentPayoutEntity } from '@module/payment/entity/payment-payout.entity';
+import { PaymentOrderReviewEntity } from '@module/payment/entity/payment-order-review.entity';
+import { PaymentAfterSalesEntity } from '@module/payment/entity/payment-after-sales.entity';
 
 @Global()
 @Module({
@@ -50,6 +52,8 @@ import { PaymentPayoutEntity } from '@module/payment/entity/payment-payout.entit
           UserFollowEntity,
           PaymentOrderEntity,
           PaymentPayoutEntity,
+          PaymentOrderReviewEntity,
+          PaymentAfterSalesEntity,
         ],
         charset: 'utf8mb4',
         timezone: '+08:00',

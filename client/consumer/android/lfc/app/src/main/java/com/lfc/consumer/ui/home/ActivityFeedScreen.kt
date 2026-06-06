@@ -68,6 +68,7 @@ fun ActivityFeedScreen(
     onLoadMore: () -> Unit,
     onJoin: (Int) -> Unit,
     onActivityClick: (Int) -> Unit,
+    currentUserId: Int? = null,
     isPaymentProcessing: Boolean = false,
     payingActivityId: Int? = null,
     modifier: Modifier = Modifier,
@@ -84,6 +85,7 @@ fun ActivityFeedScreen(
             onLoadMore = onLoadMore,
             onJoin = onJoin,
             onActivityClick = onActivityClick,
+            currentUserId = currentUserId,
             isPaymentProcessing = isPaymentProcessing,
             payingActivityId = payingActivityId,
             modifier = Modifier.fillMaxSize(),
@@ -99,6 +101,7 @@ private fun ActivityFeedContent(
     onLoadMore: () -> Unit,
     onJoin: (Int) -> Unit,
     onActivityClick: (Int) -> Unit,
+    currentUserId: Int?,
     isPaymentProcessing: Boolean,
     payingActivityId: Int?,
     modifier: Modifier = Modifier,
@@ -183,6 +186,7 @@ private fun ActivityFeedContent(
                             (payingActivityId == null || payingActivityId == activity.id)
                         ActivityCard(
                             activity = activity,
+                            isSelf = currentUserId != null && currentUserId == activity.authorId,
                             isJoinBusy = isJoinBusy,
                             onClick = { onActivityClick(activity.id) },
                             onJoin = { onJoin(activity.id) },
@@ -224,6 +228,7 @@ private fun ActivityFeedContent(
 @Composable
 private fun ActivityCard(
     activity: ActivityDto,
+    isSelf: Boolean,
     isJoinBusy: Boolean,
     onClick: () -> Unit,
     onJoin: () -> Unit,
@@ -422,30 +427,32 @@ private fun ActivityCard(
                             color = XhsTextSecondary,
                         )
                     }
-                    Button(
-                        onClick = onJoin,
-                        enabled = !activity.isJoined && !isJoinBusy,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (activity.isJoined) Color(0xFFE8E8E8) else XhsRed,
-                            disabledContainerColor = Color(0xFFE8E8E8),
-                            disabledContentColor = XhsTextSecondary,
-                        ),
-                        shape = RoundedCornerShape(20.dp),
-                        modifier = Modifier.height(38.dp),
-                    ) {
-                        if (isJoinBusy && !activity.isJoined) {
-                            CircularProgressIndicator(
-                                color = Color.White,
-                                modifier = Modifier.size(18.dp),
-                                strokeWidth = 2.dp,
-                            )
-                        } else {
-                            Text(
-                                text = joinLabel,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (activity.isJoined) XhsTextSecondary else Color.White,
-                            )
+                    if (!isSelf) {
+                        Button(
+                            onClick = onJoin,
+                            enabled = !activity.isJoined && !isJoinBusy,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (activity.isJoined) Color(0xFFE8E8E8) else XhsRed,
+                                disabledContainerColor = Color(0xFFE8E8E8),
+                                disabledContentColor = XhsTextSecondary,
+                            ),
+                            shape = RoundedCornerShape(20.dp),
+                            modifier = Modifier.height(38.dp),
+                        ) {
+                            if (isJoinBusy && !activity.isJoined) {
+                                CircularProgressIndicator(
+                                    color = Color.White,
+                                    modifier = Modifier.size(18.dp),
+                                    strokeWidth = 2.dp,
+                                )
+                            } else {
+                                Text(
+                                    text = joinLabel,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (activity.isJoined) XhsTextSecondary else Color.White,
+                                )
+                            }
                         }
                     }
                 }

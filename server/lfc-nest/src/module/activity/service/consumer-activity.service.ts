@@ -53,6 +53,8 @@ export class ConsumerActivityService {
     const activity = this.activityRepository.create({
       ...normalized,
       location: body.location,
+      latitude: body.latitude ?? null,
+      longitude: body.longitude ?? null,
       startTime: new Date(body.startTime),
       endTime: new Date(body.endTime),
       maxParticipants: body.maxParticipants ?? 0,
@@ -212,9 +214,23 @@ export class ConsumerActivityService {
       activity,
     );
 
+    const locationChanged =
+      body.location !== undefined && body.location !== activity.location;
     Object.assign(activity, {
       ...normalized,
       location: body.location ?? activity.location,
+      latitude:
+        body.latitude !== undefined
+          ? body.latitude
+          : locationChanged
+            ? null
+            : activity.latitude,
+      longitude:
+        body.longitude !== undefined
+          ? body.longitude
+          : locationChanged
+            ? null
+            : activity.longitude,
       startTime: body.startTime ? new Date(body.startTime) : activity.startTime,
       endTime: body.endTime ? new Date(body.endTime) : activity.endTime,
       maxParticipants: body.maxParticipants ?? activity.maxParticipants,

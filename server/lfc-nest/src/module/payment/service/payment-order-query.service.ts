@@ -21,6 +21,12 @@ import {
 import { PostEntity } from '@module/post/entity/post.entity';
 import { ActivityEntity } from '@module/activity/entity/activity.entity';
 import { UserEntity } from '@module/user/entity/user.entity';
+import { PaymentFeeService } from '@module/payment/service/payment-fee.service';
+import {
+  buildCounterpartyRoleLabel,
+  buildOrderFulfillmentGuarantee,
+  canApplyActivityAfterSales,
+} from '@module/payment/util/payment-fulfillment.util';
 
 @Injectable()
 export class PaymentOrderQueryService {
@@ -37,6 +43,7 @@ export class PaymentOrderQueryService {
     private readonly activityRepository: Repository<ActivityEntity>,
     @InjectRepository(UserEntity)
     private readonly userRepository: Repository<UserEntity>,
+    private readonly paymentFeeService: PaymentFeeService,
   ) {}
 
   async listForBuyer(
@@ -111,8 +118,11 @@ export class PaymentOrderQueryService {
       case PaymentOrderTab.AWAITING_RECEIPT:
         qb.andWhere('paymentOrder.status = :status', {
           status: PaymentOrderStatus.PAID,
-        }).andWhere('paymentOrder.bizType = :bizType', {
-          bizType: PaymentBizType.POST_PRODUCT_PURCHASE,
+        }).andWhere('paymentOrder.bizType IN (:...awaitingBizTypes)', {
+          awaitingBizTypes: [
+            PaymentBizType.POST_PRODUCT_PURCHASE,
+            PaymentBizType.ACTIVITY_JOIN,
+          ],
         });
         break;
       case PaymentOrderTab.REVIEW:
@@ -120,9 +130,9 @@ export class PaymentOrderQueryService {
           status: PaymentOrderStatus.SETTLED,
         })
           .leftJoin(
-            PaymentOrderReviewEntity,
+            'payment_order_review',
             'orderReview',
-            'orderReview.paymentOrderId = paymentOrder.id',
+            'orderReview.payment_order_id = paymentOrder.id',
           )
           .andWhere('orderReview.id IS NULL');
         break;
@@ -202,6 +212,8 @@ export class PaymentOrderQueryService {
       }
     }
 
+    const autoConfirmDays = this.paymentFeeService.getPublicConfig().autoConfirmDays;
+
     return orders.map((order) => {
       const post =
         order.bizType === PaymentBizType.POST_PRODUCT_PURCHASE
@@ -221,7 +233,18 @@ export class PaymentOrderQueryService {
       const canPay = order.status === PaymentOrderStatus.PENDING;
       const canReview =
         order.status === PaymentOrderStatus.SETTLED && !hasReview;
-      const canApplyAfterSales = this.canApplyAfterSales(order, afterSales);
+      const canApplyAfterSales = this.canApplyAfterSales(
+        order,
+        afterSales,
+        activity,
+      );
+      const fulfillment = buildOrderFulfillmentGuarantee({
+        order,
+        post,
+        activity,
+        afterSales,
+        autoConfirmDays,
+      });
 
       return {
         outTradeNo: order.outTradeNo,
@@ -236,8 +259,18 @@ export class PaymentOrderQueryService {
           post?.images?.[0] ?? activity?.images?.[0] ?? null,
         payeeId: order.payeeId,
         payeeName: payee?.nickname?.trim() || `同学${order.payeeId}`,
+        payeeRoleLabel: buildCounterpartyRoleLabel(order.bizType),
         payeeAvatarUrl: payee?.avatarUrl ?? null,
+        platformFee: order.platformFee ?? null,
+        payeeAmount: order.payeeAmount ?? null,
         paidAt: order.paidAt,
+        confirmedAt: order.confirmedAt,
+        settledAt: order.settledAt,
+        autoConfirmAt: order.autoConfirmAt,
+        bizStartTime: activity?.startTime ?? null,
+        bizEndTime: activity?.endTime ?? null,
+        bizLocation: activity?.location ?? null,
+        fulfillment,
         createdAt: order.createdAt,
         canPay,
         canConfirmReceipt,
@@ -252,6 +285,7 @@ export class PaymentOrderQueryService {
   private canApplyAfterSales(
     order: PaymentOrderEntity,
     afterSales?: PaymentAfterSalesEntity,
+    activity?: ActivityEntity,
   ): boolean {
     if (order.status === PaymentOrderStatus.REFUNDED) {
       return false;
@@ -274,6 +308,9 @@ export class PaymentOrderQueryService {
       order.status === PaymentOrderStatus.PAID
     ) {
       return true;
+    }
+    if (order.bizType === PaymentBizType.ACTIVITY_JOIN) {
+      return canApplyActivityAfterSales(order, activity);
     }
     if (order.status === PaymentOrderStatus.SETTLED) {
       return true;
@@ -309,7 +346,7 @@ export class PaymentOrderQueryService {
       case PaymentOrderStatus.PAID:
         return order.bizType === PaymentBizType.POST_PRODUCT_PURCHASE
           ? '待收货'
-          : '已报名';
+          : '待履约';
       case PaymentOrderStatus.CONFIRMED:
         return '待分账';
       case PaymentOrderStatus.SETTLED:
