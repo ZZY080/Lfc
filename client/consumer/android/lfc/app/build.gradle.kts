@@ -22,7 +22,7 @@ fun normalizeApiBaseUrl(url: String): String =
 fun resolveDeviceApiBaseUrl(): String {
     val fromLocal = loadLocalProperty("API_BASE_URL")
     val fromGradle = (project.findProperty("DEV_API_BASE_URL") as String?)?.trim()
-    return normalizeApiBaseUrl(fromLocal ?: fromGradle ?: "http://192.168.0.104:8000/api/")
+    return normalizeApiBaseUrl(fromLocal ?: fromGradle ?: "https://www.dev.lfc.neptia.cn/api/")
 }
 
 android {
