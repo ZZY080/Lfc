@@ -113,9 +113,12 @@ fun SkeletonLoadMoreFooter(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun FeedCardSkeleton(aspectRatio: Float) {
+private fun FeedCardSkeleton(
+    aspectRatio: Float,
+    modifier: Modifier = Modifier,
+) {
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(10.dp))
             .background(Color.White),
@@ -159,6 +162,41 @@ private fun FeedCardSkeleton(aspectRatio: Float) {
             Spacer(modifier = Modifier.width(6.dp))
             SkeletonLine(modifier = Modifier.weight(1f), height = 9.dp, widthFraction = 0.4f)
             SkeletonBox(modifier = Modifier.size(11.dp), shape = CircleShape)
+        }
+    }
+}
+
+/** 静态双列骨架，可安全嵌套在 LazyVerticalStaggeredGrid 等滚动容器 item 内 */
+@Composable
+fun FeedGridSkeletonStatic(
+    modifier: Modifier = Modifier,
+    itemCount: Int = 4,
+    contentPadding: PaddingValues = PaddingValues(8.dp),
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(contentPadding),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        for (rowStart in 0 until itemCount step 2) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                FeedCardSkeleton(
+                    aspectRatio = 0.68f + (rowStart % 3) * 0.06f,
+                    modifier = Modifier.weight(1f),
+                )
+                if (rowStart + 1 < itemCount) {
+                    FeedCardSkeleton(
+                        aspectRatio = 0.68f + ((rowStart + 1) % 3) * 0.06f,
+                        modifier = Modifier.weight(1f),
+                    )
+                } else {
+                    Spacer(modifier = Modifier.weight(1f))
+                }
+            }
         }
     }
 }

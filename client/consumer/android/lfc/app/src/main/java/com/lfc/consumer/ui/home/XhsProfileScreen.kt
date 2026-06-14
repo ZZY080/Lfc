@@ -26,11 +26,11 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridState
 import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
 import androidx.compose.foundation.lazy.staggeredgrid.items
-import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -73,6 +73,7 @@ import androidx.compose.runtime.snapshotFlow
 import com.lfc.consumer.data.model.ProfileTabUiState
 import com.lfc.consumer.data.model.ProfileTabsUiState
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -377,19 +378,38 @@ fun XhsProfileScreen(
                 val showTabPlaceholder = tabLocked ||
                     tabUiState.isInitialLoading ||
                     (isTabEmpty && !tabUiState.isLoadingMore)
-                val gridState = rememberLazyStaggeredGridState()
-                val isCollapsed by remember {
+                val gridState = remember(selectedTab) { LazyStaggeredGridState() }
+                var pinStickyTabsAfterSwitch by remember { mutableStateOf(false) }
+                val isCollapsed by remember(gridState) {
                     derivedStateOf {
                         gridState.firstVisibleItemIndex > 0 ||
                             (gridState.firstVisibleItemIndex == 0 &&
                                 gridState.firstVisibleItemScrollOffset > 120)
                     }
                 }
-                val showStickyTabs by remember {
+                val showStickyTabs by remember(gridState) {
                     derivedStateOf { gridState.firstVisibleItemIndex >= 1 }
                 }
+                val effectiveStickyTabs = showStickyTabs ||
+                    (pinStickyTabsAfterSwitch && showTabPlaceholder)
+                val showInlineTabs = !effectiveStickyTabs
 
-                val showCollapsedHeader = !showTabPlaceholder && (isCollapsed || showStickyTabs)
+                fun handleTabSelected(tab: Int) {
+                    if (tab == selectedTab) return
+                    pinStickyTabsAfterSwitch = gridState.firstVisibleItemIndex >= 1
+                    selectTab(tab)
+                }
+
+                LaunchedEffect(selectedTab, showTabPlaceholder, pinStickyTabsAfterSwitch) {
+                    if (!pinStickyTabsAfterSwitch || showTabPlaceholder) return@LaunchedEffect
+                    snapshotFlow { gridState.layoutInfo.totalItemsCount }
+                        .first { it > 1 }
+                    gridState.scrollToItem(1)
+                    pinStickyTabsAfterSwitch = false
+                }
+
+                val showCollapsedHeader = effectiveStickyTabs ||
+                    (!showTabPlaceholder && isCollapsed)
 
                 ProfileImmersiveSystemBars(
                     mode = mode,
@@ -397,11 +417,7 @@ fun XhsProfileScreen(
                     view = view,
                 )
 
-                LaunchedEffect(selectedTab) {
-                    gridState.scrollToItem(0)
-                }
-
-                LaunchedEffect(gridState, tabUiState.hasMore, tabUiState.isLoadingMore, selectedTab) {
+                LaunchedEffect(gridState, tabUiState.hasMore, tabUiState.isLoadingMore, selectedTab, tabLocked) {
                     snapshotFlow {
                         val info = gridState.layoutInfo
                         val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: -1
@@ -463,8 +479,8 @@ fun XhsProfileScreen(
                                     onFollowToggle = onFollowToggle,
                                     onShare = onShare,
                                     selectedTab = selectedTab,
-                                    onTabSelected = { selectTab(it) },
-                                    showInlineTabs = showTabPlaceholder || !showStickyTabs,
+                                    onTabSelected = { handleTabSelected(it) },
+                                    showInlineTabs = showInlineTabs,
                                     onShowMyQr = if (mode == XhsProfileMode.Self) onShowQr else null,
                                 )
                             }
@@ -553,7 +569,7 @@ fun XhsProfileScreen(
                     onMenuClick = if (mode == XhsProfileMode.Self) onOpenSideMenu else null,
                 )
 
-                if (!showTabPlaceholder && showStickyTabs) {
+                if (effectiveStickyTabs) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -568,7 +584,7 @@ fun XhsProfileScreen(
                             tabs = profileTabsFor(mode),
                             profile = profile,
                             selectedTab = selectedTab,
-                            onTabSelected = { selectTab(it) },
+                            onTabSelected = { handleTabSelected(it) },
                             modifier = Modifier.background(Color.White),
                         )
                     }
@@ -690,7 +706,10 @@ private fun LazyStaggeredGridItemScope.ProfileTabPlaceholderItem(
         contentAlignment = Alignment.Center,
     ) {
         when {
-            isInitialLoading -> FeedGridSkeleton(modifier = Modifier.fillMaxSize(), itemCount = 4)
+            isInitialLoading -> FeedGridSkeletonStatic(
+                modifier = Modifier.fillMaxWidth(),
+                itemCount = 4,
+            )
             tabLocked -> XhsProfileLockedHint(isSelf = false)
             else -> Text(
                 text = emptyMessage,
@@ -805,7 +824,11 @@ private fun androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridScop
     comments: List<ProfileCommentDto>,
     onPostClick: (Int) -> Unit,
 ) {
-    items(comments, key = { it.id }) { comment ->
+    items(
+        items = comments,
+        key = { it.id },
+        span = { StaggeredGridItemSpan.FullLine },
+    ) { comment ->
         val post = comment.post
         Surface(
             modifier = Modifier
@@ -1464,7 +1487,7 @@ private fun XhsProfileTabEmptyHint(text: String) {
 
 @Composable
 private fun XhsProfileTabLoadingHint() {
-    FeedGridSkeleton(
+    FeedGridSkeletonStatic(
         modifier = Modifier
             .fillMaxWidth()
             .background(Color.White),

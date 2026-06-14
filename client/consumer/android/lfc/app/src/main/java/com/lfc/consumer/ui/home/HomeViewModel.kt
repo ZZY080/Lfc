@@ -2702,6 +2702,9 @@ class HomeViewModel(
 
     private fun ProfileTabsUiState.withTab(tab: Int, tabState: ProfileTabUiState): ProfileTabsUiState {
         val updated = tabs.toMutableList()
+        while (updated.size <= tab) {
+            updated.add(ProfileTabUiState())
+        }
         updated[tab] = tabState
         return copy(tabs = updated)
     }
