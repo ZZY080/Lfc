@@ -80,15 +80,6 @@ fun ActivityFeedScreen(
             .background(XhsBackground),
     ) {
         XhsPageTitle("校园活动")
-        Text(
-            text = "推广内容已明确标注，优先展示不代表官方背书",
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp)
-                .padding(bottom = 6.dp),
-            color = XhsTextSecondary,
-            fontSize = 11.sp,
-        )
         ActivityFeedContent(
             feedState = feedState,
             onRefresh = onRefresh,

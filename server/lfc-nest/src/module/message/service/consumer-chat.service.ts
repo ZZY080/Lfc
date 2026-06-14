@@ -19,6 +19,12 @@ import {
   formatChatProductPreview,
   parseChatProductPayload,
 } from '@module/message/util/chat-product.util';
+import {
+  formatChatActivitySharePreview,
+  formatChatPostSharePreview,
+  parseChatActivitySharePayload,
+  parseChatPostSharePayload,
+} from '@module/message/util/chat-share.util';
 
 @Injectable()
 export class ConsumerChatService {
@@ -134,6 +140,18 @@ export class ConsumerChatService {
         throw new BadRequestException('商品消息格式不正确');
       }
     }
+    if (messageType === ChatMessageType.POST) {
+      const payload = parseChatPostSharePayload(content);
+      if (!payload) {
+        throw new BadRequestException('笔记消息格式不正确');
+      }
+    }
+    if (messageType === ChatMessageType.ACTIVITY) {
+      const payload = parseChatActivitySharePayload(content);
+      if (!payload) {
+        throw new BadRequestException('活动消息格式不正确');
+      }
+    }
 
     const saved = await this.messageRepository.save(
       this.messageRepository.create({
@@ -152,7 +170,11 @@ export class ConsumerChatService {
           ? '[视频]'
           : messageType === ChatMessageType.PRODUCT
             ? formatChatProductPreview(parseChatProductPayload(content)!)
-            : content.slice(0, 500);
+            : messageType === ChatMessageType.POST
+              ? formatChatPostSharePreview(parseChatPostSharePayload(content)!)
+              : messageType === ChatMessageType.ACTIVITY
+                ? formatChatActivitySharePreview(parseChatActivitySharePayload(content)!)
+                : content.slice(0, 500);
     conversation.lastMessageAt = saved.createdAt;
 
     const peerUserId = this.getPeerUserId(conversation, userId);

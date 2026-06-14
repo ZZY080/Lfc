@@ -1,0 +1,100 @@
+name: Deploy Backend
+
+on:
+  push:
+    branches:
+      - development
+      - master
+
+jobs:
+  # =========================
+  # 后端构建 lfc-nest
+  # =========================
+  build-lfc-nest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20.19.4"
+
+      - run: npm install -g pnpm
+
+      - name: Build lfc-nest
+        run: |
+          cd server/lfc-nest
+          pnpm install
+          pnpm run build
+
+      - name: Create lfc-nest-build.zip
+        run: |
+          cd server/lfc-nest
+          zip -r lfc-nest-build.zip dist ecosystem.config.js package.json
+
+      - name: Upload lfc-nest-build.zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: lfc-nest-build
+          path: server/lfc-nest/lfc-nest-build.zip
+
+  # =========================
+  # 后端部署 lfc-nest
+  # =========================
+  deploy-lfc-nest:
+    runs-on: ubuntu-latest
+    needs: build-lfc-nest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: lfc-nest-build
+          path: ./build-output
+
+      - name: Setup SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+
+      - name: Deploy lfc-nest build
+        env:
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+        run: |
+          if [ "$GITHUB_REF_NAME" = "development" ]; then
+            ENV_DIR="dev"
+            PM2_NAME="lfc-nest-dev"
+          elif [ "$GITHUB_REF_NAME" = "staging" ]; then
+            ENV_DIR="staging"
+            PM2_NAME="lfc-nest-staging"
+          elif [ "$GITHUB_REF_NAME" = "master" ]; then
+            ENV_DIR="prod"
+            PM2_NAME="lfc-nest-prod"
+          else
+            echo "❌ Unsupported branch: $GITHUB_REF_NAME"
+            exit 1
+          fi
+
+          SERVER_PATH="/www/project/Lfc/server/lfc-nest/$ENV_DIR"
+
+          echo "📦 部署到服务器目录: $SERVER_PATH"
+
+          ssh -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST "mkdir -p $SERVER_PATH"
+
+          rsync -avz -e "ssh -o StrictHostKeyChecking=no" ./build-output/lfc-nest-build.zip $SSH_USER@$SSH_HOST:$SERVER_PATH/
+
+          ssh -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST "
+            export NVM_DIR=/www/server/nvm &&
+            [ -s \$NVM_DIR/nvm.sh ] && \. \$NVM_DIR/nvm.sh &&
+            cd $SERVER_PATH &&
+            unzip -o lfc-nest-build.zip &&
+            rm -f lfc-nest-build.zip &&
+            pnpm config set registry https://registry.npmjs.org/ &&
+            pnpm install --prod &&
+            pm2 startOrRestart ecosystem.config.js --only ${PM2_NAME} &&
+            pm2 save
+          "

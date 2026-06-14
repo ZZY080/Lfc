@@ -145,6 +145,7 @@ data class ProfileTabUiState(
     val isLoadingMore: Boolean = false,
     val isInitialLoading: Boolean = false,
     val hasLoadedOnce: Boolean = false,
+    val totalCount: Int? = null,
 )
 
 data class ProfileTabsUiState(
@@ -152,6 +153,10 @@ data class ProfileTabsUiState(
     val tabs: List<ProfileTabUiState> = List(5) { ProfileTabUiState() },
     val favoriteActivities: ProfileTabUiState = ProfileTabUiState(),
     val likedActivities: ProfileTabUiState = ProfileTabUiState(),
+    val favoritesPostsTotal: Int? = null,
+    val favoritesActivitiesTotal: Int? = null,
+    val likedPostsTotal: Int? = null,
+    val likedActivitiesTotal: Int? = null,
 )
 
 data class FeedUiState(

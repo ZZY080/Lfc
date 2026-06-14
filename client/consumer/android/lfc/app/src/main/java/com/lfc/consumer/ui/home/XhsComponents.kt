@@ -522,7 +522,7 @@ fun XhsBottomBar(
                     modifier = Modifier.weight(1f),
                 )
                 XhsNavItem(
-                    label = "市集",
+                    label = "活动",
                     icon = Icons.Default.Event,
                     selected = selectedTab == 1,
                     onClick = { onTabSelected(1) },
@@ -532,7 +532,7 @@ fun XhsBottomBar(
                     modifier = Modifier
                         .weight(1f)
                         .height(52.dp),
-                    contentAlignment = Alignment.TopCenter,
+                    contentAlignment = Alignment.Center,
                 ) {
                     XhsPublishTabButton(onClick = onPublishClick)
                 }
@@ -562,7 +562,7 @@ private fun XhsPublishTabButton(onClick: () -> Unit) {
     Surface(
         onClick = onClick,
         modifier = Modifier
-            .offset(y = (-10).dp)
+            .offset(y = (-2).dp)
             .size(48.dp)
             .shadow(6.dp, RoundedCornerShape(16.dp), clip = false),
         shape = RoundedCornerShape(16.dp),

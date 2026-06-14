@@ -127,7 +127,6 @@ data class XhsProfileData(
     val alipayLoginIdMasked: String? = null,
 )
 
-private val profileTabLabels = listOf("笔记", "活动", "评论", "收藏", "赞")
 
 private const val PROFILE_FAVORITES_TAB = 3
 private const val PROFILE_LIKES_TAB = 4
@@ -184,19 +183,79 @@ private fun ProfileLibraryFeedItem.stableKey(): String = when (this) {
     is ProfileLibraryFeedItem.ActivityItem -> "activity-${activity.id}"
 }
 
-private data class ProfileTabItem(val label: String, val contentIndex: Int)
+private data class ProfileTabItem(
+    val label: String,
+    val contentIndex: Int,
+    val count: Int = 0,
+)
 
-private fun profileTabsFor(mode: XhsProfileMode): List<ProfileTabItem> = when (mode) {
-    XhsProfileMode.Self -> profileTabLabels.mapIndexed { index, label ->
-        ProfileTabItem(label, index)
+private data class ProfileTabCounts(
+    val notes: Int = 0,
+    val activities: Int = 0,
+    val comments: Int = 0,
+    val favorites: Int = 0,
+    val likes: Int = 0,
+)
+
+private fun resolveProfileTabCounts(
+    profile: XhsProfileData,
+    profileTabs: ProfileTabsUiState,
+    profileNotes: List<PostDto>,
+    profileActivities: List<ActivityDto>,
+    profileComments: List<ProfileCommentDto>,
+    profileFavoritePosts: List<PostDto>,
+    profileFavoriteActivities: List<ActivityDto>,
+    profileLikedPosts: List<PostDto>,
+    profileLikedActivities: List<ActivityDto>,
+): ProfileTabCounts {
+    fun tabTotal(index: Int, listSize: Int, profileFallback: Int = 0): Int {
+        val fromTab = profileTabs.tabs.getOrNull(index)?.totalCount
+        return when {
+            fromTab != null -> fromTab
+            profileFallback > 0 -> profileFallback
+            listSize > 0 -> listSize
+            else -> 0
+        }
     }
-    XhsProfileMode.Other -> listOf(
-        ProfileTabItem("笔记", 0),
-        ProfileTabItem("活动", 1),
-        ProfileTabItem("收藏", PROFILE_FAVORITES_TAB),
-        ProfileTabItem("赞", PROFILE_LIKES_TAB),
+    val favoritesTotal = when {
+        profileTabs.favoritesPostsTotal != null || profileTabs.favoritesActivitiesTotal != null ->
+            (profileTabs.favoritesPostsTotal ?: 0) + (profileTabs.favoritesActivitiesTotal ?: 0)
+        profileFavoritePosts.isNotEmpty() || profileFavoriteActivities.isNotEmpty() ->
+            profileFavoritePosts.size + profileFavoriteActivities.size
+        else -> profileTabs.tabs.getOrElse(PROFILE_FAVORITES_TAB) { ProfileTabUiState() }.totalCount ?: 0
+    }
+    val likesTotal = when {
+        profileTabs.likedPostsTotal != null || profileTabs.likedActivitiesTotal != null ->
+            (profileTabs.likedPostsTotal ?: 0) + (profileTabs.likedActivitiesTotal ?: 0)
+        profileLikedPosts.isNotEmpty() || profileLikedActivities.isNotEmpty() ->
+            profileLikedPosts.size + profileLikedActivities.size
+        else -> profileTabs.tabs.getOrElse(PROFILE_LIKES_TAB) { ProfileTabUiState() }.totalCount ?: 0
+    }
+    return ProfileTabCounts(
+        notes = tabTotal(0, profileNotes.size, profile.postCount),
+        activities = tabTotal(1, profileActivities.size, profile.activities.size),
+        comments = tabTotal(2, profileComments.size),
+        favorites = favoritesTotal,
+        likes = likesTotal,
     )
 }
+
+private fun buildProfileTabs(mode: XhsProfileMode, counts: ProfileTabCounts): List<ProfileTabItem> =
+    when (mode) {
+        XhsProfileMode.Self -> listOf(
+            ProfileTabItem("笔记", 0, counts.notes),
+            ProfileTabItem("活动", 1, counts.activities),
+            ProfileTabItem("评论", 2, counts.comments),
+            ProfileTabItem("收藏", PROFILE_FAVORITES_TAB, counts.favorites),
+            ProfileTabItem("赞", PROFILE_LIKES_TAB, counts.likes),
+        )
+        XhsProfileMode.Other -> listOf(
+            ProfileTabItem("笔记", 0, counts.notes),
+            ProfileTabItem("活动", 1, counts.activities),
+            ProfileTabItem("收藏", PROFILE_FAVORITES_TAB, counts.favorites),
+            ProfileTabItem("赞", PROFILE_LIKES_TAB, counts.likes),
+        )
+    }
 
 private fun XhsProfileData.isTabLocked(tabIndex: Int): Boolean = when (tabIndex) {
     2 -> !showCommentsPublic
@@ -246,7 +305,9 @@ private val profileCoverDark = Color(0xFF1A2329)
 private val profileGridHorizontalPadding = 8.dp
 private val profileGridItemSpacing = 8.dp
 private val topBarHeight = 48.dp
-/** 独立主页：封面 300dp + Tab 栏等，用于计算内容区填满剩余空间 */
+private val selfProfileCoverHeight = 300.dp
+private val otherProfileCoverHeight = 300.dp
+/** 独立主页：封面 + Tab 栏等，用于计算内容区填满剩余空间 */
 private val standaloneProfileHeaderEstimate = 372.dp
 
 private fun Modifier.breakOutHorizontalPadding(padding: Dp): Modifier = layout { measurable, constraints ->
@@ -284,6 +345,7 @@ fun XhsProfileScreen(
     profileLikedPosts: List<PostDto> = emptyList(),
     profileLikedActivities: List<ActivityDto> = emptyList(),
     profileComments: List<ProfileCommentDto> = emptyList(),
+    profileTabsState: ProfileTabsUiState = ProfileTabsUiState(),
     tabUiState: ProfileTabUiState = ProfileTabUiState(),
     onRefresh: () -> Unit = {},
     onLoadMore: () -> Unit = {},
@@ -363,6 +425,18 @@ fun XhsProfileScreen(
             profile == null -> XhsDetailEmpty("用户不存在", Modifier.fillMaxSize())
             !scrollReady -> ProfilePageSkeleton(Modifier.fillMaxSize())
             else -> {
+                val tabCounts = resolveProfileTabCounts(
+                    profile = profile,
+                    profileTabs = profileTabsState,
+                    profileNotes = profileNotes,
+                    profileActivities = profileActivities,
+                    profileComments = profileComments,
+                    profileFavoritePosts = profileFavoritePosts,
+                    profileFavoriteActivities = profileFavoriteActivities,
+                    profileLikedPosts = profileLikedPosts,
+                    profileLikedActivities = profileLikedActivities,
+                )
+                val profileTabs = buildProfileTabs(mode, tabCounts)
                 val tabLocked = selectedTab in 2..PROFILE_LIKES_TAB &&
                     !profile.isTabAccessible(mode, selectedTab)
                 val isTabEmpty = isProfileTabContentEmpty(
@@ -475,6 +549,7 @@ fun XhsProfileScreen(
                                 XhsProfileHeaderBlock(
                                     profile = profile,
                                     mode = mode,
+                                    tabs = profileTabs,
                                     onMessage = onMessage,
                                     onFollowToggle = onFollowToggle,
                                     onShare = onShare,
@@ -581,7 +656,7 @@ fun XhsProfileScreen(
                                 .height(topBarHeight),
                         )
                         XhsProfileTabBar(
-                            tabs = profileTabsFor(mode),
+                            tabs = profileTabs,
                             profile = profile,
                             selectedTab = selectedTab,
                             onTabSelected = { handleTabSelected(it) },
@@ -938,6 +1013,7 @@ private fun androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridScop
 private fun XhsProfileHeaderBlock(
     profile: XhsProfileData,
     mode: XhsProfileMode,
+    tabs: List<ProfileTabItem>,
     onMessage: (() -> Unit)?,
     onFollowToggle: (() -> Unit)?,
     onShare: (() -> Unit)?,
@@ -1051,73 +1127,31 @@ private fun XhsProfileHeaderBlock(
         )
     }
 
-    @Composable
-    fun SelfSummaryBar(modifier: Modifier = Modifier) {
-        Row(
-            modifier = modifier
-                .fillMaxWidth()
-                .background(profileCoverDark.copy(alpha = 0.92f))
-                .padding(vertical = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            XhsProfileSummaryCard(
-                title = "笔记",
-                value = "${profile.postCount}",
-                modifier = Modifier.weight(1f),
-            )
-            XhsProfileSummaryCard(
-                title = "活动",
-                value = "${profile.activities.size}",
-                modifier = Modifier.weight(1f),
-            )
-            XhsProfileSummaryCard(
-                title = "报名",
-                value = "${profile.participationCount}",
-                modifier = Modifier.weight(1f),
-            )
-        }
-    }
-
     Column(modifier = Modifier.fillMaxWidth()) {
         if (mode == XhsProfileMode.Self) {
-            // 封面与统计条同容器：背景图 matchParentSize 铺满，消除中间空隙
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .wrapContentHeight(),
+                    .height(selfProfileCoverHeight),
             ) {
-                ProfileCoverBackground(Modifier.matchParentSize())
-                Box(Modifier.matchParentSize().background(coverOverlay))
-                Column(Modifier.fillMaxWidth()) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .windowInsetsPadding(WindowInsets.statusBars)
-                            .padding(
-                                top = topBarHeight + 8.dp,
-                                start = 16.dp,
-                                end = 16.dp,
-                                bottom = 12.dp,
-                            ),
-                    ) {
-                        ProfileIdentityBlock(avatarSize = 68.dp, nameFontSize = 20.sp)
-                        ProfileMetaBlock()
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            XhsProfileTagChip("校园用户")
-                            if (profile.participationCount > 0) {
-                                XhsProfileTagChip("已报名 ${profile.participationCount}")
-                            }
-                        }
-                    }
-                    SelfSummaryBar()
+                ProfileCoverBackground(Modifier.fillMaxSize())
+                Box(Modifier.fillMaxSize().background(coverOverlay))
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .windowInsetsPadding(WindowInsets.statusBars)
+                        .padding(start = 16.dp, end = 16.dp, bottom = 72.dp),
+                    verticalArrangement = Arrangement.Bottom,
+                ) {
+                    ProfileIdentityBlock(avatarSize = 68.dp, nameFontSize = 20.sp)
+                    ProfileMetaBlock()
                 }
             }
         } else {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(300.dp),
+                    .height(otherProfileCoverHeight),
             ) {
                 ProfileCoverBackground(Modifier.fillMaxSize())
                 Box(modifier = Modifier.fillMaxSize().background(coverOverlay))
@@ -1153,7 +1187,7 @@ private fun XhsProfileHeaderBlock(
         ) {
             if (showInlineTabs) {
                 XhsProfileTabBar(
-                    tabs = profileTabsFor(mode),
+                    tabs = tabs,
                     profile = profile,
                     selectedTab = selectedTab,
                     onTabSelected = onTabSelected,
@@ -1366,7 +1400,7 @@ private fun XhsProfileTopOverlay(
                             modifier = Modifier.size(13.dp),
                         )
                         Text(
-                            text = "编辑主页",
+                            text = "编辑资料",
                             color = Color.White,
                             fontSize = 12.sp,
                             modifier = Modifier.padding(start = 4.dp),
@@ -1435,37 +1469,45 @@ private fun XhsProfileTabBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                .padding(horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             tabs.forEach { tab ->
                 val selected = selectedTab == tab.contentIndex
                 val locked = profile.isTabLocked(tab.contentIndex)
-                Column(
+                Row(
                     modifier = Modifier
+                        .weight(1f)
                         .clickable { onTabSelected(tab.contentIndex) }
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
+                        .padding(vertical = 10.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (locked) {
-                            Icon(
-                                Icons.Default.Lock,
-                                contentDescription = null,
-                                tint = XhsTextSecondary.copy(alpha = 0.7f),
-                                modifier = Modifier
-                                    .size(10.dp)
-                                    .padding(end = 2.dp),
-                            )
-                        }
-                        Text(
-                            text = tab.label,
-                            fontSize = 15.sp,
-                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                            color = if (selected) XhsTextPrimary else XhsTextSecondary,
+                    if (locked) {
+                        Icon(
+                            Icons.Default.Lock,
+                            contentDescription = null,
+                            tint = XhsTextSecondary.copy(alpha = 0.7f),
+                            modifier = Modifier
+                                .size(9.dp)
+                                .padding(end = 1.dp),
                         )
                     }
+                    Text(
+                        text = tab.label,
+                        fontSize = 14.sp,
+                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                        color = if (selected) XhsTextPrimary else XhsTextSecondary,
+                        maxLines = 1,
+                    )
+                    Text(
+                        text = formatProfileStatCount(tab.count),
+                        fontSize = 12.sp,
+                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                        color = if (selected) XhsTextPrimary else XhsTextSecondary.copy(alpha = 0.85f),
+                        modifier = Modifier.padding(start = 2.dp),
+                        maxLines = 1,
+                    )
                 }
             }
         }
@@ -1534,46 +1576,4 @@ private fun XhsProfileStatWhite(count: Int, label: String) {
 private fun formatProfileStatCount(count: Int): String = when {
     count < 10000 -> count.toString()
     else -> String.format("%.1fw", count / 10000f)
-}
-
-@Composable
-private fun XhsProfileTagChip(text: String) {
-    Surface(
-        shape = RoundedCornerShape(10.dp),
-        color = Color.White.copy(alpha = 0.14f),
-    ) {
-        Text(
-            text = text,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-            color = Color.White.copy(alpha = 0.9f),
-            fontSize = 11.sp,
-        )
-    }
-}
-
-@Composable
-private fun XhsProfileSummaryCard(
-    title: String,
-    value: String,
-    modifier: Modifier = Modifier,
-) {
-    Surface(
-        modifier = modifier,
-        shape = RoundedCornerShape(0.dp),
-        color = Color.White.copy(alpha = 0.08f),
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Text(title, color = Color.White.copy(alpha = 0.78f), fontSize = 11.sp)
-            Text(
-                value,
-                color = Color.White,
-                fontWeight = FontWeight.Bold,
-                fontSize = 13.sp,
-                modifier = Modifier.padding(top = 2.dp),
-            )
-        }
-    }
 }

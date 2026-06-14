@@ -29,6 +29,9 @@ import com.lfc.consumer.data.model.ConversationDto
 import com.lfc.consumer.data.model.CreateConversationRequest
 import com.lfc.consumer.data.model.NotificationDto
 import com.lfc.consumer.data.model.ChatProductPayload
+import com.lfc.consumer.data.model.ChatShareAttachment
+import com.lfc.consumer.data.model.toChatShareAttachment
+import com.lfc.consumer.data.model.toSendPayloadJson
 import com.lfc.consumer.data.model.PostDto
 import com.lfc.consumer.data.model.PromotionConfigDto
 import com.lfc.consumer.data.model.PromotionMetaDto
@@ -60,6 +63,8 @@ import com.lfc.consumer.data.model.BindAlipayAccountRequest
 import com.lfc.consumer.data.model.BindAlipayOAuthRequest
 import com.lfc.consumer.data.model.SendChatMessageRequest
 import com.lfc.consumer.data.model.UserProfileDto
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -101,6 +106,10 @@ data class HomeUiState(
     val chatMessages: List<ChatMessageDto> = emptyList(),
     val isChatLoading: Boolean = false,
     val isChatSending: Boolean = false,
+    val lastViewedShare: ChatShareAttachment? = null,
+    val chatComposeAttachment: ChatShareAttachment? = null,
+    val chatIncludeShareAttachment: Boolean = false,
+    val chatShareAttachmentSent: Boolean = false,
     val selectedPost: PostDto? = null,
     val postCommentsUi: PostCommentsUiState = PostCommentsUiState(),
     val isPostLoading: Boolean = false,
@@ -452,9 +461,10 @@ class HomeViewModel(
                     profileFavoriteActivities = emptyList(),
                     profileLikedPosts = emptyList(),
                     profileLikedActivities = emptyList(),
-                    profileTabs = ProfileTabsUiState(targetUserId = myId),
+                    profileTabs = seedProfileTabsFromProfile(myId, profile),
                 )
                 loadProfileTab(tab = 0, userId = myId)
+                preloadProfileTabTotals(myId, useSelfBucket = true)
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
@@ -1329,6 +1339,7 @@ class HomeViewModel(
                     detailAuthorFollowing = authorFollowing,
                     isPostLoading = false,
                 )
+                rememberViewedShareFromPost(post)
                 loadPostComments(id, refresh = true)
                 updatePostViewCount(post.id, post.viewCount)
             } catch (e: Exception) {
@@ -1641,6 +1652,7 @@ class HomeViewModel(
                     detailAuthorFollowing = authorFollowing,
                     isActivityLoading = false,
                 )
+                rememberViewedShareFromActivity(activity)
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isActivityLoading = false,
@@ -1845,10 +1857,14 @@ class HomeViewModel(
                 val messages = api.getChatMessages(conversationId)
                 val conversations = api.getConversations()
                 val unreadCount = loadTotalUnreadCount()
+                val conversation = conversations.find { it.id == conversationId }
+                if (_uiState.value.chatComposeAttachment == null && conversation != null) {
+                    prepareChatCompose(conversation.peerUserId)
+                }
                 _uiState.value = _uiState.value.copy(
                     chatMessages = messages,
                     conversations = conversations,
-                    selectedConversation = conversations.find { it.id == conversationId },
+                    selectedConversation = conversation,
                     unreadCount = unreadCount,
                     isChatLoading = false,
                 )
@@ -1864,6 +1880,15 @@ class HomeViewModel(
     fun sendChatMessage(conversationId: Int, content: String) {
         if (content.isBlank()) return
         viewModelScope.launch {
+            val state = _uiState.value
+            if (
+                state.chatIncludeShareAttachment &&
+                state.chatComposeAttachment != null &&
+                !state.chatShareAttachmentSent
+            ) {
+                sendShareAttachmentInternal(conversationId, state.chatComposeAttachment)
+                _uiState.value = _uiState.value.copy(chatShareAttachmentSent = true)
+            }
             sendChatPayloadInternal(conversationId, content.trim(), "TEXT")
         }
     }
@@ -1914,7 +1939,61 @@ class HomeViewModel(
         }
     }
 
+    private suspend fun sendShareAttachmentInternal(
+        conversationId: Int,
+        attachment: ChatShareAttachment,
+    ) {
+        val (payload, messageType) = attachment.toSendPayloadJson()
+        sendChatPayloadInternal(conversationId, payload, messageType)
+    }
+
+    private fun rememberViewedShareFromPost(post: PostDto) {
+        val myId = resolveMyUserId() ?: return
+        if (post.authorId == myId) return
+        val attachment = post.toChatShareAttachment() ?: return
+        _uiState.value = _uiState.value.copy(lastViewedShare = attachment)
+    }
+
+    private fun rememberViewedShareFromActivity(activity: ActivityDto) {
+        val myId = resolveMyUserId() ?: return
+        if (activity.authorId == myId) return
+        val attachment = activity.toChatShareAttachment() ?: return
+        _uiState.value = _uiState.value.copy(lastViewedShare = attachment)
+    }
+
+    private fun rememberViewedShareForAuthor(authorId: Int) {
+        val state = _uiState.value
+        state.selectedPost?.takeIf { it.authorId == authorId }?.let {
+            rememberViewedShareFromPost(it)
+            return
+        }
+        state.selectedActivity?.takeIf { it.authorId == authorId }?.let {
+            rememberViewedShareFromActivity(it)
+        }
+    }
+
+    private fun prepareChatCompose(peerUserId: Int) {
+        val attachment = _uiState.value.lastViewedShare?.takeIf { it.peerUserId == peerUserId }
+        _uiState.value = _uiState.value.copy(
+            chatComposeAttachment = attachment,
+            chatIncludeShareAttachment = attachment != null,
+            chatShareAttachmentSent = false,
+        )
+    }
+
+    fun setChatIncludeShareAttachment(include: Boolean) {
+        _uiState.value = _uiState.value.copy(chatIncludeShareAttachment = include)
+    }
+
+    fun dismissChatComposeAttachment() {
+        _uiState.value = _uiState.value.copy(
+            chatComposeAttachment = null,
+            chatIncludeShareAttachment = false,
+        )
+    }
+
     fun startConversation(peerUserId: Int, onSuccess: (Int) -> Unit = {}) {
+        prepareChatCompose(peerUserId)
         viewModelScope.launch {
             try {
                 val conversation = api.createConversation(CreateConversationRequest(peerUserId))
@@ -1961,13 +2040,126 @@ class HomeViewModel(
             chatMessages = emptyList(),
             isChatLoading = false,
             isChatSending = false,
+            chatComposeAttachment = null,
+            chatIncludeShareAttachment = false,
+            chatShareAttachmentSent = false,
         )
     }
 
     fun prepareMyProfileTab(myId: Int) {
         val state = _uiState.value
         if (state.profileTabs.targetUserId != myId) {
-            _uiState.value = state.copy(profileTabs = ProfileTabsUiState(targetUserId = myId))
+            val seeded = state.myProfile?.let { seedProfileTabsFromProfile(myId, it) }
+                ?: ProfileTabsUiState(targetUserId = myId)
+            _uiState.value = state.copy(profileTabs = seeded)
+        }
+    }
+
+    fun ensureMyProfileTabCounts(myId: Int) {
+        prepareMyProfileTab(myId)
+        val profile = _uiState.value.myProfile
+        if (profile != null) {
+            val current = _uiState.value.profileTabs
+            if (current.tabs.getOrNull(0)?.totalCount == null) {
+                _uiState.value = _uiState.value.copy(profileTabs = seedProfileTabsFromProfile(myId, profile))
+            }
+        }
+        preloadProfileTabTotals(myId, useSelfBucket = true)
+    }
+
+    private fun seedProfileTabsFromProfile(userId: Int, profile: UserProfileDto): ProfileTabsUiState {
+        val tabs = List(5) { ProfileTabUiState() }.toMutableList()
+        tabs[0] = ProfileTabUiState(totalCount = profile.postCount)
+        tabs[1] = ProfileTabUiState(totalCount = profile.activities.size)
+        return ProfileTabsUiState(targetUserId = userId, tabs = tabs)
+    }
+
+    private fun preloadProfileTabTotals(targetId: Int, useSelfBucket: Boolean) {
+        viewModelScope.launch {
+            try {
+                val isSelf = isSelfTarget(targetId)
+                coroutineScope {
+                    val commentsDeferred = async {
+                        runCatching {
+                            if (isSelf) {
+                                api.getMyProfileComments(1, 1)
+                            } else {
+                                api.getUserProfileComments(targetId, 1, 1)
+                            }
+                        }.getOrNull()
+                    }
+                    val favoritePostsDeferred = async {
+                        runCatching {
+                            if (isSelf) {
+                                api.getMyFavoritePosts(1, 1)
+                            } else {
+                                api.getUserFavoritePosts(targetId, 1, 1)
+                            }
+                        }.getOrNull()
+                    }
+                    val favoriteActivitiesDeferred = async {
+                        runCatching {
+                            if (isSelf) {
+                                api.getMyFavoriteActivities(1, 1)
+                            } else {
+                                api.getUserFavoriteActivities(targetId, 1, 1)
+                            }
+                        }.getOrNull()
+                    }
+                    val likedPostsDeferred = async {
+                        runCatching {
+                            if (isSelf) {
+                                api.getMyLikedPosts(1, 1)
+                            } else {
+                                api.getUserLikedPosts(targetId, 1, 1)
+                            }
+                        }.getOrNull()
+                    }
+                    val likedActivitiesDeferred = async {
+                        runCatching {
+                            if (isSelf) {
+                                api.getMyLikedActivities(1, 1)
+                            } else {
+                                api.getUserLikedActivities(targetId, 1, 1)
+                            }
+                        }.getOrNull()
+                    }
+                    val comments = commentsDeferred.await()
+                    val favoritePosts = favoritePostsDeferred.await()
+                    val favoriteActivities = favoriteActivitiesDeferred.await()
+                    val likedPosts = likedPostsDeferred.await()
+                    val likedActivities = likedActivitiesDeferred.await()
+
+                    val state = _uiState.value
+                    if (state.profileTabsFor(useSelfBucket).targetUserId != targetId) return@coroutineScope
+                    var tabsState = state.profileTabsFor(useSelfBucket)
+                    comments?.let { response ->
+                        tabsState = tabsState.withTab(2, tabsState.tabs[2].copy(totalCount = response.total))
+                    }
+                    val favoritesPostsTotal = favoritePosts?.total
+                    val favoritesActivitiesTotal = favoriteActivities?.total
+                    val likedPostsTotal = likedPosts?.total
+                    val likedActivitiesTotal = likedActivities?.total
+                    val favoritesCombined = (favoritesPostsTotal ?: tabsState.favoritesPostsTotal ?: 0) +
+                        (favoritesActivitiesTotal ?: tabsState.favoritesActivitiesTotal ?: 0)
+                    val likesCombined = (likedPostsTotal ?: tabsState.likedPostsTotal ?: 0) +
+                        (likedActivitiesTotal ?: tabsState.likedActivitiesTotal ?: 0)
+                    tabsState = tabsState.copy(
+                        favoritesPostsTotal = favoritesPostsTotal ?: tabsState.favoritesPostsTotal,
+                        favoritesActivitiesTotal = favoritesActivitiesTotal ?: tabsState.favoritesActivitiesTotal,
+                        likedPostsTotal = likedPostsTotal ?: tabsState.likedPostsTotal,
+                        likedActivitiesTotal = likedActivitiesTotal ?: tabsState.likedActivitiesTotal,
+                    ).withTab(
+                        PROFILE_FAVORITES_TAB,
+                        tabsState.tabs[PROFILE_FAVORITES_TAB].copy(totalCount = favoritesCombined),
+                    ).withTab(
+                        PROFILE_LIKES_TAB,
+                        tabsState.tabs[PROFILE_LIKES_TAB].copy(totalCount = likesCombined),
+                    )
+                    _uiState.value = state.withProfileTabsFor(useSelfBucket, tabsState)
+                }
+            } catch (_: Exception) {
+            }
         }
     }
 
@@ -1989,7 +2181,14 @@ class HomeViewModel(
     private fun HomeUiState.withProfileTabsFor(useSelfBucket: Boolean, tabs: ProfileTabsUiState): HomeUiState =
         if (useSelfBucket) copy(profileTabs = tabs) else copy(visitorProfileTabs = tabs)
 
-    fun loadUserProfile(userId: Int) {
+    /** 从笔记/活动详情点头像进入独立主页，与活动详情入口行为一致 */
+    fun enterUserProfile(userId: Int) {
+        rememberViewedShareForAuthor(userId)
+        val seedFollowing = _uiState.value.detailAuthorFollowing?.takeIf { isDetailAuthor(userId) }
+        loadUserProfile(userId, seedFollowing = seedFollowing)
+    }
+
+    fun loadUserProfile(userId: Int, seedFollowing: Boolean? = null) {
         _uiState.value = _uiState.value.copy(
             isUserProfileLoading = true,
             selectedUserProfile = null,
@@ -2005,11 +2204,14 @@ class HomeViewModel(
         viewModelScope.launch {
             try {
                 val profile = api.getUserProfile(userId)
+                val resolvedProfile = seedFollowing?.let { profile.copy(isFollowing = it) } ?: profile
                 _uiState.value = _uiState.value.copy(
-                    selectedUserProfile = profile,
+                    selectedUserProfile = resolvedProfile,
                     isUserProfileLoading = false,
+                    visitorProfileTabs = seedProfileTabsFromProfile(userId, profile),
                 )
                 loadProfileTab(tab = 0, userId = userId, forceVisitorBucket = true)
+                preloadProfileTabTotals(userId, useSelfBucket = true)
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isUserProfileLoading = false,
@@ -2108,7 +2310,14 @@ class HomeViewModel(
                 when (tab) {
                     0 -> {
                         val response = api.getUserPosts(targetId, page, PROFILE_TAB_PAGE_SIZE)
-                        applyProfileTabResult(tab, page, response.hasMore, replace, useSelfBucket) { current ->
+                        applyProfileTabResult(
+                            tab = tab,
+                            page = page,
+                            hasMore = response.hasMore,
+                            total = response.total,
+                            replace = replace,
+                            useSelfBucket = useSelfBucket,
+                        ) { current ->
                             if (useSelfBucket) {
                                 current.copy(
                                     profileNotes = mergePosts(current.profileNotes, response.items, replace),
@@ -2126,7 +2335,14 @@ class HomeViewModel(
                     }
                     1 -> {
                         val response = api.getUserActivities(targetId, page, PROFILE_TAB_PAGE_SIZE)
-                        applyProfileTabResult(tab, page, response.hasMore, replace, useSelfBucket) { current ->
+                        applyProfileTabResult(
+                            tab = tab,
+                            page = page,
+                            hasMore = response.hasMore,
+                            total = response.total,
+                            replace = replace,
+                            useSelfBucket = useSelfBucket,
+                        ) { current ->
                             if (useSelfBucket) {
                                 current.copy(
                                     profileActivities = mergeActivities(
@@ -2152,7 +2368,14 @@ class HomeViewModel(
                         } else {
                             api.getUserProfileComments(targetId, page, PROFILE_TAB_PAGE_SIZE)
                         }
-                        applyProfileTabResult(tab, page, response.hasMore, replace, useSelfBucket) { current ->
+                        applyProfileTabResult(
+                            tab = tab,
+                            page = page,
+                            hasMore = response.hasMore,
+                            total = response.total,
+                            replace = replace,
+                            useSelfBucket = useSelfBucket,
+                        ) { current ->
                             if (useSelfBucket) {
                                 current.copy(
                                     profileComments = mergeComments(
@@ -2457,6 +2680,7 @@ class HomeViewModel(
                     postsTab = PROFILE_FAVORITES_TAB,
                     page = page,
                     hasMore = response.hasMore,
+                    total = response.total,
                     replace = replace,
                     useSelfBucket = useSelfBucket,
                 ) { current ->
@@ -2489,6 +2713,7 @@ class HomeViewModel(
                     postsTab = PROFILE_LIKES_TAB,
                     page = page,
                     hasMore = response.hasMore,
+                    total = response.total,
                     replace = replace,
                     useSelfBucket = useSelfBucket,
                 ) { current ->
@@ -2521,6 +2746,7 @@ class HomeViewModel(
                     isFavorites = true,
                     page = page,
                     hasMore = response.hasMore,
+                    total = response.total,
                     replace = replace,
                     useSelfBucket = useSelfBucket,
                 ) { current ->
@@ -2553,6 +2779,7 @@ class HomeViewModel(
                     isFavorites = false,
                     page = page,
                     hasMore = response.hasMore,
+                    total = response.total,
                     replace = replace,
                     useSelfBucket = useSelfBucket,
                 ) { current ->
@@ -2582,13 +2809,25 @@ class HomeViewModel(
         postsTab: Int,
         page: Int,
         hasMore: Boolean,
+        total: Int,
         @Suppress("UNUSED_PARAMETER") replace: Boolean,
         useSelfBucket: Boolean,
         update: (HomeUiState) -> HomeUiState,
     ) {
         val current = _uiState.value
-        val tabs = current.profileTabsFor(useSelfBucket)
+        var tabs = current.profileTabsFor(useSelfBucket)
         val currentTabState = tabs.tabs[postsTab]
+        val favoritesPostsTotal = if (postsTab == PROFILE_FAVORITES_TAB) total else tabs.favoritesPostsTotal
+        val likedPostsTotal = if (postsTab == PROFILE_LIKES_TAB) total else tabs.likedPostsTotal
+        val combinedTotal = when (postsTab) {
+            PROFILE_FAVORITES_TAB -> total + (tabs.favoritesActivitiesTotal ?: 0)
+            PROFILE_LIKES_TAB -> total + (tabs.likedActivitiesTotal ?: 0)
+            else -> currentTabState.totalCount ?: total
+        }
+        tabs = tabs.copy(
+            favoritesPostsTotal = favoritesPostsTotal,
+            likedPostsTotal = likedPostsTotal,
+        )
         _uiState.value = update(current).withProfileTabsFor(
             useSelfBucket,
             tabs.withTab(
@@ -2600,6 +2839,7 @@ class HomeViewModel(
                     isInitialLoading = false,
                     isLoadingMore = false,
                     hasLoadedOnce = true,
+                    totalCount = combinedTotal,
                 ),
             ),
         )
@@ -2609,18 +2849,19 @@ class HomeViewModel(
         isFavorites: Boolean,
         page: Int,
         hasMore: Boolean,
+        total: Int,
         @Suppress("UNUSED_PARAMETER") replace: Boolean,
         useSelfBucket: Boolean,
         update: (HomeUiState) -> HomeUiState,
     ) {
         val current = _uiState.value
-        val tabs = current.profileTabsFor(useSelfBucket)
+        var tabs = current.profileTabsFor(useSelfBucket)
         val currentTabState = if (isFavorites) {
             tabs.favoriteActivities
         } else {
             tabs.likedActivities
         }
-        val nextState = currentTabState.copy(
+        val nextActivityState = currentTabState.copy(
             page = page + 1,
             hasMore = hasMore,
             isRefreshing = false,
@@ -2628,14 +2869,28 @@ class HomeViewModel(
             isLoadingMore = false,
             hasLoadedOnce = true,
         )
-        _uiState.value = update(current).withProfileTabsFor(
-            useSelfBucket,
+        val postsTab = if (isFavorites) PROFILE_FAVORITES_TAB else PROFILE_LIKES_TAB
+        val favoritesActivitiesTotal = if (isFavorites) total else tabs.favoritesActivitiesTotal
+        val likedActivitiesTotal = if (isFavorites) tabs.likedActivitiesTotal else total
+        val combinedTotal = if (isFavorites) {
+            (tabs.favoritesPostsTotal ?: 0) + total
+        } else {
+            (tabs.likedPostsTotal ?: 0) + total
+        }
+        tabs = tabs.copy(
+            favoritesActivitiesTotal = favoritesActivitiesTotal,
+            likedActivitiesTotal = likedActivitiesTotal,
+        ).let { updated ->
             if (isFavorites) {
-                tabs.withFavoriteActivities(nextState)
+                updated.withFavoriteActivities(nextActivityState)
             } else {
-                tabs.withLikedActivities(nextState)
-            },
+                updated.withLikedActivities(nextActivityState)
+            }
+        }.withTab(
+            postsTab,
+            tabs.tabs[postsTab].copy(totalCount = combinedTotal),
         )
+        _uiState.value = update(current).withProfileTabsFor(useSelfBucket, tabs)
     }
 
     fun refreshProfileTab(tab: Int, userId: Int? = null, forceVisitorBucket: Boolean = false) {
@@ -2650,6 +2905,7 @@ class HomeViewModel(
         tab: Int,
         page: Int,
         hasMore: Boolean,
+        total: Int,
         @Suppress("UNUSED_PARAMETER") replace: Boolean,
         useSelfBucket: Boolean,
         update: (HomeUiState) -> HomeUiState,
@@ -2668,6 +2924,7 @@ class HomeViewModel(
                     isInitialLoading = false,
                     isLoadingMore = false,
                     hasLoadedOnce = true,
+                    totalCount = total,
                 ),
             ),
         )

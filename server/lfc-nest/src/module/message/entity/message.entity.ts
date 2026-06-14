@@ -14,6 +14,8 @@ export enum ChatMessageType {
   IMAGE = 'IMAGE',
   VIDEO = 'VIDEO',
   PRODUCT = 'PRODUCT',
+  POST = 'POST',
+  ACTIVITY = 'ACTIVITY',
 }
 
 @Entity({ name: 'chat_message' })

@@ -8,6 +8,7 @@ import com.lfc.consumer.data.model.ActivityDto
 import com.lfc.consumer.data.model.PostDto
 import com.lfc.consumer.data.model.ProfileCommentDto
 import com.lfc.consumer.data.model.ProfileTabUiState
+import com.lfc.consumer.data.model.ProfileTabsUiState
 import com.lfc.consumer.data.model.UserProfileDto
 
 @Composable
@@ -20,6 +21,7 @@ fun ProfileScreen(
     likedPosts: List<PostDto>,
     likedActivities: List<ActivityDto>,
     comments: List<ProfileCommentDto>,
+    profileTabs: ProfileTabsUiState,
     tabUiState: ProfileTabUiState,
     selectedContentTab: Int,
     onRefresh: () -> Unit,
@@ -60,6 +62,7 @@ fun ProfileScreen(
         profileLikedPosts = likedPosts,
         profileLikedActivities = likedActivities,
         profileComments = comments,
+        profileTabsState = profileTabs,
         tabUiState = tabUiState,
         onRefresh = onRefresh,
         onLoadMore = onLoadMore,

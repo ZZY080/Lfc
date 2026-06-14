@@ -32,7 +32,11 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material.icons.filled.Event
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -60,6 +64,10 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.lfc.consumer.data.model.ChatMessageDto
 import com.lfc.consumer.data.model.ConversationDto
+import com.lfc.consumer.data.model.ChatShareAttachment
+import com.lfc.consumer.data.model.ChatShareKind
+import com.lfc.consumer.data.model.parseChatActivitySharePayload
+import com.lfc.consumer.data.model.parseChatPostSharePayload
 import com.lfc.consumer.data.model.parseChatProductPayload
 import com.lfc.consumer.data.model.displayName
 import com.lfc.consumer.data.model.peerDisplayName
@@ -84,6 +92,12 @@ fun ChatScreen(
     onSend: (String) -> Unit,
     onSendMedia: (Uri, String) -> Unit = { _, _ -> },
     onProductClick: (Int) -> Unit = {},
+    onPostShareClick: (Int) -> Unit = {},
+    onActivityShareClick: (Int) -> Unit = {},
+    composeAttachment: ChatShareAttachment? = null,
+    includeShareAttachment: Boolean = false,
+    onIncludeShareAttachmentChange: (Boolean) -> Unit = {},
+    onDismissShareAttachment: () -> Unit = {},
 ) {
     var input by remember { mutableStateOf("") }
     var showAttachmentPanel by remember { mutableStateOf(false) }
@@ -180,6 +194,8 @@ fun ChatScreen(
                                 peerLabel = peerLabel,
                                 peerAvatarUrl = peerAvatarUrl,
                                 onProductClick = onProductClick,
+                                onPostShareClick = onPostShareClick,
+                                onActivityShareClick = onActivityShareClick,
                             )
                         }
                     }
@@ -198,6 +214,10 @@ fun ChatScreen(
                     keyboardController?.hide()
                 }
             },
+            composeAttachment = composeAttachment,
+            includeShareAttachment = includeShareAttachment,
+            onIncludeShareAttachmentChange = onIncludeShareAttachmentChange,
+            onDismissShareAttachment = onDismissShareAttachment,
             onSend = {
                 if (input.isNotBlank() && !isSending) {
                     onSend(input.trim())
@@ -222,6 +242,10 @@ private fun ChatInputDock(
     isSending: Boolean,
     showAttachmentPanel: Boolean,
     onToggleAttachmentPanel: () -> Unit,
+    composeAttachment: ChatShareAttachment? = null,
+    includeShareAttachment: Boolean = false,
+    onIncludeShareAttachmentChange: (Boolean) -> Unit = {},
+    onDismissShareAttachment: () -> Unit = {},
     onSend: () -> Unit,
     onPickImage: () -> Unit,
     onPickVideo: () -> Unit,
@@ -232,6 +256,15 @@ private fun ChatInputDock(
             .background(Color.White)
             .navigationBarsPadding(),
     ) {
+        if (composeAttachment != null) {
+            ChatComposeShareAttachmentBar(
+                attachment = composeAttachment,
+                includeAttachment = includeShareAttachment,
+                onIncludeAttachmentChange = onIncludeShareAttachmentChange,
+                onDismiss = onDismissShareAttachment,
+            )
+            HorizontalDivider(color = Color(0xFFF0F0F0))
+        }
         if (showAttachmentPanel) {
             Row(
                 modifier = Modifier
@@ -364,6 +397,8 @@ private fun ChatBubble(
     peerLabel: String,
     peerAvatarUrl: String?,
     onProductClick: (Int) -> Unit,
+    onPostShareClick: (Int) -> Unit,
+    onActivityShareClick: (Int) -> Unit,
 ) {
     val avatarLabel = when {
         isMine -> message.sender?.displayName() ?: myLabel
@@ -413,6 +448,54 @@ private fun ChatBubble(
                     } else {
                         Text(
                             text = "[商品消息]",
+                            modifier = Modifier.padding(8.dp),
+                            color = XhsTextSecondary,
+                            fontSize = 13.sp,
+                        )
+                    }
+                }
+                "POST" -> {
+                    val postShare = parseChatPostSharePayload(message.content)
+                    if (postShare != null) {
+                        ChatShareMessageBubble(
+                            badge = "笔记",
+                            title = postShare.title,
+                            coverUrl = postShare.coverUrl,
+                            subtitle = null,
+                            fallbackSeed = postShare.postId,
+                            isMine = isMine,
+                            bubbleShape = if (isMine) bubbleShapeMine else bubbleShapePeer,
+                            onClick = { onPostShareClick(postShare.postId) },
+                        )
+                    } else {
+                        Text(
+                            text = "[笔记消息]",
+                            modifier = Modifier.padding(8.dp),
+                            color = XhsTextSecondary,
+                            fontSize = 13.sp,
+                        )
+                    }
+                }
+                "ACTIVITY" -> {
+                    val activityShare = parseChatActivitySharePayload(message.content)
+                    if (activityShare != null) {
+                        val subtitle = listOfNotNull(
+                            activityShare.startTime?.replace("T", " ")?.take(16),
+                            activityShare.location?.takeIf { it.isNotBlank() },
+                        ).joinToString(" · ").takeIf { it.isNotBlank() }
+                        ChatShareMessageBubble(
+                            badge = "活动",
+                            title = activityShare.title,
+                            coverUrl = activityShare.coverUrl,
+                            subtitle = subtitle,
+                            fallbackSeed = activityShare.activityId,
+                            isMine = isMine,
+                            bubbleShape = if (isMine) bubbleShapeMine else bubbleShapePeer,
+                            onClick = { onActivityShareClick(activityShare.activityId) },
+                        )
+                    } else {
+                        Text(
+                            text = "[活动消息]",
                             modifier = Modifier.padding(8.dp),
                             color = XhsTextSecondary,
                             fontSize = 13.sp,
@@ -492,6 +575,189 @@ private fun ChatBubble(
         if (isMine) {
             Spacer(modifier = Modifier.width(8.dp))
             XhsProfileAvatar(label = avatarLabel, size = 36, avatarUrl = avatarUrl)
+        }
+    }
+}
+
+@Composable
+private fun ChatComposeShareAttachmentBar(
+    attachment: ChatShareAttachment,
+    includeAttachment: Boolean,
+    onIncludeAttachmentChange: (Boolean) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val badge = when (attachment.kind) {
+        ChatShareKind.POST -> "笔记"
+        ChatShareKind.ACTIVITY -> "活动"
+    }
+    val seed = attachment.postId ?: attachment.activityId ?: 0
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Checkbox(
+            checked = includeAttachment,
+            onCheckedChange = onIncludeAttachmentChange,
+            colors = CheckboxDefaults.colors(checkedColor = XhsRed),
+        )
+        Row(
+            modifier = Modifier
+                .weight(1f)
+                .clip(RoundedCornerShape(10.dp))
+                .background(Color(0xFFF7F7F7))
+                .padding(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(52.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(coverGradientForId(seed)),
+            ) {
+                attachment.coverUrl?.let { coverUrl ->
+                    AsyncImage(
+                        model = coverUrl,
+                        contentDescription = attachment.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+                Text(
+                    text = badge,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(4.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(Color.Black.copy(alpha = 0.45f))
+                        .padding(horizontal = 4.dp, vertical = 1.dp),
+                    color = Color.White,
+                    fontSize = 9.sp,
+                )
+            }
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = 10.dp),
+            ) {
+                Text(
+                    text = "附带${badge}",
+                    fontSize = 11.sp,
+                    color = XhsTextSecondary,
+                )
+                Text(
+                    text = attachment.title,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = XhsTextPrimary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    lineHeight = 18.sp,
+                )
+                attachment.subtitle?.let { subtitle ->
+                    Text(
+                        text = subtitle,
+                        fontSize = 11.sp,
+                        color = XhsTextSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 2.dp),
+                    )
+                }
+            }
+        }
+        IconButton(onClick = onDismiss, modifier = Modifier.size(36.dp)) {
+            Icon(
+                Icons.Default.Close,
+                contentDescription = "不附带",
+                tint = XhsTextSecondary,
+                modifier = Modifier.size(18.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun ChatShareMessageBubble(
+    badge: String,
+    title: String,
+    coverUrl: String?,
+    subtitle: String?,
+    fallbackSeed: Int,
+    isMine: Boolean,
+    bubbleShape: RoundedCornerShape,
+    onClick: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier
+            .widthIn(max = 240.dp)
+            .clickable(onClick = onClick),
+        shape = bubbleShape,
+        color = Color.White,
+        shadowElevation = if (isMine) 0.dp else 1.dp,
+    ) {
+        Column {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(120.dp)
+                    .background(coverGradientForId(fallbackSeed)),
+            ) {
+                coverUrl?.let { url ->
+                    AsyncImage(
+                        model = url,
+                        contentDescription = title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+                Text(
+                    text = badge,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(8.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(Color.Black.copy(alpha = 0.45f))
+                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                    color = Color.White,
+                    fontSize = 10.sp,
+                )
+            }
+            Column(modifier = Modifier.padding(10.dp)) {
+                Text(
+                    text = title,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = XhsTextPrimary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    lineHeight = 20.sp,
+                )
+                subtitle?.let {
+                    Row(
+                        modifier = Modifier.padding(top = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        if (badge == "活动") {
+                            Icon(
+                                Icons.Default.Event,
+                                contentDescription = null,
+                                tint = XhsTextSecondary,
+                                modifier = Modifier.size(12.dp),
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                        }
+                        Text(
+                            text = it,
+                            fontSize = 11.sp,
+                            color = XhsTextSecondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
         }
     }
 }

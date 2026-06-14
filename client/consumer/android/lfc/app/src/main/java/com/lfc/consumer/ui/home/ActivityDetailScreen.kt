@@ -44,6 +44,10 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -113,6 +117,7 @@ fun ActivityDetailScreen(
                 val images = activity.images.orEmpty()
                 val isSelf = currentUserId != null && currentUserId == activity.authorId
                 val isPaid = activity.isPaidActivity()
+                var showNavigationSheet by remember { mutableStateOf(false) }
 
                 Column(modifier = Modifier.fillMaxSize()) {
                     XhsDetailAuthorHeader(
@@ -210,15 +215,26 @@ fun ActivityDetailScreen(
                                 longitude = activity.longitude,
                                 startTime = activity.startTime,
                                 endTime = activity.endTime,
-                                onNavigate = {
+                                onNavigateClick = {
+                                    if (activity.location.isNotBlank()) {
+                                        showNavigationSheet = true
+                                    }
+                                },
+                                modifier = Modifier.padding(horizontal = 16.dp),
+                            )
+
+                            NavigationTravelModeSheet(
+                                visible = showNavigationSheet,
+                                onDismiss = { showNavigationSheet = false },
+                                onModeSelected = { mode ->
                                     AmapNavigationHelper.openNavigation(
                                         context = context,
                                         name = activity.location,
                                         latitude = activity.latitude,
                                         longitude = activity.longitude,
+                                        mode = mode,
                                     )
                                 },
-                                modifier = Modifier.padding(horizontal = 16.dp),
                             )
 
                             Spacer(modifier = Modifier.height(20.dp))
@@ -529,7 +545,7 @@ private fun ActivityDetailWhenWhereSection(
     longitude: Double? = null,
     startTime: String,
     endTime: String,
-    onNavigate: () -> Unit,
+    onNavigateClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -565,7 +581,7 @@ private fun ActivityDetailWhenWhereSection(
             iconBg = Color(0xFFFFEDE6),
             title = "活动地点",
             actionLabel = if (location.isNotBlank()) "导航" else null,
-            onClick = if (location.isNotBlank()) onNavigate else null,
+            onClick = if (location.isNotBlank()) onNavigateClick else null,
         ) {
             Text(
                 text = location.ifBlank { "待定" },

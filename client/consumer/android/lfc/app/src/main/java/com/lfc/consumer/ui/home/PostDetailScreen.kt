@@ -18,10 +18,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.snapshotFlow
 import com.lfc.consumer.data.model.PostCommentsUiState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Share
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -363,9 +359,7 @@ private fun PostDetailHeader(
                 isFollowing = isAuthorFollowing,
                 onClick = onFollowToggle,
             )
-        }
-
-        if (isSelf && onEdit != null && onDelete != null && onOffShelf != null && onOnShelf != null) {
+        } else if (onEdit != null && onDelete != null && onOffShelf != null && onOnShelf != null) {
             OwnerContentManageButton(
                 showShelfActions = true,
                 isOffShelf = isOffShelf,
@@ -375,15 +369,6 @@ private fun PostDetailHeader(
                 onOffShelf = onOffShelf,
                 onOnShelf = onOnShelf,
             )
-        } else {
-            IconButton(onClick = { }, modifier = Modifier.size(40.dp)) {
-                Icon(
-                    Icons.Default.Share,
-                    contentDescription = "分享",
-                    tint = XhsTextPrimary,
-                    modifier = Modifier.size(20.dp),
-                )
-            }
         }
     }
 }

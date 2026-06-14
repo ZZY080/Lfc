@@ -89,6 +89,8 @@ fun HomeScreen(
     }
 
     fun openAuthorProfile(authorId: Int) {
+        userProfileContentTab = 0
+        viewModel.enterUserProfile(authorId)
         navController.navigate("user_profile/$authorId") {
             launchSingleTop = true
         }
@@ -129,8 +131,11 @@ fun HomeScreen(
 
     LaunchedEffect(selectedTab, uiState.myProfile?.id, uiState.profileTabs.targetUserId) {
         val myId = uiState.myProfile?.id ?: return@LaunchedEffect
-        if (selectedTab == 3 && uiState.profileTabs.targetUserId != myId) {
-            viewModel.loadProfileTab(profileContentTab, myId)
+        if (selectedTab == 3) {
+            viewModel.ensureMyProfileTabCounts(myId)
+            if (uiState.profileTabs.targetUserId != myId) {
+                viewModel.loadProfileTab(profileContentTab, myId)
+            }
         }
     }
 
@@ -233,6 +238,7 @@ fun HomeScreen(
                             likedPosts = uiState.profileLikedPosts,
                             likedActivities = uiState.profileLikedActivities,
                             comments = uiState.profileComments,
+                            profileTabs = uiState.profileTabs,
                             tabUiState = profileTabUiStateFor(
                                 selectedTab = profileContentTab,
                                 profileTabs = uiState.profileTabs,
@@ -392,6 +398,16 @@ fun HomeScreen(
                     onProductClick = { postId ->
                         navController.navigate("product_detail/$postId")
                     },
+                    onPostShareClick = { postId ->
+                        navController.navigate("post_detail/$postId")
+                    },
+                    onActivityShareClick = { activityId ->
+                        navController.navigate("activity_detail/$activityId")
+                    },
+                    composeAttachment = uiState.chatComposeAttachment,
+                    includeShareAttachment = uiState.chatIncludeShareAttachment,
+                    onIncludeShareAttachmentChange = viewModel::setChatIncludeShareAttachment,
+                    onDismissShareAttachment = viewModel::dismissChatComposeAttachment,
                 )
             }
 
@@ -528,7 +544,12 @@ fun HomeScreen(
                 val userId = backStackEntry.arguments?.getInt("userId") ?: return@composable
                 LaunchedEffect(userId) {
                     userProfileContentTab = 0
-                    viewModel.loadUserProfile(userId)
+                    val state = uiState
+                    if (state.visitorProfileTabs.targetUserId != userId ||
+                        state.selectedUserProfile?.id != userId
+                    ) {
+                        viewModel.enterUserProfile(userId)
+                    }
                 }
                 val profileForUser = uiState.selectedUserProfile?.takeIf { it.id == userId }
                 val isLoadingProfile = profileForUser == null &&
@@ -546,6 +567,7 @@ fun HomeScreen(
                     likedPosts = uiState.visitorProfileLikedPosts,
                     likedActivities = uiState.visitorProfileLikedActivities,
                     comments = uiState.visitorProfileComments,
+                    profileTabs = uiState.visitorProfileTabs,
                     tabUiState = profileTabUiStateFor(
                         selectedTab = userProfileContentTab,
                         profileTabs = uiState.visitorProfileTabs,
