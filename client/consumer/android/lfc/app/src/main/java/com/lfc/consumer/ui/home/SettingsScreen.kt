@@ -39,6 +39,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lfc.consumer.data.model.UserProfileDto
+import com.lfc.consumer.data.local.LegalConsentStore
+import com.lfc.consumer.ui.legal.ALL_LEGAL_DOCUMENTS
+import com.lfc.consumer.ui.legal.LegalDocumentId
+import com.lfc.consumer.ui.legal.legalDocumentOf
 import com.lfc.consumer.ui.theme.XhsRed
 import com.lfc.consumer.ui.theme.XhsTextPrimary
 import com.lfc.consumer.ui.theme.XhsTextSecondary
@@ -58,6 +62,7 @@ fun SettingsScreen(
     ) -> Unit,
     onAuthorizeAlipay: () -> Unit,
     onUnbindAlipay: () -> Unit,
+    onOpenLegalDocument: (LegalDocumentId) -> Unit,
 ) {
     var showCommentsPublic by remember(profile?.id) { mutableStateOf(profile?.showCommentsPublic ?: false) }
     var showFavoritesPublic by remember(profile?.id) { mutableStateOf(profile?.showFavoritesPublic ?: false) }
@@ -274,6 +279,58 @@ fun SettingsScreen(
                                 onPrivacyChange(showCommentsPublic, showFavoritesPublic, it)
                             },
                         )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                Text(
+                    text = "法律与隐私",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp,
+                    color = XhsTextPrimary,
+                )
+                Text(
+                    text = "协议版本 v${LegalConsentStore.CURRENT_VERSION}.0",
+                    fontSize = 12.sp,
+                    color = XhsTextSecondary,
+                    modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
+                )
+
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color.White,
+                ) {
+                    Column {
+                        ALL_LEGAL_DOCUMENTS.forEachIndexed { index, docId ->
+                            if (index > 0) {
+                                HorizontalDivider(
+                                    color = Color(0xFFF0F0F0),
+                                    modifier = Modifier.padding(start = 16.dp),
+                                )
+                            }
+                            val doc = legalDocumentOf(docId)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onOpenLegalDocument(docId) }
+                                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    text = doc.title,
+                                    fontSize = 15.sp,
+                                    color = XhsTextPrimary,
+                                    fontWeight = FontWeight.Medium,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                Text(
+                                    text = "查看",
+                                    fontSize = 13.sp,
+                                    color = XhsTextSecondary,
+                                )
+                            }
+                        }
                     }
                 }
             }

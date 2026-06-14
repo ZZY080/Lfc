@@ -115,4 +115,4 @@ const val ALIPAY_BIND_REQUIRED_MESSAGE =
     "发布付费内容前，请先在「我的 → 设置」跳转支付宝授权"
 
 const val ALIPAY_BIND_HINT_FOR_SELLERS =
-    "若要发布闲置或收取活动费，请在「我的 → 设置」跳转支付宝 App 完成授权"
+    "若要挂载商品或收取活动费，请在「我的 → 设置」跳转支付宝 App 完成授权"

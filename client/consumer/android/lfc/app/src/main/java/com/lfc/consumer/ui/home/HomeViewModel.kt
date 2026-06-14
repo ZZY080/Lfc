@@ -7,6 +7,8 @@ import android.content.Context
 import android.net.Uri
 import com.lfc.consumer.data.ApiClient
 import com.lfc.consumer.data.MediaUploadHelper
+import com.lfc.consumer.data.local.FeedChannelStore
+import com.lfc.consumer.data.local.FeedChannels
 import com.lfc.consumer.data.local.SearchHistoryStore
 import com.lfc.consumer.data.local.TokenManager
 import com.lfc.consumer.data.local.UserSession
@@ -15,8 +17,10 @@ import com.lfc.consumer.data.model.ActivityParticipantDto
 import com.lfc.consumer.data.model.CreateActivityRequest
 import com.lfc.consumer.data.model.CreatePostCommentRequest
 import com.lfc.consumer.data.model.CreatePostRequest
+import com.lfc.consumer.data.model.DEFAULT_POST_CATEGORY
 import com.lfc.consumer.data.model.PostProductRequest
 import com.lfc.consumer.data.model.PostCommentDto
+import com.lfc.consumer.data.model.PostCommentsUiState
 import com.lfc.consumer.data.model.FeedUiState
 import com.lfc.consumer.data.model.ActivityFeedUiState
 import com.lfc.consumer.data.model.SearchUiState
@@ -72,6 +76,11 @@ import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.asRequestBody
 import retrofit2.HttpException
+import com.lfc.consumer.location.ActivityLocation
+import com.lfc.consumer.location.AmapLocationHelper
+import com.lfc.consumer.location.distanceMeters
+import com.lfc.consumer.location.extractFeedCityLabel
+import com.lfc.consumer.location.hasValidCoordinate
 import com.lfc.consumer.payment.AlipayHelper
 import com.google.gson.JsonParser
 
@@ -93,9 +102,8 @@ data class HomeUiState(
     val isChatLoading: Boolean = false,
     val isChatSending: Boolean = false,
     val selectedPost: PostDto? = null,
-    val postComments: List<PostCommentDto> = emptyList(),
+    val postCommentsUi: PostCommentsUiState = PostCommentsUiState(),
     val isPostLoading: Boolean = false,
-    val isPostCommentsLoading: Boolean = false,
     val isPostSocialSubmitting: Boolean = false,
     val selectedActivity: ActivityDto? = null,
     val isActivityLoading: Boolean = false,
@@ -124,6 +132,14 @@ data class HomeUiState(
     val profileLikedActivities: List<ActivityDto> = emptyList(),
     val profileComments: List<ProfileCommentDto> = emptyList(),
     val profileTabs: ProfileTabsUiState = ProfileTabsUiState(),
+    val visitorProfileNotes: List<PostDto> = emptyList(),
+    val visitorProfileActivities: List<ActivityDto> = emptyList(),
+    val visitorProfileFavoritePosts: List<PostDto> = emptyList(),
+    val visitorProfileFavoriteActivities: List<ActivityDto> = emptyList(),
+    val visitorProfileLikedPosts: List<PostDto> = emptyList(),
+    val visitorProfileLikedActivities: List<ActivityDto> = emptyList(),
+    val visitorProfileComments: List<ProfileCommentDto> = emptyList(),
+    val visitorProfileTabs: ProfileTabsUiState = ProfileTabsUiState(),
     val profileSearch: ProfileSearchUiState = ProfileSearchUiState(),
     val isProfileUpdating: Boolean = false,
     val isPrivacyUpdating: Boolean = false,
@@ -133,11 +149,13 @@ data class HomeUiState(
     val isPromotionSubmitting: Boolean = false,
     val orderCenter: OrderCenterUiState = OrderCenterUiState(),
     val paymentTransactionLedger: PaymentTransactionLedgerUiState = PaymentTransactionLedgerUiState(),
+    val userLocation: ActivityLocation? = null,
 )
 
 class HomeViewModel(
     private val tokenManager: TokenManager,
     private val searchHistoryStore: SearchHistoryStore,
+    private val feedChannelStore: FeedChannelStore,
     private val appContext: Context,
 ) : ViewModel() {
     private val api = ApiClient.createApiService(tokenManager)
@@ -149,11 +167,36 @@ class HomeViewModel(
     private var paymentGateKey: String? = null
 
     init {
+        viewModelScope.launch {
+            feedChannelStore.myChannelsFlow.collect { channels ->
+                val current = _uiState.value.feed
+                _uiState.value = _uiState.value.copy(
+                    feed = current.copy(
+                        myChannels = channels,
+                        selectedTab = if (current.selectedTab in channels) {
+                            current.selectedTab
+                        } else {
+                            FeedChannels.RECOMMEND
+                        },
+                    ),
+                )
+            }
+        }
         loadPaymentConfig()
         loadPromotionConfig()
+        refreshUserLocation()
         loadFeed(refresh = true)
         loadActivityFeed(refresh = true)
         refreshProfileData()
+    }
+
+    fun refreshUserLocation() {
+        viewModelScope.launch {
+            AmapLocationHelper.getCurrentLocation(appContext)
+                .onSuccess { location ->
+                    _uiState.value = _uiState.value.copy(userLocation = location)
+                }
+        }
     }
 
     private fun tryAcquirePaymentGate(key: String): Boolean = synchronized(paymentGate) {
@@ -214,6 +257,7 @@ class HomeViewModel(
     fun refreshAll() {
         loadPaymentConfig()
         loadPromotionConfig()
+        refreshUserLocation()
         loadFeed(refresh = true)
         loadActivityFeed(refresh = true)
         refreshProfileData()
@@ -337,8 +381,11 @@ class HomeViewModel(
             posts = state.posts.map(::patchPost),
             myPosts = state.myPosts.map(::patchPost),
             profileNotes = state.profileNotes.map(::patchPost),
+            visitorProfileNotes = state.visitorProfileNotes.map(::patchPost),
             profileFavoritePosts = state.profileFavoritePosts.map(::patchPost),
+            visitorProfileFavoritePosts = state.visitorProfileFavoritePosts.map(::patchPost),
             profileLikedPosts = state.profileLikedPosts.map(::patchPost),
+            visitorProfileLikedPosts = state.visitorProfileLikedPosts.map(::patchPost),
             search = state.search.copy(
                 posts = state.search.posts.map(::patchPost),
             ),
@@ -359,8 +406,11 @@ class HomeViewModel(
             activities = state.activities.map(::patchActivity),
             myActivities = state.myActivities.map(::patchActivity),
             profileActivities = state.profileActivities.map(::patchActivity),
+            visitorProfileActivities = state.visitorProfileActivities.map(::patchActivity),
             profileFavoriteActivities = state.profileFavoriteActivities.map(::patchActivity),
+            visitorProfileFavoriteActivities = state.visitorProfileFavoriteActivities.map(::patchActivity),
             profileLikedActivities = state.profileLikedActivities.map(::patchActivity),
+            visitorProfileLikedActivities = state.visitorProfileLikedActivities.map(::patchActivity),
             search = state.search.copy(
                 activities = state.search.activities.map(::patchActivity),
             ),
@@ -387,10 +437,10 @@ class HomeViewModel(
                 val unreadCount = loadTotalUnreadCount()
                 val myId = profile.id
                 _uiState.value = _uiState.value.copy(
-                    posts = profile.posts,
+                    posts = profile.posts.orEmpty(),
                     myProfile = profile,
-                    myPosts = profile.posts,
-                    myActivities = profile.activities,
+                    myPosts = profile.posts.orEmpty(),
+                    myActivities = profile.activities.orEmpty(),
                     myParticipations = myParticipations,
                     notifications = notifications,
                     unreadCount = unreadCount,
@@ -427,11 +477,13 @@ class HomeViewModel(
                 ),
             )
             try {
-                val sort = when (feed.selectedTab) {
-                    "最新" -> "latest"
+                val sort = when {
+                    feed.primaryTab == "关注" -> "latest"
+                    feed.selectedTab == "最新" -> "latest"
                     else -> "recommend"
                 }
                 val tabParam = when {
+                    feed.primaryTab == "关注" -> "关注"
                     feed.selectedTab in listOf("推荐", "最新") -> null
                     else -> feed.selectedTab
                 }
@@ -442,13 +494,14 @@ class HomeViewModel(
                     keyword = null,
                     tab = tabParam,
                 )
-                val merged = if (refresh) {
+                val fetched = if (refresh) {
                     response.items
                 } else {
                     feed.posts + response.items.filter { new ->
                         feed.posts.none { it.id == new.id }
                     }
                 }
+                val merged = applyFeedPrimaryFilter(fetched, feed.primaryTab)
                 _uiState.value = _uiState.value.copy(
                     feed = feed.copy(
                         posts = merged,
@@ -543,11 +596,120 @@ class HomeViewModel(
     }
 
     fun selectFeedTab(tab: String) {
-        if (_uiState.value.feed.selectedTab == tab) return
+        val feed = _uiState.value.feed
+        if (feed.selectedTab == tab && !feed.isChannelPanelExpanded) return
         _uiState.value = _uiState.value.copy(
-            feed = FeedUiState(selectedTab = tab),
+            feed = feed.copy(
+                selectedTab = tab,
+                posts = emptyList(),
+                page = 1,
+                isChannelPanelExpanded = false,
+                isChannelEditMode = false,
+            ),
         )
         loadFeed(refresh = true)
+    }
+
+    fun toggleFeedChannelPanel() {
+        val feed = _uiState.value.feed
+        _uiState.value = _uiState.value.copy(
+            feed = feed.copy(
+                isChannelPanelExpanded = !feed.isChannelPanelExpanded,
+                isChannelEditMode = if (feed.isChannelPanelExpanded) false else feed.isChannelEditMode,
+            ),
+        )
+    }
+
+    fun collapseFeedChannelPanel() {
+        val feed = _uiState.value.feed
+        if (!feed.isChannelPanelExpanded && !feed.isChannelEditMode) return
+        _uiState.value = _uiState.value.copy(
+            feed = feed.copy(
+                isChannelPanelExpanded = false,
+                isChannelEditMode = false,
+            ),
+        )
+    }
+
+    fun toggleFeedChannelEditMode() {
+        val feed = _uiState.value.feed
+        _uiState.value = _uiState.value.copy(
+            feed = feed.copy(isChannelEditMode = !feed.isChannelEditMode),
+        )
+    }
+
+    fun addFeedChannel(channel: String) {
+        val feed = _uiState.value.feed
+        if (channel in feed.myChannels) return
+        val updated = feed.myChannels + channel
+        viewModelScope.launch {
+            feedChannelStore.saveMyChannels(updated)
+        }
+    }
+
+    fun removeFeedChannel(channel: String) {
+        if (channel == FeedChannels.RECOMMEND) return
+        val feed = _uiState.value.feed
+        val updated = feed.myChannels.filter { it != channel }
+        viewModelScope.launch {
+            feedChannelStore.saveMyChannels(updated)
+            if (feed.selectedTab == channel) {
+                selectFeedTab(FeedChannels.RECOMMEND)
+            }
+        }
+    }
+
+    fun recommendedFeedChannels(): List<String> =
+        FeedChannels.recommendedFor(_uiState.value.feed.myChannels)
+
+    fun selectFeedPrimaryTab(tab: String) {
+        val feed = _uiState.value.feed
+        val cityLabel = extractFeedCityLabel(_uiState.value.userLocation?.address)
+        val normalized = when {
+            tab in XHS_FEED_PRIMARY_TABS -> tab
+            tab == cityLabel -> cityLabel
+            else -> tab
+        }
+        if (feed.primaryTab == normalized) return
+        _uiState.value = _uiState.value.copy(
+            feed = feed.copy(
+                primaryTab = normalized,
+                posts = emptyList(),
+                page = 1,
+                isInitialLoading = true,
+                isChannelPanelExpanded = false,
+                isChannelEditMode = false,
+            ),
+        )
+        loadFeed(refresh = true)
+    }
+
+    private fun applyFeedPrimaryFilter(posts: List<PostDto>, primaryTab: String): List<PostDto> {
+        if (primaryTab == "关注") return posts
+        val cityLabel = extractFeedCityLabel(_uiState.value.userLocation?.address)
+        if (primaryTab != cityLabel) return posts
+
+        val userLocation = _uiState.value.userLocation
+        val cityFiltered = posts.filter { post ->
+            val location = post.location.orEmpty()
+            location.contains(cityLabel) || location.contains("${cityLabel}市")
+        }
+        val base = cityFiltered.ifEmpty { posts }
+        if (!hasValidCoordinate(userLocation?.latitude, userLocation?.longitude)) {
+            return base
+        }
+        return base.sortedBy { post ->
+            if (hasValidCoordinate(post.latitude, post.longitude)) {
+                distanceMeters(
+                    userLocation!!.latitude,
+                    userLocation.longitude,
+                    post.latitude!!,
+                    post.longitude!!,
+                )
+            } else {
+                Double.MAX_VALUE
+            }
+        }
     }
 
     fun updateSearchInput(input: String) {
@@ -664,7 +826,11 @@ class HomeViewModel(
         title: String,
         content: String,
         imageUris: List<Uri> = emptyList(),
+        category: String = DEFAULT_POST_CATEGORY,
         product: PostProductRequest? = null,
+        latitude: Double? = null,
+        longitude: Double? = null,
+        location: String? = null,
         onSuccess: () -> Unit = {},
         onComplete: () -> Unit = {},
     ) {
@@ -677,12 +843,17 @@ class HomeViewModel(
                     return@launch
                 }
                 val imageUrls = imageUris.map { uri -> uploadImage(uri) }
+                val resolvedLocation = resolvePostLocation(latitude, longitude, location)
                 api.createPost(
                     CreatePostRequest(
                         title = title.ifBlank { null },
+                        category = category,
                         content = content.ifBlank { null },
                         images = imageUrls.ifEmpty { null },
                         product = product,
+                        latitude = resolvedLocation?.latitude,
+                        longitude = resolvedLocation?.longitude,
+                        location = resolvedLocation?.address?.ifBlank { null },
                     ),
                 )
                 _uiState.value = _uiState.value.copy(message = "信息发布成功")
@@ -702,6 +873,10 @@ class HomeViewModel(
         content: String,
         imageUris: List<Uri> = emptyList(),
         existingImages: List<String> = emptyList(),
+        category: String = DEFAULT_POST_CATEGORY,
+        latitude: Double? = null,
+        longitude: Double? = null,
+        location: String? = null,
         onSuccess: () -> Unit = {},
         onComplete: () -> Unit = {},
     ) {
@@ -709,12 +884,17 @@ class HomeViewModel(
             try {
                 val newUrls = imageUris.map { uri -> uploadImage(uri) }
                 val images = existingImages + newUrls
+                val resolvedLocation = resolvePostLocation(latitude, longitude, location)
                 api.updatePost(
                     id,
                     UpdatePostRequest(
                         title = title.ifBlank { null },
+                        category = category,
                         content = content.ifBlank { null },
                         images = images.ifEmpty { null },
+                        latitude = resolvedLocation?.latitude,
+                        longitude = resolvedLocation?.longitude,
+                        location = resolvedLocation?.address?.ifBlank { null },
                     ),
                 )
                 _uiState.value = _uiState.value.copy(message = "信息更新成功")
@@ -726,6 +906,33 @@ class HomeViewModel(
                 onComplete()
             }
         }
+    }
+
+    private suspend fun resolvePostLocation(
+        latitude: Double?,
+        longitude: Double?,
+        address: String? = null,
+    ): ActivityLocation? {
+        if (hasValidCoordinate(latitude, longitude)) {
+            var resolvedAddress = address?.trim().orEmpty()
+            if (resolvedAddress.isBlank()) {
+                resolvedAddress = AmapLocationHelper.reverseGeocode(
+                    latitude!!,
+                    longitude!!,
+                ).getOrNull().orEmpty()
+            }
+            return ActivityLocation(
+                address = resolvedAddress,
+                latitude = latitude!!,
+                longitude = longitude!!,
+            )
+        }
+        val location = _uiState.value.userLocation
+            ?: AmapLocationHelper.getCurrentLocation(appContext).getOrNull()
+        if (location != null) {
+            _uiState.value = _uiState.value.copy(userLocation = location)
+        }
+        return location
     }
 
     private suspend fun uploadImage(uri: Uri, scope: String = "post"): String {
@@ -742,14 +949,47 @@ class HomeViewModel(
         return api.uploadVideo(part, scope).url
     }
 
-    fun deletePost(id: Int) {
+    fun deletePost(id: Int, onSuccess: () -> Unit = {}) {
         viewModelScope.launch {
             try {
                 api.deletePost(id)
                 refreshAll()
                 _uiState.value = _uiState.value.copy(message = "信息已删除")
+                onSuccess()
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(error = parseError(e, "删除失败"))
+            }
+        }
+    }
+
+    fun offShelfPost(id: Int, onSuccess: () -> Unit = {}) {
+        viewModelScope.launch {
+            try {
+                val updated = api.offShelfPost(id)
+                if (_uiState.value.selectedPost?.id == id) {
+                    _uiState.value = _uiState.value.copy(selectedPost = updated)
+                }
+                refreshAll()
+                _uiState.value = _uiState.value.copy(message = "笔记已下架")
+                onSuccess()
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(error = parseError(e, "下架失败"))
+            }
+        }
+    }
+
+    fun onShelfPost(id: Int, onSuccess: () -> Unit = {}) {
+        viewModelScope.launch {
+            try {
+                val updated = api.onShelfPost(id)
+                if (_uiState.value.selectedPost?.id == id) {
+                    _uiState.value = _uiState.value.copy(selectedPost = updated)
+                }
+                refreshAll()
+                _uiState.value = _uiState.value.copy(message = "笔记已重新上架")
+                onSuccess()
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(error = parseError(e, "上架失败"))
             }
         }
     }
@@ -845,14 +1085,47 @@ class HomeViewModel(
         }
     }
 
-    fun deleteActivity(id: Int) {
+    fun deleteActivity(id: Int, onSuccess: () -> Unit = {}) {
         viewModelScope.launch {
             try {
                 api.deleteActivity(id)
                 refreshAll()
                 _uiState.value = _uiState.value.copy(message = "活动已删除")
+                onSuccess()
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(error = parseError(e, "删除失败"))
+            }
+        }
+    }
+
+    fun offShelfActivity(id: Int, onSuccess: () -> Unit = {}) {
+        viewModelScope.launch {
+            try {
+                val updated = api.offShelfActivity(id)
+                if (_uiState.value.selectedActivity?.id == id) {
+                    _uiState.value = _uiState.value.copy(selectedActivity = updated)
+                }
+                refreshAll()
+                _uiState.value = _uiState.value.copy(message = "活动已下架")
+                onSuccess()
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(error = parseError(e, "下架失败"))
+            }
+        }
+    }
+
+    fun onShelfActivity(id: Int, onSuccess: () -> Unit = {}) {
+        viewModelScope.launch {
+            try {
+                val updated = api.onShelfActivity(id)
+                if (_uiState.value.selectedActivity?.id == id) {
+                    _uiState.value = _uiState.value.copy(selectedActivity = updated)
+                }
+                refreshAll()
+                _uiState.value = _uiState.value.copy(message = "活动已重新上架")
+                onSuccess()
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(error = parseError(e, "上架失败"))
             }
         }
     }
@@ -1044,28 +1317,131 @@ class HomeViewModel(
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(
                 isPostLoading = true,
-                isPostCommentsLoading = true,
                 selectedPost = null,
-                postComments = emptyList(),
+                postCommentsUi = PostCommentsUiState(isInitialLoading = true),
                 detailAuthorFollowing = null,
             )
             try {
                 val post = api.getPost(id)
-                val comments = api.getPostComments(id)
                 val authorFollowing = loadAuthorFollowState(post.authorId)
                 _uiState.value = _uiState.value.copy(
                     selectedPost = post,
-                    postComments = comments,
                     detailAuthorFollowing = authorFollowing,
                     isPostLoading = false,
-                    isPostCommentsLoading = false,
                 )
+                loadPostComments(id, refresh = true)
                 updatePostViewCount(post.id, post.viewCount)
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isPostLoading = false,
-                    isPostCommentsLoading = false,
+                    postCommentsUi = PostCommentsUiState(),
                     error = parseError(e, "加载笔记失败"),
+                )
+            }
+        }
+    }
+
+    fun loadPostComments(postId: Int, refresh: Boolean = false) {
+        val currentUi = _uiState.value.postCommentsUi
+        if (!refresh && (currentUi.isLoadingMore || currentUi.isInitialLoading || !currentUi.hasMore)) {
+            return
+        }
+
+        viewModelScope.launch {
+            val page = if (refresh) 1 else currentUi.page + 1
+            _uiState.value = _uiState.value.copy(
+                postCommentsUi = currentUi.copy(
+                    isInitialLoading = refresh,
+                    isLoadingMore = !refresh,
+                ),
+            )
+            try {
+                val response = api.getPostComments(
+                    id = postId,
+                    page = page,
+                    limit = POST_COMMENTS_PAGE_SIZE,
+                    sort = currentUi.sort,
+                )
+                val merged = mergeCommentThreadPage(
+                    existing = if (refresh) PostCommentsUiState(sort = currentUi.sort) else currentUi,
+                    threads = response.items,
+                    replace = refresh,
+                )
+                _uiState.value = _uiState.value.copy(
+                    postCommentsUi = (if (refresh) PostCommentsUiState(sort = currentUi.sort) else currentUi).copy(
+                        comments = merged.comments,
+                        topLevelIds = merged.topLevelIds,
+                        replyCounts = merged.replyCounts,
+                        replyPages = merged.replyPages,
+                        replyHasMore = merged.replyHasMore,
+                        page = page,
+                        hasMore = response.hasMore,
+                        isInitialLoading = false,
+                        isLoadingMore = false,
+                    ),
+                )
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    postCommentsUi = currentUi.copy(
+                        isInitialLoading = false,
+                        isLoadingMore = false,
+                    ),
+                    error = parseError(e, "加载评论失败"),
+                )
+            }
+        }
+    }
+
+    fun loadMorePostComments() {
+        _uiState.value.selectedPost?.id?.let { loadPostComments(it, refresh = false) }
+    }
+
+    fun setPostCommentSort(postId: Int, sort: String) {
+        val currentUi = _uiState.value.postCommentsUi
+        if (currentUi.sort == sort) return
+        _uiState.value = _uiState.value.copy(
+            postCommentsUi = PostCommentsUiState(sort = sort, isInitialLoading = true),
+        )
+        loadPostComments(postId, refresh = true)
+    }
+
+    fun loadMoreCommentReplies(postId: Int, rootCommentId: Int) {
+        val currentUi = _uiState.value.postCommentsUi
+        if (rootCommentId in currentUi.loadingReplyRoots) return
+        if (currentUi.replyHasMore[rootCommentId] == false) return
+
+        val nextPage = (currentUi.replyPages[rootCommentId] ?: 0) + 1
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(
+                postCommentsUi = currentUi.copy(
+                    loadingReplyRoots = currentUi.loadingReplyRoots + rootCommentId,
+                ),
+            )
+            try {
+                val response = api.getPostCommentReplies(
+                    postId = postId,
+                    commentId = rootCommentId,
+                    page = nextPage,
+                    limit = POST_COMMENT_REPLY_PAGE_SIZE,
+                )
+                val updatedUi = mergeCommentRepliesPage(
+                    existing = currentUi,
+                    rootCommentId = rootCommentId,
+                    replies = response.items,
+                    page = nextPage,
+                    hasMore = response.hasMore,
+                )
+                _uiState.value = _uiState.value.copy(
+                    postCommentsUi = updatedUi.copy(
+                        loadingReplyRoots = currentUi.loadingReplyRoots - rootCommentId,
+                    ),
+                )
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    postCommentsUi = currentUi.copy(
+                        loadingReplyRoots = currentUi.loadingReplyRoots - rootCommentId,
+                    ),
+                    error = parseError(e, "加载回复失败"),
                 )
             }
         }
@@ -1099,19 +1475,46 @@ class HomeViewModel(
         }
     }
 
-    fun submitPostComment(postId: Int, content: String, parentId: Int? = null) {
-        if (content.isBlank()) return
+    fun toggleCommentLike(postId: Int, commentId: Int) {
+        viewModelScope.launch {
+            try {
+                val state = api.toggleCommentLike(commentId)
+                if (_uiState.value.selectedPost?.id == postId) {
+                    _uiState.value = _uiState.value.copy(
+                        postCommentsUi = updateCommentLike(
+                            _uiState.value.postCommentsUi,
+                            commentId,
+                            state.likeCount,
+                            state.isLiked,
+                        ),
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(error = parseError(e, "操作失败"))
+            }
+        }
+    }
+
+    fun submitPostComment(
+        postId: Int,
+        content: String,
+        parentId: Int? = null,
+        imageUri: Uri? = null,
+    ) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isPostSocialSubmitting = true)
             try {
+                val imageUrl = imageUri?.let { uploadImage(it, "post") }
+                val finalContent = CommentContentHelper.build(content, imageUrl)
+                if (finalContent.isBlank()) return@launch
                 val comment = api.createPostComment(
                     postId,
-                    CreatePostCommentRequest(content = content.trim(), parentId = parentId),
+                    CreatePostCommentRequest(content = finalContent, parentId = parentId),
                 )
                 val post = _uiState.value.selectedPost
                 if (post?.id == postId) {
                     _uiState.value = _uiState.value.copy(
-                        postComments = _uiState.value.postComments + comment,
+                        postCommentsUi = appendSubmittedComment(_uiState.value.postCommentsUi, comment),
                         selectedPost = post.copy(commentCount = post.commentCount + 1),
                     )
                 }
@@ -1130,9 +1533,12 @@ class HomeViewModel(
             feed = current.feed.copy(posts = current.feed.posts.map(::mapPost)),
             search = current.search.copy(posts = current.search.posts.map(::mapPost)),
             profileNotes = current.profileNotes.map(::mapPost),
+            visitorProfileNotes = current.visitorProfileNotes.map(::mapPost),
             myPosts = current.myPosts.map(::mapPost),
             profileFavoritePosts = current.profileFavoritePosts.map(::mapPost),
+            visitorProfileFavoritePosts = current.visitorProfileFavoritePosts.map(::mapPost),
             profileLikedPosts = current.profileLikedPosts.map(::mapPost),
+            visitorProfileLikedPosts = current.visitorProfileLikedPosts.map(::mapPost),
         )
     }
 
@@ -1142,8 +1548,11 @@ class HomeViewModel(
             ?: current.feed.posts.find { it.id == postId }
             ?: current.search.posts.find { it.id == postId }
             ?: current.profileNotes.find { it.id == postId }
+            ?: current.visitorProfileNotes.find { it.id == postId }
             ?: current.profileFavoritePosts.find { it.id == postId }
+            ?: current.visitorProfileFavoritePosts.find { it.id == postId }
             ?: current.profileLikedPosts.find { it.id == postId }
+            ?: current.visitorProfileLikedPosts.find { it.id == postId }
             ?: current.myPosts.find { it.id == postId }
 
         if (current.selectedPost?.id == postId) {
@@ -1173,16 +1582,27 @@ class HomeViewModel(
             feed = current.feed.copy(posts = current.feed.posts.map(::mapPost)),
             search = current.search.copy(posts = current.search.posts.map(::mapPost)),
             profileNotes = current.profileNotes.map(::mapPost),
+            visitorProfileNotes = current.visitorProfileNotes.map(::mapPost),
             myPosts = current.myPosts.map(::mapPost),
             profileFavoritePosts = if (updatedPost != null) {
                 syncPostLibraryList(current.profileFavoritePosts, updatedPost, state.isFavorited)
             } else {
                 current.profileFavoritePosts.map(::mapPost)
             },
+            visitorProfileFavoritePosts = if (updatedPost != null) {
+                syncPostLibraryList(current.visitorProfileFavoritePosts, updatedPost, state.isFavorited)
+            } else {
+                current.visitorProfileFavoritePosts.map(::mapPost)
+            },
             profileLikedPosts = if (updatedPost != null) {
                 syncPostLibraryList(current.profileLikedPosts, updatedPost, state.isLiked)
             } else {
                 current.profileLikedPosts.map(::mapPost)
+            },
+            visitorProfileLikedPosts = if (updatedPost != null) {
+                syncPostLibraryList(current.visitorProfileLikedPosts, updatedPost, state.isLiked)
+            } else {
+                current.visitorProfileLikedPosts.map(::mapPost)
             },
         )
     }
@@ -1265,8 +1685,11 @@ class HomeViewModel(
             ?: current.activityFeed.activities.find { it.id == activityId }
             ?: current.search.activities.find { it.id == activityId }
             ?: current.profileActivities.find { it.id == activityId }
+            ?: current.visitorProfileActivities.find { it.id == activityId }
             ?: current.profileFavoriteActivities.find { it.id == activityId }
+            ?: current.visitorProfileFavoriteActivities.find { it.id == activityId }
             ?: current.profileLikedActivities.find { it.id == activityId }
+            ?: current.visitorProfileLikedActivities.find { it.id == activityId }
             ?: current.myActivities.find { it.id == activityId }
 
         if (current.selectedActivity?.id == activityId) {
@@ -1300,15 +1723,26 @@ class HomeViewModel(
                 activities = current.search.activities.map(::mapActivity),
             ),
             profileActivities = current.profileActivities.map(::mapActivity),
+            visitorProfileActivities = current.visitorProfileActivities.map(::mapActivity),
             profileFavoriteActivities = if (updatedActivity != null) {
                 syncActivityLibraryList(current.profileFavoriteActivities, updatedActivity, state.isFavorited)
             } else {
                 current.profileFavoriteActivities.map(::mapActivity)
             },
+            visitorProfileFavoriteActivities = if (updatedActivity != null) {
+                syncActivityLibraryList(current.visitorProfileFavoriteActivities, updatedActivity, state.isFavorited)
+            } else {
+                current.visitorProfileFavoriteActivities.map(::mapActivity)
+            },
             profileLikedActivities = if (updatedActivity != null) {
                 syncActivityLibraryList(current.profileLikedActivities, updatedActivity, state.isLiked)
             } else {
                 current.profileLikedActivities.map(::mapActivity)
+            },
+            visitorProfileLikedActivities = if (updatedActivity != null) {
+                syncActivityLibraryList(current.visitorProfileLikedActivities, updatedActivity, state.isLiked)
+            } else {
+                current.visitorProfileLikedActivities.map(::mapActivity)
             },
         )
     }
@@ -1333,10 +1767,9 @@ class HomeViewModel(
     fun clearSelectedPost() {
         _uiState.value = _uiState.value.copy(
             selectedPost = null,
-            postComments = emptyList(),
+            postCommentsUi = PostCommentsUiState(),
             detailAuthorFollowing = null,
             isPostLoading = false,
-            isPostCommentsLoading = false,
         )
     }
 
@@ -1531,27 +1964,52 @@ class HomeViewModel(
         )
     }
 
+    fun prepareMyProfileTab(myId: Int) {
+        val state = _uiState.value
+        if (state.profileTabs.targetUserId != myId) {
+            _uiState.value = state.copy(profileTabs = ProfileTabsUiState(targetUserId = myId))
+        }
+    }
+
+    private fun resolveMyUserId(): Int? =
+        _uiState.value.myProfile?.id ?: userSession.value?.userId
+
+    private fun isSelfTarget(targetId: Int): Boolean {
+        val myId = resolveMyUserId()
+        return myId != null && targetId == myId
+    }
+
+    /** 主 Tab「我」用 profile*；独立 user_profile 页始终用 visitorProfile* */
+    private fun useSelfProfileBucket(targetId: Int, forceVisitorBucket: Boolean): Boolean =
+        isSelfTarget(targetId) && !forceVisitorBucket
+
+    private fun HomeUiState.profileTabsFor(useSelfBucket: Boolean): ProfileTabsUiState =
+        if (useSelfBucket) profileTabs else visitorProfileTabs
+
+    private fun HomeUiState.withProfileTabsFor(useSelfBucket: Boolean, tabs: ProfileTabsUiState): HomeUiState =
+        if (useSelfBucket) copy(profileTabs = tabs) else copy(visitorProfileTabs = tabs)
+
     fun loadUserProfile(userId: Int) {
+        _uiState.value = _uiState.value.copy(
+            isUserProfileLoading = true,
+            selectedUserProfile = null,
+            visitorProfileNotes = emptyList(),
+            visitorProfileActivities = emptyList(),
+            visitorProfileComments = emptyList(),
+            visitorProfileFavoritePosts = emptyList(),
+            visitorProfileFavoriteActivities = emptyList(),
+            visitorProfileLikedPosts = emptyList(),
+            visitorProfileLikedActivities = emptyList(),
+            visitorProfileTabs = ProfileTabsUiState(targetUserId = userId),
+        )
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(
-                isUserProfileLoading = true,
-                selectedUserProfile = null,
-                profileNotes = emptyList(),
-                profileActivities = emptyList(),
-                profileComments = emptyList(),
-                profileFavoritePosts = emptyList(),
-                profileFavoriteActivities = emptyList(),
-                profileLikedPosts = emptyList(),
-                profileLikedActivities = emptyList(),
-                profileTabs = ProfileTabsUiState(targetUserId = userId),
-            )
             try {
                 val profile = api.getUserProfile(userId)
                 _uiState.value = _uiState.value.copy(
                     selectedUserProfile = profile,
                     isUserProfileLoading = false,
                 )
-                loadProfileTab(tab = 0, userId = userId)
+                loadProfileTab(tab = 0, userId = userId, forceVisitorBucket = true)
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isUserProfileLoading = false,
@@ -1573,14 +2031,14 @@ class HomeViewModel(
         _uiState.value = _uiState.value.copy(
             selectedUserProfile = null,
             isUserProfileLoading = false,
-            profileNotes = emptyList(),
-            profileActivities = emptyList(),
-            profileComments = emptyList(),
-            profileFavoritePosts = emptyList(),
-            profileFavoriteActivities = emptyList(),
-            profileLikedPosts = emptyList(),
-            profileLikedActivities = emptyList(),
-            profileTabs = ProfileTabsUiState(),
+            visitorProfileNotes = emptyList(),
+            visitorProfileActivities = emptyList(),
+            visitorProfileComments = emptyList(),
+            visitorProfileFavoritePosts = emptyList(),
+            visitorProfileFavoriteActivities = emptyList(),
+            visitorProfileLikedPosts = emptyList(),
+            visitorProfileLikedActivities = emptyList(),
+            visitorProfileTabs = ProfileTabsUiState(),
         )
     }
 
@@ -1589,16 +2047,17 @@ class HomeViewModel(
         userId: Int? = null,
         refresh: Boolean = false,
         loadMore: Boolean = false,
+        forceVisitorBucket: Boolean = false,
     ) {
         if (tab !in 0..PROFILE_LIKES_TAB) return
         if (tab == PROFILE_FAVORITES_TAB || tab == PROFILE_LIKES_TAB) {
-            loadProfileLibraryTab(tab, userId, refresh, loadMore)
+            loadProfileLibraryTab(tab, userId, refresh, loadMore, forceVisitorBucket)
             return
         }
 
-        val myId = _uiState.value.myProfile?.id
-        val targetId = userId ?: myId ?: return
-        val isSelf = targetId == myId
+        val targetId = userId ?: resolveMyUserId() ?: return
+        val isSelf = isSelfTarget(targetId)
+        val useSelfBucket = useSelfProfileBucket(targetId, forceVisitorBucket)
 
         if (!isSelf && tab == 2) {
             val profile = _uiState.value.selectedUserProfile
@@ -1607,8 +2066,8 @@ class HomeViewModel(
         }
 
         val state = _uiState.value
-        val tabsState = if (state.profileTabs.targetUserId == targetId) {
-            state.profileTabs
+        val tabsState = if (state.profileTabsFor(useSelfBucket).targetUserId == targetId) {
+            state.profileTabsFor(useSelfBucket)
         } else {
             ProfileTabsUiState(targetUserId = targetId)
         }
@@ -1618,9 +2077,9 @@ class HomeViewModel(
             if (!tabState.hasMore || tabState.isLoadingMore || tabState.isRefreshing) return
         } else if (!refresh) {
             val hasData = when (tab) {
-                0 -> state.profileNotes.isNotEmpty()
-                1 -> state.profileActivities.isNotEmpty()
-                2 -> state.profileComments.isNotEmpty()
+                0 -> (if (useSelfBucket) state.profileNotes else state.visitorProfileNotes).isNotEmpty()
+                1 -> (if (useSelfBucket) state.profileActivities else state.visitorProfileActivities).isNotEmpty()
+                2 -> (if (useSelfBucket) state.profileComments else state.visitorProfileComments).isNotEmpty()
                 else -> false
             }
             if (hasData || tabState.isInitialLoading || tabState.isRefreshing) return
@@ -1631,8 +2090,9 @@ class HomeViewModel(
             loadMore -> tabState.page
             else -> 1
         }
-        _uiState.value = state.copy(
-            profileTabs = tabsState.withTab(
+        _uiState.value = state.withProfileTabsFor(
+            useSelfBucket,
+            tabsState.withTab(
                 tab,
                 tabState.copy(
                     isRefreshing = refresh,
@@ -1648,22 +2108,42 @@ class HomeViewModel(
                 when (tab) {
                     0 -> {
                         val response = api.getUserPosts(targetId, page, PROFILE_TAB_PAGE_SIZE)
-                        applyProfileTabResult(tab, page, response.hasMore, replace) { current ->
-                            current.copy(
-                                profileNotes = mergePosts(current.profileNotes, response.items, replace),
-                            )
+                        applyProfileTabResult(tab, page, response.hasMore, replace, useSelfBucket) { current ->
+                            if (useSelfBucket) {
+                                current.copy(
+                                    profileNotes = mergePosts(current.profileNotes, response.items, replace),
+                                )
+                            } else {
+                                current.copy(
+                                    visitorProfileNotes = mergePosts(
+                                        current.visitorProfileNotes,
+                                        response.items,
+                                        replace,
+                                    ),
+                                )
+                            }
                         }
                     }
                     1 -> {
                         val response = api.getUserActivities(targetId, page, PROFILE_TAB_PAGE_SIZE)
-                        applyProfileTabResult(tab, page, response.hasMore, replace) { current ->
-                            current.copy(
-                                profileActivities = mergeActivities(
-                                    current.profileActivities,
-                                    response.items,
-                                    replace,
-                                ),
-                            )
+                        applyProfileTabResult(tab, page, response.hasMore, replace, useSelfBucket) { current ->
+                            if (useSelfBucket) {
+                                current.copy(
+                                    profileActivities = mergeActivities(
+                                        current.profileActivities,
+                                        response.items,
+                                        replace,
+                                    ),
+                                )
+                            } else {
+                                current.copy(
+                                    visitorProfileActivities = mergeActivities(
+                                        current.visitorProfileActivities,
+                                        response.items,
+                                        replace,
+                                    ),
+                                )
+                            }
                         }
                     }
                     2 -> {
@@ -1672,22 +2152,33 @@ class HomeViewModel(
                         } else {
                             api.getUserProfileComments(targetId, page, PROFILE_TAB_PAGE_SIZE)
                         }
-                        applyProfileTabResult(tab, page, response.hasMore, replace) { current ->
-                            current.copy(
-                                profileComments = mergeComments(
-                                    current.profileComments,
-                                    response.items,
-                                    replace,
-                                ),
-                            )
+                        applyProfileTabResult(tab, page, response.hasMore, replace, useSelfBucket) { current ->
+                            if (useSelfBucket) {
+                                current.copy(
+                                    profileComments = mergeComments(
+                                        current.profileComments,
+                                        response.items,
+                                        replace,
+                                    ),
+                                )
+                            } else {
+                                current.copy(
+                                    visitorProfileComments = mergeComments(
+                                        current.visitorProfileComments,
+                                        response.items,
+                                        replace,
+                                    ),
+                                )
+                            }
                         }
                     }
                 }
             } catch (e: Exception) {
                 val current = _uiState.value
-                val currentTabState = current.profileTabs.tabs[tab]
-                _uiState.value = current.copy(
-                    profileTabs = current.profileTabs.withTab(
+                val currentTabState = current.profileTabsFor(useSelfBucket).tabs[tab]
+                _uiState.value = current.withProfileTabsFor(
+                    useSelfBucket,
+                    current.profileTabsFor(useSelfBucket).withTab(
                         tab,
                         currentTabState.copy(
                             isRefreshing = false,
@@ -1695,8 +2186,7 @@ class HomeViewModel(
                             isLoadingMore = false,
                         ),
                     ),
-                    error = parseError(e, "加载内容失败"),
-                )
+                ).copy(error = parseError(e, "加载内容失败"))
             }
         }
     }
@@ -1713,11 +2203,16 @@ class HomeViewModel(
         userId: Int? = null,
         refresh: Boolean = false,
         loadMore: Boolean = false,
+        forceVisitorBucket: Boolean = false,
     ) {
-        val myId = _uiState.value.myProfile?.id
-        val targetId = userId ?: myId ?: return
-        val isSelf = targetId == myId
-        val profile = if (isSelf) _uiState.value.myProfile else _uiState.value.selectedUserProfile
+        val targetId = userId ?: resolveMyUserId() ?: return
+        val isSelf = isSelfTarget(targetId)
+        val useSelfBucket = useSelfProfileBucket(targetId, forceVisitorBucket)
+        val profile = when {
+            isSelf && useSelfBucket -> _uiState.value.myProfile
+            isSelf -> _uiState.value.selectedUserProfile ?: _uiState.value.myProfile
+            else -> _uiState.value.selectedUserProfile
+        }
         val isFavoritesTab = tab == PROFILE_FAVORITES_TAB
         val canLoad = when {
             isSelf -> true
@@ -1727,8 +2222,8 @@ class HomeViewModel(
         if (!canLoad) return
 
         val state = _uiState.value
-        val tabsState = if (state.profileTabs.targetUserId == targetId) {
-            state.profileTabs
+        val tabsState = if (state.profileTabsFor(useSelfBucket).targetUserId == targetId) {
+            state.profileTabsFor(useSelfBucket)
         } else {
             ProfileTabsUiState(targetUserId = targetId)
         }
@@ -1750,6 +2245,7 @@ class HomeViewModel(
                         postsState.hasMore -> loadProfileLibrarySource(
                             targetId = targetId,
                             isSelf = isSelf,
+                            useSelfBucket = useSelfBucket,
                             source = if (isFavoritesTab) {
                                 ProfileLibrarySource.FAVORITE_POSTS
                             } else {
@@ -1761,6 +2257,7 @@ class HomeViewModel(
                         activitiesState.hasMore -> loadProfileLibrarySource(
                             targetId = targetId,
                             isSelf = isSelf,
+                            useSelfBucket = useSelfBucket,
                             source = if (isFavoritesTab) {
                                 ProfileLibrarySource.FAVORITE_ACTIVITIES
                             } else {
@@ -1771,7 +2268,7 @@ class HomeViewModel(
                         )
                     }
                 } catch (e: Exception) {
-                    resetProfileLibraryLoading(tab)
+                    resetProfileLibraryLoading(tab, useSelfBucket)
                     _uiState.value = _uiState.value.copy(
                         error = parseError(e, "加载内容失败"),
                     )
@@ -1788,8 +2285,9 @@ class HomeViewModel(
             if (postsState.hasLoadedOnce && activitiesState.hasLoadedOnce) return
         }
 
-        _uiState.value = state.copy(
-            profileTabs = tabsState
+        _uiState.value = state.withProfileTabsFor(
+            useSelfBucket,
+            tabsState
                 .withTab(
                     tab,
                     postsState.copy(
@@ -1832,6 +2330,7 @@ class HomeViewModel(
                                         loadProfileLibrarySource(
                                             targetId = targetId,
                                             isSelf = isSelf,
+                                            useSelfBucket = useSelfBucket,
                                             source = if (isFavoritesTab) {
                                                 ProfileLibrarySource.FAVORITE_POSTS
                                             } else {
@@ -1849,6 +2348,7 @@ class HomeViewModel(
                                         loadProfileLibrarySource(
                                             targetId = targetId,
                                             isSelf = isSelf,
+                                            useSelfBucket = useSelfBucket,
                                             source = if (isFavoritesTab) {
                                                 ProfileLibrarySource.FAVORITE_ACTIVITIES
                                             } else {
@@ -1864,7 +2364,7 @@ class HomeViewModel(
                     )
                 }
             } catch (e: Exception) {
-                resetProfileLibraryLoading(tab)
+                resetProfileLibraryLoading(tab, useSelfBucket)
                 _uiState.value = _uiState.value.copy(
                     error = parseError(e, "加载内容失败"),
                 )
@@ -1872,26 +2372,28 @@ class HomeViewModel(
         }
     }
 
-    private fun resetProfileLibraryLoading(tab: Int) {
+    private fun resetProfileLibraryLoading(tab: Int, useSelfBucket: Boolean) {
         val current = _uiState.value
+        val tabs = current.profileTabsFor(useSelfBucket)
         val cleared = ProfileTabUiState(
-            page = current.profileTabs.tabs[tab].page,
-            hasMore = current.profileTabs.tabs[tab].hasMore,
+            page = tabs.tabs[tab].page,
+            hasMore = tabs.tabs[tab].hasMore,
         )
         val clearedActivities = ProfileTabUiState(
             page = if (tab == PROFILE_FAVORITES_TAB) {
-                current.profileTabs.favoriteActivities.page
+                tabs.favoriteActivities.page
             } else {
-                current.profileTabs.likedActivities.page
+                tabs.likedActivities.page
             },
             hasMore = if (tab == PROFILE_FAVORITES_TAB) {
-                current.profileTabs.favoriteActivities.hasMore
+                tabs.favoriteActivities.hasMore
             } else {
-                current.profileTabs.likedActivities.hasMore
+                tabs.likedActivities.hasMore
             },
         )
-        _uiState.value = current.copy(
-            profileTabs = current.profileTabs
+        _uiState.value = current.withProfileTabsFor(
+            useSelfBucket,
+            tabs
                 .withTab(tab, cleared)
                 .let { updated ->
                     if (tab == PROFILE_FAVORITES_TAB) {
@@ -1906,33 +2408,38 @@ class HomeViewModel(
     private suspend fun loadProfileLibrarySource(
         targetId: Int,
         isSelf: Boolean,
+        useSelfBucket: Boolean,
         source: ProfileLibrarySource,
         page: Int,
         replace: Boolean,
     ) {
         val state = _uiState.value
-        val tabsState = state.profileTabs
+        val tabsState = state.profileTabsFor(useSelfBucket)
         if (!replace) {
             _uiState.value = when (source) {
-                ProfileLibrarySource.FAVORITE_POSTS -> state.copy(
-                    profileTabs = tabsState.withTab(
+                ProfileLibrarySource.FAVORITE_POSTS -> state.withProfileTabsFor(
+                    useSelfBucket,
+                    tabsState.withTab(
                         PROFILE_FAVORITES_TAB,
                         tabsState.tabs[PROFILE_FAVORITES_TAB].copy(isLoadingMore = true),
                     ),
                 )
-                ProfileLibrarySource.LIKED_POSTS -> state.copy(
-                    profileTabs = tabsState.withTab(
+                ProfileLibrarySource.LIKED_POSTS -> state.withProfileTabsFor(
+                    useSelfBucket,
+                    tabsState.withTab(
                         PROFILE_LIKES_TAB,
                         tabsState.tabs[PROFILE_LIKES_TAB].copy(isLoadingMore = true),
                     ),
                 )
-                ProfileLibrarySource.FAVORITE_ACTIVITIES -> state.copy(
-                    profileTabs = tabsState.withFavoriteActivities(
+                ProfileLibrarySource.FAVORITE_ACTIVITIES -> state.withProfileTabsFor(
+                    useSelfBucket,
+                    tabsState.withFavoriteActivities(
                         tabsState.favoriteActivities.copy(isLoadingMore = true),
                     ),
                 )
-                ProfileLibrarySource.LIKED_ACTIVITIES -> state.copy(
-                    profileTabs = tabsState.withLikedActivities(
+                ProfileLibrarySource.LIKED_ACTIVITIES -> state.withProfileTabsFor(
+                    useSelfBucket,
+                    tabsState.withLikedActivities(
                         tabsState.likedActivities.copy(isLoadingMore = true),
                     ),
                 )
@@ -1951,14 +2458,25 @@ class HomeViewModel(
                     page = page,
                     hasMore = response.hasMore,
                     replace = replace,
+                    useSelfBucket = useSelfBucket,
                 ) { current ->
-                    current.copy(
-                        profileFavoritePosts = mergePosts(
-                            current.profileFavoritePosts,
-                            response.items,
-                            replace,
-                        ),
-                    )
+                    if (useSelfBucket) {
+                        current.copy(
+                            profileFavoritePosts = mergePosts(
+                                current.profileFavoritePosts,
+                                response.items,
+                                replace,
+                            ),
+                        )
+                    } else {
+                        current.copy(
+                            visitorProfileFavoritePosts = mergePosts(
+                                current.visitorProfileFavoritePosts,
+                                response.items,
+                                replace,
+                            ),
+                        )
+                    }
                 }
             }
             ProfileLibrarySource.LIKED_POSTS -> {
@@ -1972,14 +2490,25 @@ class HomeViewModel(
                     page = page,
                     hasMore = response.hasMore,
                     replace = replace,
+                    useSelfBucket = useSelfBucket,
                 ) { current ->
-                    current.copy(
-                        profileLikedPosts = mergePosts(
-                            current.profileLikedPosts,
-                            response.items,
-                            replace,
-                        ),
-                    )
+                    if (useSelfBucket) {
+                        current.copy(
+                            profileLikedPosts = mergePosts(
+                                current.profileLikedPosts,
+                                response.items,
+                                replace,
+                            ),
+                        )
+                    } else {
+                        current.copy(
+                            visitorProfileLikedPosts = mergePosts(
+                                current.visitorProfileLikedPosts,
+                                response.items,
+                                replace,
+                            ),
+                        )
+                    }
                 }
             }
             ProfileLibrarySource.FAVORITE_ACTIVITIES -> {
@@ -1993,14 +2522,25 @@ class HomeViewModel(
                     page = page,
                     hasMore = response.hasMore,
                     replace = replace,
+                    useSelfBucket = useSelfBucket,
                 ) { current ->
-                    current.copy(
-                        profileFavoriteActivities = mergeActivities(
-                            current.profileFavoriteActivities,
-                            response.items,
-                            replace,
-                        ),
-                    )
+                    if (useSelfBucket) {
+                        current.copy(
+                            profileFavoriteActivities = mergeActivities(
+                                current.profileFavoriteActivities,
+                                response.items,
+                                replace,
+                            ),
+                        )
+                    } else {
+                        current.copy(
+                            visitorProfileFavoriteActivities = mergeActivities(
+                                current.visitorProfileFavoriteActivities,
+                                response.items,
+                                replace,
+                            ),
+                        )
+                    }
                 }
             }
             ProfileLibrarySource.LIKED_ACTIVITIES -> {
@@ -2014,14 +2554,25 @@ class HomeViewModel(
                     page = page,
                     hasMore = response.hasMore,
                     replace = replace,
+                    useSelfBucket = useSelfBucket,
                 ) { current ->
-                    current.copy(
-                        profileLikedActivities = mergeActivities(
-                            current.profileLikedActivities,
-                            response.items,
-                            replace,
-                        ),
-                    )
+                    if (useSelfBucket) {
+                        current.copy(
+                            profileLikedActivities = mergeActivities(
+                                current.profileLikedActivities,
+                                response.items,
+                                replace,
+                            ),
+                        )
+                    } else {
+                        current.copy(
+                            visitorProfileLikedActivities = mergeActivities(
+                                current.visitorProfileLikedActivities,
+                                response.items,
+                                replace,
+                            ),
+                        )
+                    }
                 }
             }
         }
@@ -2032,12 +2583,15 @@ class HomeViewModel(
         page: Int,
         hasMore: Boolean,
         @Suppress("UNUSED_PARAMETER") replace: Boolean,
+        useSelfBucket: Boolean,
         update: (HomeUiState) -> HomeUiState,
     ) {
         val current = _uiState.value
-        val currentTabState = current.profileTabs.tabs[postsTab]
-        _uiState.value = update(current).copy(
-            profileTabs = current.profileTabs.withTab(
+        val tabs = current.profileTabsFor(useSelfBucket)
+        val currentTabState = tabs.tabs[postsTab]
+        _uiState.value = update(current).withProfileTabsFor(
+            useSelfBucket,
+            tabs.withTab(
                 postsTab,
                 currentTabState.copy(
                     page = page + 1,
@@ -2056,13 +2610,15 @@ class HomeViewModel(
         page: Int,
         hasMore: Boolean,
         @Suppress("UNUSED_PARAMETER") replace: Boolean,
+        useSelfBucket: Boolean,
         update: (HomeUiState) -> HomeUiState,
     ) {
         val current = _uiState.value
+        val tabs = current.profileTabsFor(useSelfBucket)
         val currentTabState = if (isFavorites) {
-            current.profileTabs.favoriteActivities
+            tabs.favoriteActivities
         } else {
-            current.profileTabs.likedActivities
+            tabs.likedActivities
         }
         val nextState = currentTabState.copy(
             page = page + 1,
@@ -2072,21 +2628,22 @@ class HomeViewModel(
             isLoadingMore = false,
             hasLoadedOnce = true,
         )
-        _uiState.value = update(current).copy(
-            profileTabs = if (isFavorites) {
-                current.profileTabs.withFavoriteActivities(nextState)
+        _uiState.value = update(current).withProfileTabsFor(
+            useSelfBucket,
+            if (isFavorites) {
+                tabs.withFavoriteActivities(nextState)
             } else {
-                current.profileTabs.withLikedActivities(nextState)
+                tabs.withLikedActivities(nextState)
             },
         )
     }
 
-    fun refreshProfileTab(tab: Int, userId: Int? = null) {
-        loadProfileTab(tab, userId, refresh = true)
+    fun refreshProfileTab(tab: Int, userId: Int? = null, forceVisitorBucket: Boolean = false) {
+        loadProfileTab(tab, userId, refresh = true, forceVisitorBucket = forceVisitorBucket)
     }
 
-    fun loadMoreProfileTab(tab: Int, userId: Int? = null) {
-        loadProfileTab(tab, userId, loadMore = true)
+    fun loadMoreProfileTab(tab: Int, userId: Int? = null, forceVisitorBucket: Boolean = false) {
+        loadProfileTab(tab, userId, loadMore = true, forceVisitorBucket = forceVisitorBucket)
     }
 
     private fun applyProfileTabResult(
@@ -2094,12 +2651,15 @@ class HomeViewModel(
         page: Int,
         hasMore: Boolean,
         @Suppress("UNUSED_PARAMETER") replace: Boolean,
+        useSelfBucket: Boolean,
         update: (HomeUiState) -> HomeUiState,
     ) {
         val current = _uiState.value
-        val currentTabState = current.profileTabs.tabs[tab]
-        _uiState.value = update(current).copy(
-            profileTabs = current.profileTabs.withTab(
+        val tabs = current.profileTabsFor(useSelfBucket)
+        val currentTabState = tabs.tabs[tab]
+        _uiState.value = update(current).withProfileTabsFor(
+            useSelfBucket,
+            tabs.withTab(
                 tab,
                 currentTabState.copy(
                     page = page + 1,
@@ -2704,10 +3264,11 @@ class HomeViewModel(
 class HomeViewModelFactory(
     private val tokenManager: TokenManager,
     private val searchHistoryStore: SearchHistoryStore,
+    private val feedChannelStore: FeedChannelStore,
     private val appContext: Context,
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return HomeViewModel(tokenManager, searchHistoryStore, appContext) as T
+        return HomeViewModel(tokenManager, searchHistoryStore, feedChannelStore, appContext) as T
     }
 }

@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS `post_product` (
   `post_id` INT NOT NULL,
   `price` DECIMAL(10, 2) NOT NULL,
   `original_price` DECIMAL(10, 2) NULL,
-  `category` ENUM('SECOND_HAND', 'DIGITAL', 'BOOK', 'DAILY', 'OTHER') NOT NULL DEFAULT 'SECOND_HAND',
+  `category` ENUM('GENERAL', 'SECOND_HAND', 'DIGITAL', 'BOOK', 'DAILY', 'CLOTHING', 'FOOD', 'BEAUTY', 'SPORTS', 'HANDMADE', 'TICKET', 'SERVICE', 'OTHER') NOT NULL DEFAULT 'GENERAL',
   `condition` ENUM('BRAND_NEW', 'LIKE_NEW', 'GOOD', 'FAIR') NOT NULL DEFAULT 'GOOD',
   `delivery_method` ENUM('PICKUP', 'EXPRESS', 'BOTH') NOT NULL DEFAULT 'PICKUP',
   `status` ENUM('ON_SALE', 'SOLD', 'OFF_SHELF') NOT NULL DEFAULT 'ON_SALE',
@@ -79,3 +79,10 @@ CREATE TABLE IF NOT EXISTS `payment_payout` (
   CONSTRAINT `FK_payment_payout_order` FOREIGN KEY (`payment_order_id`) REFERENCES `payment_order` (`id`) ON DELETE CASCADE,
   CONSTRAINT `FK_payment_payout_payee` FOREIGN KEY (`payee_id`) REFERENCES `user` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 扩展笔记商品分类（已有 post_product 表时执行）
+ALTER TABLE `post_product`
+  MODIFY COLUMN `category` ENUM(
+    'GENERAL', 'SECOND_HAND', 'DIGITAL', 'BOOK', 'DAILY',
+    'CLOTHING', 'FOOD', 'BEAUTY', 'SPORTS', 'HANDMADE', 'TICKET', 'SERVICE', 'OTHER'
+  ) NOT NULL DEFAULT 'GENERAL';

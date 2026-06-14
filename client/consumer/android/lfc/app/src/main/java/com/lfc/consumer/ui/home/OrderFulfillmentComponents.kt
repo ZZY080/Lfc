@@ -60,7 +60,7 @@ fun OrderCenterFulfillmentBanner(modifier: Modifier = Modifier) {
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "闲置商品：支付后平台托管，确认收货后分账给卖家；活动报名：锁定名额，活动结束后分账给发起人；增值服务（擦亮/推广）：支付后立即生效，无需等待履约。",
+                    text = "笔记商品与活动报名由平台托管资金；擦亮/推广支付后立即生效。",
                     fontSize = 12.sp,
                     lineHeight = 18.sp,
                     color = XhsTextSecondary,

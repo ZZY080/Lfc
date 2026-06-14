@@ -114,9 +114,7 @@ fun ProfileMyNotesSearchScreen(
 
         when {
             state.isLoading -> {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = XhsRed)
-                }
+                FeedGridSkeleton()
             }
             !state.hasSearched -> {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

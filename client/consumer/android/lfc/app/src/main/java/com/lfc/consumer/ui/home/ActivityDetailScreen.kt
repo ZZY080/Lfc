@@ -93,6 +93,10 @@ fun ActivityDetailScreen(
     activityPromoteActiveHint: String = "推广期间将在活动 Tab 优先展示",
     activityPromotePriceHint: String? = null,
     activityPromoteBidHint: String? = null,
+    onEdit: (() -> Unit)? = null,
+    onDelete: (() -> Unit)? = null,
+    onOffShelf: (() -> Unit)? = null,
+    onOnShelf: (() -> Unit)? = null,
 ) {
     Box(
         modifier = Modifier
@@ -100,7 +104,7 @@ fun ActivityDetailScreen(
             .background(XhsBackground),
     ) {
         when {
-            isLoading -> XhsDetailLoading(Modifier.fillMaxSize())
+            isLoading -> XhsDetailLoading(Modifier.fillMaxSize(), style = DetailSkeletonStyle.Activity)
             activity == null -> XhsDetailEmpty("活动不存在或已删除", Modifier.fillMaxSize())
             else -> {
                 val context = LocalContext.current
@@ -122,6 +126,22 @@ fun ActivityDetailScreen(
                             XhsDetailFollowButton(
                                 isFollowing = isAuthorFollowing,
                                 onClick = onFollowToggle,
+                            )
+                        } else if (
+                            onEdit != null &&
+                            onDelete != null &&
+                            onOffShelf != null &&
+                            onOnShelf != null
+                        ) {
+                            val status = activity.status.uppercase()
+                            OwnerContentManageButton(
+                                showShelfActions = status == "APPROVED" || status == "OFF_SHELF",
+                                isOffShelf = status == "OFF_SHELF",
+                                contentLabel = "活动",
+                                onEdit = onEdit,
+                                onDelete = onDelete,
+                                onOffShelf = onOffShelf,
+                                onOnShelf = onOnShelf,
                             )
                         }
                     }
@@ -186,6 +206,8 @@ fun ActivityDetailScreen(
 
                             ActivityDetailWhenWhereSection(
                                 location = activity.location,
+                                latitude = activity.latitude,
+                                longitude = activity.longitude,
                                 startTime = activity.startTime,
                                 endTime = activity.endTime,
                                 onNavigate = {
@@ -389,6 +411,7 @@ private fun ActivityStatusChip(
         "PENDING" -> Triple("待审核", Color(0xFFFFF3E0), Color(0xFFE65100))
         "APPROVED" -> Triple("进行中", Color(0xFFE8F4FD), Color(0xFF1565C0))
         "REJECTED" -> Triple("已拒绝", Color(0xFFF5F5F5), XhsTextSecondary)
+        "OFF_SHELF" -> Triple("已下架", Color(0xFFF5F5F5), XhsTextSecondary)
         else -> Triple(status, Color(0x66000000), Color.White)
     }
     Surface(
@@ -502,6 +525,8 @@ private fun SummaryMetricItem(
 @Composable
 private fun ActivityDetailWhenWhereSection(
     location: String,
+    latitude: Double? = null,
+    longitude: Double? = null,
     startTime: String,
     endTime: String,
     onNavigate: () -> Unit,
@@ -548,6 +573,13 @@ private fun ActivityDetailWhenWhereSection(
                 fontWeight = FontWeight.SemiBold,
                 color = if (location.isNotBlank()) Color(0xFF1565C0) else XhsTextSecondary,
                 lineHeight = 22.sp,
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            XhsDistanceLabel(
+                targetLatitude = latitude,
+                targetLongitude = longitude,
+                fontSize = 13.sp,
+                iconSize = 14.dp,
             )
         }
     }

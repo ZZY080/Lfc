@@ -1,6 +1,10 @@
 package com.lfc.consumer.ui.home
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -18,42 +22,35 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
+import com.lfc.consumer.data.model.DEFAULT_POST_CATEGORY
+import com.lfc.consumer.data.model.DEFAULT_POST_PRODUCT_CATEGORY
 import com.lfc.consumer.data.model.PostDto
 import com.lfc.consumer.data.model.PostProductRequest
+import com.lfc.consumer.data.local.FeedChannels
+import com.lfc.consumer.location.AmapLocationHelper
+import com.lfc.consumer.location.hasValidCoordinate
+import com.lfc.consumer.ui.theme.XhsRed
 import com.lfc.consumer.ui.theme.XhsTextPrimary
 import com.lfc.consumer.ui.theme.XhsTextSecondary
+import kotlinx.coroutines.launch
 
-private data class ProductOption(val value: String, val label: String)
-
-private val productCategories = listOf(
-    ProductOption("SECOND_HAND", "二手闲置"),
-    ProductOption("DIGITAL", "数码"),
-    ProductOption("BOOK", "书籍"),
-    ProductOption("DAILY", "日用"),
-    ProductOption("OTHER", "其他"),
-)
-
-private val productConditions = listOf(
-    ProductOption("BRAND_NEW", "全新"),
-    ProductOption("LIKE_NEW", "几乎全新"),
-    ProductOption("GOOD", "良好"),
-    ProductOption("FAIR", "一般"),
-)
-
-private val deliveryMethods = listOf(
-    ProductOption("PICKUP", "面交"),
-    ProductOption("EXPRESS", "快递"),
-    ProductOption("BOTH", "均可"),
+private val postLocationPermissions = arrayOf(
+    Manifest.permission.ACCESS_FINE_LOCATION,
+    Manifest.permission.ACCESS_COARSE_LOCATION,
 )
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -70,22 +67,81 @@ fun PublishPostScreen(
         title: String,
         content: String,
         imageUris: List<Uri>,
+        category: String,
         product: PostProductRequest?,
+        latitude: Double?,
+        longitude: Double?,
+        location: String?,
     ) -> Unit,
 ) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var title by remember { mutableStateOf(initial?.title ?: "") }
     var content by remember { mutableStateOf(initial?.content ?: "") }
+    var noteCategory by remember { mutableStateOf(initial?.category ?: DEFAULT_POST_CATEGORY) }
+    var locationLabel by remember {
+        mutableStateOf(initial?.location.orEmpty())
+    }
+    var latitude by remember { mutableStateOf(initial?.latitude) }
+    var longitude by remember { mutableStateOf(initial?.longitude) }
+    var isLocating by remember { mutableStateOf(false) }
+    var locationHint by remember { mutableStateOf<String?>(null) }
     var attachProduct by remember { mutableStateOf(initial?.product != null) }
     var price by remember { mutableStateOf(initial?.product?.price ?: "") }
     var originalPrice by remember { mutableStateOf(initial?.product?.originalPrice ?: "") }
-    var category by remember { mutableStateOf(initial?.product?.category ?: "SECOND_HAND") }
+    var category by remember { mutableStateOf(initial?.product?.category ?: DEFAULT_POST_PRODUCT_CATEGORY) }
     var condition by remember { mutableStateOf(initial?.product?.condition ?: "GOOD") }
     var deliveryMethod by remember { mutableStateOf(initial?.product?.deliveryMethod ?: "PICKUP") }
     val selectedImages = rememberPublishImageSelection()
     val existingImages = initial?.images.orEmpty()
-    val canSubmit = content.isNotBlank() || selectedImages.isNotEmpty() || existingImages.isNotEmpty()
+    val hasLocation = hasValidCoordinate(latitude, longitude)
+    val canSubmit = (content.isNotBlank() || selectedImages.isNotEmpty() || existingImages.isNotEmpty()) &&
+        hasLocation
     val productPrice = price.toDoubleOrNull() ?: 0.0
     val needsAlipay = attachProduct && productPrice > 0 && !alipayBound
+
+    fun hasLocationPermission(): Boolean = postLocationPermissions.all { permission ->
+        ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
+    }
+
+    fun startLocate() {
+        locationHint = null
+        scope.launch {
+            isLocating = true
+            AmapLocationHelper.getCurrentLocation(context)
+                .onSuccess {
+                    locationLabel = it.address
+                    latitude = it.latitude
+                    longitude = it.longitude
+                }
+                .onFailure { locationHint = it.message ?: "定位失败，请检查定位权限或高德 Key" }
+            isLocating = false
+        }
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { results ->
+        if (results.values.all { it }) {
+            startLocate()
+        } else {
+            locationHint = "需要定位权限才能记录发布位置"
+        }
+    }
+
+    fun requestLocate() {
+        if (hasLocationPermission()) {
+            startLocate()
+        } else {
+            permissionLauncher.launch(postLocationPermissions)
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        if (!hasLocation) {
+            requestLocate()
+        }
+    }
 
     XhsPublishScreenContainer(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -105,7 +161,16 @@ fun PublishPostScreen(
                     } else {
                         null
                     }
-                    onSubmit(title.trim(), content.trim(), selectedImages.toList(), product)
+                    onSubmit(
+                        title.trim(),
+                        content.trim(),
+                        selectedImages.toList(),
+                        noteCategory,
+                        product,
+                        latitude,
+                        longitude,
+                        locationLabel.trim().ifBlank { null },
+                    )
                 },
                 actionEnabled = canSubmit &&
                     (!attachProduct || productPrice > 0) &&
@@ -152,10 +217,70 @@ fun PublishPostScreen(
                 XhsPublishTextField(
                     value = content,
                     onValueChange = { content = it },
-                    placeholder = "分享你的校园生活、学习心得，或描述你要卖的闲置…",
+                    placeholder = "分享你的校园生活、学习心得，或描述你要出售的商品…",
                     minLines = 5,
                     textStyle = TextStyle(fontSize = 15.sp, lineHeight = 24.sp, color = XhsTextPrimary),
                 )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                XhsPublishFieldCard {
+                    XhsPublishSectionTitle("笔记类型")
+                    Text(
+                        text = "选择后笔记会出现在发现页对应频道",
+                        fontSize = 12.sp,
+                        color = XhsTextSecondary,
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FeedChannels.publishCategories.forEach { option ->
+                            FilterChip(
+                                selected = noteCategory == option,
+                                onClick = { noteCategory = option },
+                                label = { Text(option, fontSize = 12.sp) },
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                XhsPublishFieldCard {
+                    XhsPublishSectionTitle("发布位置")
+                    Text(
+                        text = "用于展示笔记与你的距离，进入页面会自动定位",
+                        fontSize = 12.sp,
+                        color = XhsTextSecondary,
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    XhsPublishLocationField(
+                        value = locationLabel,
+                        onValueChange = { newValue ->
+                            locationLabel = newValue
+                            latitude = null
+                            longitude = null
+                        },
+                        placeholder = if (isLocating) "正在获取当前位置…" else "点击右侧按钮获取当前位置",
+                        isLoading = isLocating,
+                        onLocate = ::requestLocate,
+                    )
+                    locationHint?.let { hint ->
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = hint,
+                            fontSize = 12.sp,
+                            color = XhsRed,
+                        )
+                    }
+                    if (!hasLocation && !isLocating) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "获取位置后才能发布，以便他人看到距离",
+                            fontSize = 12.sp,
+                            color = XhsRed,
+                        )
+                    }
+                }
 
                 Spacer(modifier = Modifier.height(12.dp))
 
@@ -168,7 +293,7 @@ fun PublishPostScreen(
                         Column(modifier = Modifier.weight(1f)) {
                             XhsPublishSectionTitle("挂载商品")
                             Text(
-                                text = "开启后可设置价格，买家支付宝付款，确认收货后分账给你",
+                                text = "可挂载任意类型商品，设置价格后买家支付宝付款，确认收货后分账给你",
                                 fontSize = 12.sp,
                                 color = XhsTextSecondary,
                             )
@@ -210,7 +335,7 @@ fun PublishPostScreen(
                         Text("分类", fontSize = 13.sp, color = XhsTextSecondary)
                         Spacer(modifier = Modifier.height(8.dp))
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            productCategories.forEach { option ->
+                            POST_PRODUCT_CATEGORIES.forEach { option ->
                                 FilterChip(
                                     selected = category == option.value,
                                     onClick = { category = option.value },
@@ -219,10 +344,10 @@ fun PublishPostScreen(
                             }
                         }
                         Spacer(modifier = Modifier.height(12.dp))
-                        Text("成色", fontSize = 13.sp, color = XhsTextSecondary)
+                        Text("商品状态", fontSize = 13.sp, color = XhsTextSecondary)
                         Spacer(modifier = Modifier.height(8.dp))
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            productConditions.forEach { option ->
+                            POST_PRODUCT_CONDITIONS.forEach { option ->
                                 FilterChip(
                                     selected = condition == option.value,
                                     onClick = { condition = option.value },
@@ -234,7 +359,7 @@ fun PublishPostScreen(
                         Text("交易方式", fontSize = 13.sp, color = XhsTextSecondary)
                         Spacer(modifier = Modifier.height(8.dp))
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            deliveryMethods.forEach { option ->
+                            POST_PRODUCT_DELIVERY_METHODS.forEach { option ->
                                 FilterChip(
                                     selected = deliveryMethod == option.value,
                                     onClick = { deliveryMethod = option.value },

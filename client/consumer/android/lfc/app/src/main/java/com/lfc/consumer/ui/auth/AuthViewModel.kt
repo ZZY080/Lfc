@@ -28,7 +28,7 @@ class AuthViewModel(
     private val tokenManager: TokenManager,
     private val context: Context,
 ) : ViewModel() {
-    private val api = ApiClient.createApiService(tokenManager)
+    private val api = ApiClient.createAuthApiService()
 
     private val _uiState = MutableStateFlow(AuthUiState())
     val uiState: StateFlow<AuthUiState> = _uiState.asStateFlow()

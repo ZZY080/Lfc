@@ -79,11 +79,10 @@ fun MessageDetailScreen(
         ) {
             when {
                 isLoading -> {
-                    CircularProgressIndicator(
-                        color = XhsRed,
+                    MessageDetailSkeleton(
                         modifier = Modifier
-                            .align(Alignment.Center)
-                            .padding(24.dp),
+                            .fillMaxSize()
+                            .navigationBarsPadding(),
                     )
                 }
                 message == null -> {

@@ -227,6 +227,10 @@ export class ConsumerActivityService {
 
   async findOneForViewer(id: number, userId?: number) {
     const activity = await this.findOne(id);
+    const isAuthor = userId != null && activity.authorId === userId;
+    if (activity.status === ActivityStatus.OFF_SHELF && !isAuthor) {
+      throw new NotFoundException('活动不存在');
+    }
     const isJoined = userId
       ? activity.participants.some((item) => item.userId === userId)
       : false;
@@ -245,9 +249,6 @@ export class ConsumerActivityService {
     const activity = await this.findOne(id);
     if (activity.authorId !== userId) {
       throw new ForbiddenException('无权修改该活动');
-    }
-    if (activity.status === ActivityStatus.APPROVED) {
-      throw new BadRequestException('已审核通过的活动不可修改');
     }
 
     if (body.startTime || body.endTime) {
@@ -301,6 +302,33 @@ export class ConsumerActivityService {
     }
     await this.activityRepository.remove(activity);
     return { message: '删除成功' };
+  }
+
+  async offShelf(userId: number, id: number) {
+    const activity = await this.findOne(id);
+    if (activity.authorId !== userId) {
+      throw new ForbiddenException('无权操作该活动');
+    }
+    if (activity.status !== ActivityStatus.APPROVED) {
+      throw new BadRequestException('仅已审核通过的活动可以下架');
+    }
+    activity.status = ActivityStatus.OFF_SHELF;
+    activity.promotedUntil = null;
+    await this.activityRepository.save(activity);
+    return this.findOneForViewer(id, userId);
+  }
+
+  async onShelf(userId: number, id: number) {
+    const activity = await this.findOne(id);
+    if (activity.authorId !== userId) {
+      throw new ForbiddenException('无权操作该活动');
+    }
+    if (activity.status !== ActivityStatus.OFF_SHELF) {
+      throw new BadRequestException('仅已下架的活动可以重新上架');
+    }
+    activity.status = ActivityStatus.APPROVED;
+    await this.activityRepository.save(activity);
+    return this.findOneForViewer(id, userId);
   }
 
   async join(userId: number, activityId: number) {

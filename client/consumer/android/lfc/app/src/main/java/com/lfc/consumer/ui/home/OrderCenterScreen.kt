@@ -99,6 +99,8 @@ fun OrderCenterScreen(
     var reviewContent by remember { mutableStateOf("") }
     var afterSalesTarget by remember { mutableStateOf<PaymentOrderListItemDto?>(null) }
     var afterSalesReason by remember { mutableStateOf("") }
+    var cancelTarget by remember { mutableStateOf<PaymentOrderListItemDto?>(null) }
+    var confirmReceiptTarget by remember { mutableStateOf<PaymentOrderListItemDto?>(null) }
 
     LaunchedEffect(state.selectedTab) {
         listState.scrollToItem(0)
@@ -218,14 +220,12 @@ fun OrderCenterScreen(
         ) {
             when {
                 state.isInitialLoading && state.orders.isEmpty() -> {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = XhsRed)
-                    }
+                    OrderListSkeleton()
                 }
                 state.orders.isEmpty() -> {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("暂无相关订单", color = XhsTextSecondary, fontSize = 14.sp)
-                    }
+                    OrderCenterEmptyState(
+                        tabLabel = ORDER_CENTER_TABS.getOrNull(selectedIndex)?.second ?: "订单",
+                    )
                 }
                 else -> {
                     LazyColumn(
@@ -245,8 +245,8 @@ fun OrderCenterScreen(
                                     state.actingOutTradeNo != order.outTradeNo,
                                 onClick = { onOrderClick(order) },
                                 onPay = { onPayOrder(order) },
-                                onCancel = { onCancelOrder(order) },
-                                onConfirmReceipt = { onConfirmReceipt(order) },
+                                onCancel = { cancelTarget = order },
+                                onConfirmReceipt = { confirmReceiptTarget = order },
                                 onReview = {
                                     reviewTarget = order
                                     reviewRating = 5
@@ -260,17 +260,7 @@ fun OrderCenterScreen(
                         }
                         if (state.isLoadingMore) {
                             item(key = "loading-more") {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(16.dp),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    CircularProgressIndicator(
-                                        color = XhsRed,
-                                        modifier = Modifier.size(24.dp),
-                                    )
-                                }
+                                SkeletonLoadMoreFooter()
                             }
                         } else if (!state.hasMore) {
                             item(key = "end") {
@@ -334,27 +324,45 @@ fun OrderCenterScreen(
     }
 
     afterSalesTarget?.let { order ->
+        val ruleHint = when (order.bizType) {
+            "ACTIVITY_JOIN" -> buildString {
+                append("· 活动未开始前可申请全额退款\n")
+                append("· 退款成功后自动取消报名资格\n")
+                append("· 退款将原路返回至支付宝，通常 1–7 个工作日到账\n")
+                append("· 活动开始后原则上不再受理退款")
+            }
+            else -> buildString {
+                append("· 未确认收货前可申请全额退款\n")
+                append("· 退款成功后商品将重新上架\n")
+                append("· 退款将原路返回至支付宝，通常 1–7 个工作日到账\n")
+                append("· 确认收货后如有争议请先与卖家协商")
+            }
+        }
         AlertDialog(
             onDismissRequest = { afterSalesTarget = null },
             title = { Text("申请售后/退款") },
             text = {
                 Column {
                     Text(
-                        text = if (order.bizType == "ACTIVITY_JOIN") {
-                            "活动开始前可申请退款，退款后取消报名资格"
-                        } else {
-                            "未确认收货前可申请退款，商品将重新上架"
-                        },
+                        text = ruleHint,
                         fontSize = 13.sp,
                         color = XhsTextSecondary,
+                        lineHeight = 20.sp,
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     OutlinedTextField(
                         value = afterSalesReason,
                         onValueChange = { afterSalesReason = it },
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("退款原因") },
+                        label = { Text("请填写退款原因") },
+                        placeholder = { Text("如：商品与描述不符、无法面交等") },
                         maxLines = 3,
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "详细规则见「设置 - 法律与隐私 - C2C 退货售后规则」",
+                        fontSize = 11.sp,
+                        color = XhsTextSecondary,
                     )
                 }
             },
@@ -373,6 +381,164 @@ fun OrderCenterScreen(
             },
         )
     }
+
+    cancelTarget?.let { order ->
+        AlertDialog(
+            onDismissRequest = { cancelTarget = null },
+            title = { Text("确认取消订单？") },
+            text = {
+                Column {
+                    Text(
+                        text = "取消后需重新下单，此操作不可撤销。",
+                        fontSize = 14.sp,
+                        color = XhsTextSecondary,
+                        lineHeight = 20.sp,
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = Color(0xFFF7F7F7),
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text(
+                                text = order.bizTitle,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = XhsTextPrimary,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = formatPriceYuan(order.amount),
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = XhsRed,
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onCancelOrder(order)
+                        cancelTarget = null
+                    },
+                ) {
+                    Text("确认取消", color = XhsRed, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { cancelTarget = null }) {
+                    Text("再想想", color = XhsTextPrimary)
+                }
+            },
+        )
+    }
+
+    confirmReceiptTarget?.let { order ->
+        ConfirmReceiptAlertDialog(
+            title = order.bizTitle,
+            amount = order.amount,
+            bizType = order.bizType,
+            onDismiss = { confirmReceiptTarget = null },
+            onConfirm = {
+                onConfirmReceipt(order)
+                confirmReceiptTarget = null
+            },
+        )
+    }
+}
+
+@Composable
+fun ConfirmReceiptAlertDialog(
+    title: String,
+    amount: String?,
+    bizType: String,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    val hint = when (bizType) {
+        "ACTIVITY_JOIN" -> "确认已参加活动？确认后款项将分账给发起人，请谨慎操作。"
+        else -> "确认已收到商品？确认后款项将分账给卖家，请谨慎操作。"
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("确认收货？") },
+        text = {
+            Column {
+                Text(
+                    text = hint,
+                    fontSize = 14.sp,
+                    color = XhsTextSecondary,
+                    lineHeight = 20.sp,
+                )
+                if (amount != null) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = Color(0xFFF7F7F7),
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text(
+                                text = title,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = XhsTextPrimary,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = formatPriceYuan(amount),
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = XhsRed,
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text("确认收货", color = XhsRed, fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("再想想", color = XhsTextPrimary)
+            }
+        },
+    )
+}
+
+@Composable
+private fun OrderCenterEmptyState(tabLabel: String) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(32.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                text = "暂无$tabLabel",
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Medium,
+                color = XhsTextPrimary,
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "去首页逛逛，发现更多校园好物与活动",
+                fontSize = 13.sp,
+                color = XhsTextSecondary,
+                textAlign = TextAlign.Center,
+                lineHeight = 20.sp,
+            )
+        }
+    }
 }
 
 @Composable
@@ -387,163 +553,243 @@ private fun OrderListItemCard(
     onReview: () -> Unit,
     onAfterSales: () -> Unit,
 ) {
+    val hasActions = order.canPay || order.canConfirmReceipt ||
+        order.canReview || order.canApplyAfterSales
+
     Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
+        modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(14.dp),
         color = Color.White,
         shadowElevation = 1.dp,
     ) {
-        Column(modifier = Modifier.padding(14.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
+        Column {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onClick)
+                    .padding(14.dp),
             ) {
-                Text(
-                    text = paymentBizTypeLabel(order.bizType),
-                    fontSize = 12.sp,
-                    color = XhsTextSecondary,
-                )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = order.statusLabel,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = XhsRed,
-                    )
-                    if (order.fulfillment != null) {
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "· ${fulfillmentBadgeLabel(order.bizType)}",
-                            fontSize = 11.sp,
-                            color = Color(0xFF1677FF),
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            Row(verticalAlignment = Alignment.Top) {
-                Box(
-                    modifier = Modifier
-                        .size(72.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(coverGradientForId(order.bizId)),
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    order.coverImage?.let { url ->
-                        AsyncImage(
-                            model = url,
-                            contentDescription = order.bizTitle,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize(),
+                    OrderBizTypeChip(bizType = order.bizType)
+                    OrderStatusChip(status = order.status, label = order.statusLabel)
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Row(verticalAlignment = Alignment.Top) {
+                    Box(
+                        modifier = Modifier
+                            .size(76.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(coverGradientForId(order.bizId)),
+                    ) {
+                        order.coverImage?.let { url ->
+                            AsyncImage(
+                                model = url,
+                                contentDescription = order.bizTitle,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = order.bizTitle,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = XhsTextPrimary,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            lineHeight = 22.sp,
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "${order.payeeRoleLabel} · ${order.payeeName}",
+                            fontSize = 12.sp,
+                            color = XhsTextSecondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        OrderBizMetaLines(
+                            order = order,
+                            modifier = Modifier.padding(top = 6.dp),
                         )
                     }
                 }
-                Spacer(modifier = Modifier.width(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Bottom,
+                ) {
                     Text(
-                        text = order.bizTitle,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = XhsTextPrimary,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
+                        text = formatOrderCreatedAt(order.createdAt),
+                        fontSize = 11.sp,
+                        color = Color(0xFFB0B0B0),
                     )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = "${order.payeeRoleLabel} ${order.payeeName}",
-                        fontSize = 12.sp,
-                        color = XhsTextSecondary,
-                    )
-                    OrderBizMetaLines(
-                        order = order,
-                        modifier = Modifier.padding(top = 6.dp),
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         text = formatPriceYuan(order.amount),
-                        fontSize = 16.sp,
+                        fontSize = 17.sp,
                         fontWeight = FontWeight.Bold,
                         color = XhsRed,
                     )
                 }
+
+                if (order.fulfillment != null) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    OrderFulfillmentGuaranteeCard(fulfillment = order.fulfillment)
+                }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
-            OrderFulfillmentGuaranteeCard(fulfillment = order.fulfillment)
+            if (hasActions) {
+                HorizontalDivider(color = Color(0xFFF3F3F3))
+                OrderActionBar(
+                    order = order,
+                    isActing = isActing,
+                    isPaymentBlocked = isPaymentBlocked,
+                    onPay = onPay,
+                    onCancel = onCancel,
+                    onConfirmReceipt = onConfirmReceipt,
+                    onReview = onReview,
+                    onAfterSales = onAfterSales,
+                )
+            }
+        }
+    }
+}
 
-            Spacer(modifier = Modifier.height(12.dp))
-            HorizontalDivider(color = Color(0xFFF3F3F3))
-            Spacer(modifier = Modifier.height(10.dp))
+@Composable
+private fun OrderBizTypeChip(bizType: String) {
+    Surface(
+        shape = RoundedCornerShape(6.dp),
+        color = Color(0xFFF5F5F5),
+    ) {
+        Text(
+            text = paymentBizTypeLabel(bizType),
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+            fontSize = 11.sp,
+            color = XhsTextSecondary,
+            fontWeight = FontWeight.Medium,
+        )
+    }
+}
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically,
+@Composable
+private fun OrderStatusChip(status: String, label: String) {
+    val (bg, fg) = orderStatusColors(status)
+    Surface(
+        shape = RoundedCornerShape(6.dp),
+        color = bg,
+    ) {
+        Text(
+            text = label,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+            fontSize = 11.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = fg,
+        )
+    }
+}
+
+private fun orderStatusColors(status: String): Pair<Color, Color> = when (status.uppercase()) {
+    "PENDING" -> Color(0xFFFFF3E0) to Color(0xFFE65100)
+    "PAID" -> Color(0xFFE8F4FD) to Color(0xFF1565C0)
+    "CONFIRMED" -> Color(0xFFE8F5E9) to Color(0xFF2E7D32)
+    "SETTLED" -> Color(0xFFF5F5F5) to XhsTextSecondary
+    "REFUNDED" -> Color(0xFFFCE4EC) to Color(0xFFC62828)
+    "CLOSED" -> Color(0xFFF5F5F5) to XhsTextSecondary
+    else -> Color(0xFFF5F5F5) to XhsTextSecondary
+}
+
+private fun formatOrderCreatedAt(value: String): String {
+    return value.replace("T", " ").take(16)
+}
+
+@Composable
+private fun OrderActionBar(
+    order: PaymentOrderListItemDto,
+    isActing: Boolean,
+    isPaymentBlocked: Boolean,
+    onPay: () -> Unit,
+    onCancel: () -> Unit,
+    onConfirmReceipt: () -> Unit,
+    onReview: () -> Unit,
+    onAfterSales: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.End,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (isActing) {
+            CircularProgressIndicator(
+                color = XhsRed,
+                modifier = Modifier.size(22.dp),
+                strokeWidth = 2.dp,
+            )
+            return
+        }
+
+        if (order.canPay) {
+            TextButton(
+                onClick = onCancel,
+                enabled = !isPaymentBlocked,
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
             ) {
-                if (isActing) {
-                    CircularProgressIndicator(
-                        color = XhsRed,
-                        modifier = Modifier.size(20.dp),
-                        strokeWidth = 2.dp,
-                    )
-                    return@Row
-                }
-
-                if (order.canPay) {
-                    OutlinedButton(
-                        onClick = onCancel,
-                        enabled = !isPaymentBlocked,
-                        shape = RoundedCornerShape(18.dp),
-                        modifier = Modifier.height(34.dp),
-                        contentPadding = PaddingValues(horizontal = 14.dp),
-                    ) {
-                        Text("取消", fontSize = 13.sp)
-                    }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Button(
-                        onClick = onPay,
-                        enabled = !isPaymentBlocked,
-                        colors = ButtonDefaults.buttonColors(containerColor = XhsRed),
-                        shape = RoundedCornerShape(18.dp),
-                        modifier = Modifier.height(34.dp),
-                        contentPadding = PaddingValues(horizontal = 16.dp),
-                    ) {
-                        Text("去支付", fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                    }
-                } else if (order.canConfirmReceipt) {
-                    Button(
-                        onClick = onConfirmReceipt,
-                        colors = ButtonDefaults.buttonColors(containerColor = XhsRed),
-                        shape = RoundedCornerShape(18.dp),
-                        modifier = Modifier.height(34.dp),
-                        contentPadding = PaddingValues(horizontal = 16.dp),
-                    ) {
-                        Text("确认收货", fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                    }
-                } else if (order.canReview) {
-                    Button(
-                        onClick = onReview,
-                        colors = ButtonDefaults.buttonColors(containerColor = XhsRed),
-                        shape = RoundedCornerShape(18.dp),
-                        modifier = Modifier.height(34.dp),
-                        contentPadding = PaddingValues(horizontal = 16.dp),
-                    ) {
-                        Text("去评价", fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                    }
-                } else if (order.canApplyAfterSales) {
-                    OutlinedButton(
-                        onClick = onAfterSales,
-                        shape = RoundedCornerShape(18.dp),
-                        modifier = Modifier.height(34.dp),
-                        contentPadding = PaddingValues(horizontal = 14.dp),
-                    ) {
-                        Text("申请售后", fontSize = 13.sp)
-                    }
-                }
+                Text(
+                    text = "取消订单",
+                    fontSize = 13.sp,
+                    color = if (isPaymentBlocked) Color(0xFFCCCCCC) else XhsTextSecondary,
+                )
+            }
+            Spacer(modifier = Modifier.width(4.dp))
+            Button(
+                onClick = onPay,
+                enabled = !isPaymentBlocked,
+                colors = ButtonDefaults.buttonColors(containerColor = XhsRed),
+                shape = RoundedCornerShape(20.dp),
+                modifier = Modifier.height(36.dp),
+                contentPadding = PaddingValues(horizontal = 20.dp),
+            ) {
+                Text("去支付", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            }
+        } else if (order.canConfirmReceipt) {
+            Button(
+                onClick = onConfirmReceipt,
+                colors = ButtonDefaults.buttonColors(containerColor = XhsRed),
+                shape = RoundedCornerShape(20.dp),
+                modifier = Modifier.height(36.dp),
+                contentPadding = PaddingValues(horizontal = 20.dp),
+            ) {
+                Text("确认收货", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            }
+        } else if (order.canReview) {
+            Button(
+                onClick = onReview,
+                colors = ButtonDefaults.buttonColors(containerColor = XhsRed),
+                shape = RoundedCornerShape(20.dp),
+                modifier = Modifier.height(36.dp),
+                contentPadding = PaddingValues(horizontal = 20.dp),
+            ) {
+                Text("去评价", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            }
+        } else if (order.canApplyAfterSales) {
+            OutlinedButton(
+                onClick = onAfterSales,
+                shape = RoundedCornerShape(20.dp),
+                modifier = Modifier.height(36.dp),
+                contentPadding = PaddingValues(horizontal = 16.dp),
+            ) {
+                Text("申请售后", fontSize = 13.sp)
             }
         }
     }

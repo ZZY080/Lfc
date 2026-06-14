@@ -38,7 +38,7 @@ export class ConsumerPostProductService {
       postId,
       price: this.normalizePrice(body.price),
       originalPrice: this.normalizeOptionalPrice(body.originalPrice),
-      category: body.category ?? PostProductCategory.SECOND_HAND,
+      category: body.category ?? PostProductCategory.GENERAL,
       condition: body.condition ?? ProductCondition.GOOD,
       deliveryMethod: body.deliveryMethod ?? DeliveryMethod.PICKUP,
       status: PostProductStatus.ON_SALE,

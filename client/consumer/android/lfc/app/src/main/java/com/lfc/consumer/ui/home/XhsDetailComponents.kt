@@ -292,10 +292,11 @@ fun XhsDetailBackButton(onBack: () -> Unit, modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun XhsDetailLoading(modifier: Modifier = Modifier) {
-    Box(modifier = modifier, contentAlignment = Alignment.Center) {
-        CircularProgressIndicator(color = XhsRed)
-    }
+fun XhsDetailLoading(
+    modifier: Modifier = Modifier,
+    style: DetailSkeletonStyle = DetailSkeletonStyle.Post,
+) {
+    XhsDetailSkeleton(modifier = modifier, style = style)
 }
 
 @Composable

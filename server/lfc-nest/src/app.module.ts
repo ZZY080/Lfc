@@ -18,6 +18,7 @@ import { ActivityModule } from '@module/activity/activity.module';
 import { MessageModule } from '@module/message/message.module';
 import { UserModule } from '@module/user/user.module';
 import { AliyunModule } from '@integration/aliyun/aliyun.module';
+import { AmapModule } from '@integration/amap/amap.module';
 import { AlipayModule } from '@integration/alipay/alipay.module';
 import { WechatPayModule } from '@integration/wechat-pay/wechat-pay.module';
 import { PaymentModule } from '@module/payment/payment.module';
@@ -50,6 +51,7 @@ import { PromotionModule } from '@module/promotion/promotion.module';
     MysqlModule,
     RedisModule,
     AliyunModule,
+    AmapModule,
     AlipayModule,
     WechatPayModule,
     AuthModule,

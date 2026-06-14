@@ -149,7 +149,7 @@ fun ChatScreen(
         HorizontalDivider(color = Color(0xFFEEEEEE))
 
         when {
-            isLoading -> XhsDetailLoading(Modifier.weight(1f))
+            isLoading -> ChatMessageListSkeleton(Modifier.weight(1f))
             else -> {
                 LazyColumn(
                     state = listState,

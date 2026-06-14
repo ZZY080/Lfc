@@ -35,6 +35,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -292,6 +296,8 @@ fun ProductDetailScreen(
                         isPaymentProcessing = isPaymentProcessing,
                         isConfirmingReceipt = isConfirmingReceipt,
                         purchaseOrder = purchaseOrder,
+                        confirmTitle = post.title,
+                        confirmAmount = purchaseOrder?.amount ?: product.price,
                         onContactSeller = onContactSeller,
                         onPurchase = onPurchase,
                         onConfirmReceipt = onConfirmReceipt,
@@ -446,13 +452,15 @@ private fun ProductC2CTradeNotice(
         )
         Text(
             text = buildString {
-                append("同学间闲置交易 · 支付宝付款 · 平台托管")
+                append("同学间商品交易 · 支付宝付款 · 平台托管")
                 if (!receiveHint.isNullOrBlank()) {
                     append("\n")
                     append(receiveHint)
                 }
                 append("\n")
                 append("确认收货后分账给卖家 · ${autoConfirmDays}天未确认将自动完成")
+                append("\n")
+                append("未确认收货前可在订单中心申请全额退款")
             },
             fontSize = 12.sp,
             color = Color(0xFF996633),
@@ -503,7 +511,7 @@ private fun ProductSellerCard(
                 color = XhsTextPrimary,
             )
             Text(
-                text = "卖家 · 校园闲置 · $deliveryLabel",
+                text = "卖家 · 校园好物 · $deliveryLabel",
                 fontSize = 12.sp,
                 color = XhsTextSecondary,
                 modifier = Modifier.padding(top = 3.dp),
@@ -590,11 +598,28 @@ private fun ProductDetailBottomBar(
     isPaymentProcessing: Boolean,
     isConfirmingReceipt: Boolean,
     purchaseOrder: PaymentOrderDetailDto?,
+    confirmTitle: String,
+    confirmAmount: String,
     onContactSeller: () -> Unit,
     onPurchase: () -> Unit,
     onConfirmReceipt: () -> Unit,
 ) {
     val purchaseBusy = isPurchasing || isPaymentProcessing
+    var showConfirmReceipt by remember { mutableStateOf(false) }
+
+    if (showConfirmReceipt) {
+        ConfirmReceiptAlertDialog(
+            title = confirmTitle,
+            amount = confirmAmount,
+            bizType = "POST_PRODUCT_PURCHASE",
+            onDismiss = { showConfirmReceipt = false },
+            onConfirm = {
+                showConfirmReceipt = false
+                onConfirmReceipt()
+            },
+        )
+    }
+
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shadowElevation = 8.dp,
@@ -615,7 +640,7 @@ private fun ProductDetailBottomBar(
                         modifier = Modifier.padding(bottom = 8.dp),
                     )
                     Button(
-                        onClick = onConfirmReceipt,
+                        onClick = { showConfirmReceipt = true },
                         enabled = !isConfirmingReceipt,
                         modifier = Modifier
                             .fillMaxWidth()

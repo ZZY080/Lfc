@@ -4,7 +4,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.runtime.remember
+import androidx.compose.ui.draw.shadow
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -35,10 +40,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.PlatformTextStyle
@@ -54,7 +59,9 @@ import com.lfc.consumer.data.model.ActivityDto
 import com.lfc.consumer.data.model.hasOnSaleProduct
 import com.lfc.consumer.data.model.promotionBadge
 import com.lfc.consumer.data.model.PostDto
+import com.lfc.consumer.location.hasValidCoordinate
 import com.lfc.consumer.data.model.displayName
+import com.lfc.consumer.ui.theme.XhsDivider
 import com.lfc.consumer.ui.theme.XhsRed
 import com.lfc.consumer.ui.theme.XhsTextPrimary
 import com.lfc.consumer.ui.theme.XhsTextSecondary
@@ -83,135 +90,12 @@ fun XhsFeedCard(
     modifier: Modifier = Modifier,
     onClick: () -> Unit = {},
 ) {
-    val coverUrl = post.images?.firstOrNull()
-    val authorLabel = post.author?.displayName() ?: "同学${post.authorId}"
-    val productPrice = post.product?.takeIf { post.hasOnSaleProduct() }?.price
-    XhsFeedCard(
-        title = post.title,
-        content = post.content,
-        coverImageUrl = coverUrl,
-        authorLabel = authorLabel,
-        authorAvatarUrl = post.author?.avatarUrl,
-        likeCount = post.likeCount,
-        isLiked = post.isLiked,
-        id = post.id,
-        productPrice = productPrice,
-        promotionBadge = post.promotionBadge(),
-        modifier = modifier,
-        onClick = onClick,
+    XhsProfileFeedCard(
+        post = post,
+        authorLabel = post.author?.displayName() ?: "同学${post.authorId}",
+        avatarUrl = post.author?.avatarUrl,
+        modifier = modifier.clickable(onClick = onClick),
     )
-}
-
-@Composable
-fun XhsFeedCard(
-    title: String,
-    content: String,
-    coverImageUrl: String?,
-    authorLabel: String,
-    authorAvatarUrl: String? = null,
-    likeCount: Int,
-    isLiked: Boolean = false,
-    id: Int,
-    productPrice: String? = null,
-    promotionBadge: String? = null,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit = {},
-) {
-    Surface(
-        modifier = modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surface,
-        shadowElevation = 1.dp,
-    ) {
-        Column {
-            Box {
-                if (coverImageUrl != null) {
-                    AsyncImage(
-                        model = coverImageUrl,
-                        contentDescription = title,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(0.75f)
-                            .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp)),
-                    )
-                } else {
-                    TextNoteCover(
-                        content = content,
-                        id = id,
-                    )
-                }
-                if (productPrice != null) {
-                    Text(
-                        text = formatPriceYuan(productPrice),
-                        modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .padding(8.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(Color.Black.copy(alpha = 0.55f))
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                        color = Color.White,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                    )
-                }
-                if (!promotionBadge.isNullOrBlank()) {
-                    XhsPromotionBadge(
-                        label = promotionBadge,
-                        modifier = Modifier
-                            .align(Alignment.TopStart)
-                            .padding(8.dp),
-                    )
-                }
-            }
-            Text(
-                text = title,
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                color = XhsTextPrimary,
-                fontWeight = FontWeight.Medium,
-                fontSize = 14.sp,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                lineHeight = 20.sp,
-            )
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = 10.dp, end = 10.dp, bottom = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                XhsProfileAvatar(
-                    label = authorLabel,
-                    size = 20,
-                    avatarUrl = authorAvatarUrl,
-                )
-                Text(
-                    text = authorLabel,
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(start = 6.dp),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = XhsTextSecondary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Icon(
-                    if (isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                    contentDescription = null,
-                    tint = if (isLiked) XhsRed else XhsTextSecondary,
-                    modifier = Modifier.size(14.dp),
-                )
-                Text(
-                    text = formatLikeCount(likeCount),
-                    modifier = Modifier.padding(start = 2.dp),
-                    fontSize = 11.sp,
-                    color = if (isLiked) XhsRed else XhsTextSecondary,
-                )
-            }
-        }
-    }
 }
 
 @Composable
@@ -273,44 +157,50 @@ fun XhsProfileFeedCard(
                     )
                 }
 
-                if (post.viewCount > 0) {
-                    ProfileFeedViewBadge(
-                        viewCount = post.viewCount,
-                        modifier = Modifier.align(Alignment.BottomStart),
+                if (hasValidCoordinate(post.latitude, post.longitude) ||
+                    !post.location.isNullOrBlank()
+                ) {
+                    XhsFeedLocationOverlay(
+                        address = post.location,
+                        latitude = post.latitude,
+                        longitude = post.longitude,
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(horizontal = 3.dp, vertical = 3.dp),
                     )
                 }
             }
 
             Text(
                 text = post.title,
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 7.dp),
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
                 color = XhsTextPrimary,
                 fontWeight = FontWeight.Medium,
-                fontSize = 12.sp,
+                fontSize = 13.sp,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
-                lineHeight = 17.sp,
+                lineHeight = 18.sp,
             )
 
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 8.dp, end = 8.dp, bottom = 8.dp),
+                    .padding(start = 8.dp, end = 8.dp, bottom = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 val footerAuthor = post.author?.displayName() ?: authorLabel
                 val footerAvatar = post.author?.avatarUrl ?: avatarUrl
                 XhsProfileAvatar(
                     label = footerAuthor,
-                    size = 16,
+                    size = 18,
                     avatarUrl = footerAvatar,
                 )
                 Text(
                     text = footerAuthor,
                     modifier = Modifier
                         .weight(1f)
-                        .padding(start = 4.dp),
-                    fontSize = 9.sp,
+                        .padding(start = 5.dp),
+                    fontSize = 10.sp,
                     color = XhsTextSecondary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -318,17 +208,15 @@ fun XhsProfileFeedCard(
                 Icon(
                     if (post.isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                     contentDescription = null,
-                    tint = if (post.isLiked) XhsRed else XhsTextSecondary.copy(alpha = 0.7f),
-                    modifier = Modifier.size(11.dp),
+                    tint = if (post.isLiked) XhsRed else XhsTextSecondary.copy(alpha = 0.75f),
+                    modifier = Modifier.size(12.dp),
                 )
-                if (post.likeCount > 0) {
-                    Text(
-                        text = formatLikeCount(post.likeCount),
-                        modifier = Modifier.padding(start = 2.dp),
-                        fontSize = 9.sp,
-                        color = if (post.isLiked) XhsRed else XhsTextSecondary,
-                    )
-                }
+                Text(
+                    text = formatLikeCount(post.likeCount),
+                    modifier = Modifier.padding(start = 2.dp),
+                    fontSize = 10.sp,
+                    color = if (post.isLiked) XhsRed else XhsTextSecondary,
+                )
             }
         }
     }
@@ -430,6 +318,11 @@ fun XhsProfileActivityCard(
                 overflow = TextOverflow.Ellipsis,
                 lineHeight = 17.sp,
             )
+            XhsDistanceLabel(
+                targetLatitude = activity.latitude,
+                targetLongitude = activity.longitude,
+                modifier = Modifier.padding(start = 8.dp, end = 8.dp, bottom = 4.dp),
+            )
 
             Row(
                 modifier = Modifier
@@ -477,6 +370,7 @@ fun profileActivityStatusLabel(status: String): String = when (status.uppercase(
     "PENDING" -> "待审核"
     "APPROVED" -> "进行中"
     "REJECTED" -> "已拒绝"
+    "OFF_SHELF" -> "已下架"
     else -> status
 }
 
@@ -597,65 +491,89 @@ fun XhsBottomBar(
     onTabSelected: (Int) -> Unit,
     onPublishClick: () -> Unit,
 ) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.surface,
-        shadowElevation = 6.dp,
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                if (selectedTab == 3) {
+                    Color.White.copy(alpha = 0.94f)
+                } else {
+                    Color.White
+                },
+            ),
     ) {
-        Row(
+        HorizontalDivider(color = XhsDivider, thickness = 0.5.dp)
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(start = 4.dp, end = 4.dp, top = 10.dp, bottom = 6.dp),
-            horizontalArrangement = Arrangement.SpaceAround,
-            verticalAlignment = Alignment.CenterVertically,
+                .navigationBarsPadding(),
         ) {
-            XhsNavItem(
-                label = "首页",
-                icon = Icons.Default.Home,
-                selected = selectedTab == 0,
-                onClick = { onTabSelected(0) },
-            )
-            XhsNavItem(
-                label = "活动",
-                icon = Icons.Default.Event,
-                selected = selectedTab == 1,
-                onClick = { onTabSelected(1) },
-            )
-            Box(
+            Row(
                 modifier = Modifier
-                    .defaultMinSize(minWidth = 52.dp)
-                    .padding(vertical = 4.dp),
-                contentAlignment = Alignment.Center,
+                    .fillMaxWidth()
+                    .padding(top = 6.dp, bottom = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
+                XhsNavItem(
+                    label = "首页",
+                    icon = Icons.Default.Home,
+                    selected = selectedTab == 0,
+                    onClick = { onTabSelected(0) },
+                    modifier = Modifier.weight(1f),
+                )
+                XhsNavItem(
+                    label = "市集",
+                    icon = Icons.Default.Event,
+                    selected = selectedTab == 1,
+                    onClick = { onTabSelected(1) },
+                    modifier = Modifier.weight(1f),
+                )
                 Box(
                     modifier = Modifier
-                        .size(44.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(XhsRed)
-                        .clickable(onClick = onPublishClick),
-                    contentAlignment = Alignment.Center,
+                        .weight(1f)
+                        .height(52.dp),
+                    contentAlignment = Alignment.TopCenter,
                 ) {
-                    Icon(
-                        Icons.Default.Add,
-                        contentDescription = "发布",
-                        tint = Color.White,
-                        modifier = Modifier.size(26.dp),
-                    )
+                    XhsPublishTabButton(onClick = onPublishClick)
                 }
+                XhsNavItem(
+                    label = "消息",
+                    icon = Icons.Default.Chat,
+                    selected = selectedTab == 2,
+                    badgeCount = unreadCount,
+                    onClick = { onTabSelected(2) },
+                    modifier = Modifier.weight(1f),
+                )
+                XhsNavItem(
+                    label = "我",
+                    icon = Icons.Default.Person,
+                    selected = selectedTab == 3,
+                    onClick = { onTabSelected(3) },
+                    modifier = Modifier.weight(1f),
+                )
             }
-            XhsNavItem(
-                label = "消息",
-                icon = Icons.Default.Chat,
-                selected = selectedTab == 2,
-                badgeCount = unreadCount,
-                onClick = { onTabSelected(2) },
-            )
-            XhsNavItem(
-                label = "我的",
-                icon = Icons.Default.Person,
-                selected = selectedTab == 3,
-                onClick = { onTabSelected(3) },
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun XhsPublishTabButton(onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        modifier = Modifier
+            .offset(y = (-10).dp)
+            .size(48.dp)
+            .shadow(6.dp, RoundedCornerShape(16.dp), clip = false),
+        shape = RoundedCornerShape(16.dp),
+        color = XhsRed,
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                Icons.Default.Add,
+                contentDescription = "发布",
+                tint = Color.White,
+                modifier = Modifier.size(28.dp),
             )
         }
     }
@@ -668,36 +586,51 @@ private fun XhsNavItem(
     selected: Boolean,
     badgeCount: Int = 0,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
+    val iconTint = if (selected) XhsTextPrimary else Color(0xFFB8B8B8)
+    val labelColor = if (selected) XhsTextPrimary else Color(0xFFB8B8B8)
+
     Column(
-        modifier = Modifier
-            .defaultMinSize(minWidth = 52.dp)
-            .clickable(onClick = onClick)
-            .padding(vertical = 4.dp),
+        modifier = modifier
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick,
+            )
+            .padding(vertical = 2.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(contentAlignment = Alignment.TopEnd) {
             Icon(
                 icon,
                 contentDescription = label,
-                tint = if (selected) XhsRed else XhsTextSecondary,
-                modifier = Modifier.size(22.dp),
+                tint = iconTint,
+                modifier = Modifier.size(if (selected) 24.dp else 22.dp),
             )
             if (badgeCount > 0) {
-                Box(
-                    modifier = Modifier
-                        .offset(x = 4.dp, y = (-2).dp)
-                        .size(8.dp)
-                        .clip(CircleShape)
-                        .background(XhsRed),
-                )
+                Surface(
+                    modifier = Modifier.offset(x = 6.dp, y = (-4).dp),
+                    shape = CircleShape,
+                    color = XhsRed,
+                ) {
+                    Text(
+                        text = if (badgeCount > 99) "99+" else badgeCount.toString(),
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                        color = Color.White,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        lineHeight = 10.sp,
+                    )
+                }
             }
         }
+        Spacer(modifier = Modifier.height(3.dp))
         Text(
             text = label,
-            fontSize = 10.sp,
-            color = if (selected) XhsRed else XhsTextSecondary,
-            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+            fontSize = if (selected) 11.sp else 10.sp,
+            color = labelColor,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
         )
     }
 }

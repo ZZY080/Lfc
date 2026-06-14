@@ -96,7 +96,7 @@ export class ConsumerPaymentService {
     const amount = this.consumerPostProductService.getProductPrice(product).toFixed(2);
     await this.userAlipayService.assertCanReceive(post.authorId, '卖家');
 
-    const subject = `闲置转卖-${post.title}`.slice(0, 120);
+    const subject = `商品购买-${post.title}`.slice(0, 120);
 
     const order = await this.paymentOrderService.acquirePostProductOrder({
       userId,

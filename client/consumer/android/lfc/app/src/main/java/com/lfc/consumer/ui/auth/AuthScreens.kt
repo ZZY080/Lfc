@@ -41,16 +41,20 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.lfc.consumer.ui.home.ALIPAY_BIND_HINT_FOR_SELLERS
+import com.lfc.consumer.ui.legal.LegalAgreementCheckbox
+import com.lfc.consumer.ui.legal.LegalDocumentId
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LoginScreen(
     onLoginSuccess: () -> Unit,
     onNavigateToRegister: () -> Unit,
+    onOpenLegalDocument: (LegalDocumentId) -> Unit,
     viewModel: AuthViewModel = viewModel(),
 ) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var agreedToTerms by remember { mutableStateOf(false) }
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -107,10 +111,16 @@ fun LoginScreen(
                 singleLine = true,
                 visualTransformation = PasswordVisualTransformation(),
             )
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(16.dp))
+            LegalAgreementCheckbox(
+                checked = agreedToTerms,
+                onCheckedChange = { agreedToTerms = it },
+                onOpenDocument = onOpenLegalDocument,
+            )
+            Spacer(modifier = Modifier.height(16.dp))
             Button(
                 onClick = { viewModel.login(email.trim(), password) },
-                enabled = !uiState.isLoading && email.isNotBlank() && password.length >= 6,
+                enabled = !uiState.isLoading && email.isNotBlank() && password.length >= 6 && agreedToTerms,
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 if (uiState.isLoading) {
@@ -135,6 +145,7 @@ fun LoginScreen(
 fun RegisterScreen(
     onRegisterSuccess: () -> Unit,
     onNavigateToLogin: () -> Unit,
+    onOpenLegalDocument: (LegalDocumentId) -> Unit,
     viewModel: AuthViewModel = viewModel(),
 ) {
     var email by remember { mutableStateOf("") }
@@ -142,6 +153,7 @@ fun RegisterScreen(
     var realName by remember { mutableStateOf("") }
     var studentId by remember { mutableStateOf("") }
     var studentCardUri by remember { mutableStateOf<Uri?>(null) }
+    var agreedToTerms by remember { mutableStateOf(false) }
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -249,7 +261,13 @@ fun RegisterScreen(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(12.dp))
+            LegalAgreementCheckbox(
+                checked = agreedToTerms,
+                onCheckedChange = { agreedToTerms = it },
+                onOpenDocument = onOpenLegalDocument,
+            )
+            Spacer(modifier = Modifier.height(16.dp))
             Button(
                 onClick = {
                     viewModel.register(
@@ -264,7 +282,8 @@ fun RegisterScreen(
                     email.isNotBlank() &&
                     password.length >= 6 &&
                     realName.length >= 2 &&
-                    studentId.isNotBlank(),
+                    studentId.isNotBlank() &&
+                    agreedToTerms,
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 if (uiState.isLoading) {

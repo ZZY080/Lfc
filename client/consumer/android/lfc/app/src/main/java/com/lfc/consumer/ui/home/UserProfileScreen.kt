@@ -1,6 +1,8 @@
 package com.lfc.consumer.ui.home
 
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
 import com.lfc.consumer.data.model.ActivityDto
 import com.lfc.consumer.data.model.PostDto
 import com.lfc.consumer.data.model.ProfileCommentDto
@@ -9,6 +11,7 @@ import com.lfc.consumer.data.model.UserProfileDto
 
 @Composable
 fun UserProfileScreen(
+    modifier: Modifier = Modifier,
     profile: UserProfileDto?,
     isLoading: Boolean,
     isSelf: Boolean,
@@ -32,8 +35,11 @@ fun UserProfileScreen(
     onTabSelected: (Int) -> Unit,
 ) {
     XhsProfileScreen(
+        modifier = modifier.fillMaxSize(),
         profile = profile?.toXhsProfileData(),
-        mode = if (isSelf) XhsProfileMode.Self else XhsProfileMode.Other,
+        standalonePage = true,
+        // 独立主页：统一访客页布局（顶栏返回），本人不展示关注/私信
+        mode = XhsProfileMode.Other,
         isLoading = isLoading,
         profileNotes = profileNotes,
         profileActivities = profileActivities,

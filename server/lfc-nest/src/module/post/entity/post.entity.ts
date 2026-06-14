@@ -8,6 +8,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { UserEntity } from '@module/user/entity/user.entity';
+import { DEFAULT_POST_CATEGORY } from '@shared/enum/post-category.enum';
 
 @Entity({ name: 'post' })
 export class PostEntity {
@@ -16,6 +17,10 @@ export class PostEntity {
 
   @Column()
   title: string;
+
+  /** 笔记类型（Feed 频道），如校园生活、美食 */
+  @Column({ type: 'varchar', length: 32, default: DEFAULT_POST_CATEGORY })
+  category: string;
 
   @Column({ type: 'text' })
   content: string;
@@ -37,6 +42,21 @@ export class PostEntity {
 
   @Column({ name: 'author_id' })
   authorId: number;
+
+  /** 是否在公域 Feed/搜索展示；作者本人仍可见 */
+  @Column({ name: 'is_visible', type: 'boolean', default: true })
+  isVisible: boolean;
+
+  /** 发布时定位（可选），用于展示距离 */
+  @Column({ type: 'double', nullable: true })
+  latitude: number | null;
+
+  @Column({ type: 'double', nullable: true })
+  longitude: number | null;
+
+  /** 发布时地址文案（可选），用于 Feed 展示 */
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  location: string | null;
 
   @ManyToOne(() => UserEntity, (user) => user.posts, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'author_id' })

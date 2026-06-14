@@ -12,13 +12,8 @@ fun formatActivityFeeLabel(fee: String?): String {
     return if (value <= 0) "免费" else formatPriceYuan(fee)
 }
 
-fun productCategoryLabel(category: String): String = when (category.uppercase()) {
-    "SECOND_HAND" -> "二手闲置"
-    "DIGITAL" -> "数码"
-    "BOOK" -> "书籍"
-    "DAILY" -> "日用"
-    else -> "其他"
-}
+fun productCategoryLabel(category: String): String =
+    com.lfc.consumer.data.model.postProductCategoryLabel(category)
 
 fun productConditionLabel(condition: String): String = when (condition.uppercase()) {
     "BRAND_NEW" -> "全新"

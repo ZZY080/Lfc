@@ -6,30 +6,16 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
 import androidx.compose.foundation.lazy.staggeredgrid.items
 import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.ScrollableTabRow
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRowDefaults
-import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
@@ -37,41 +23,50 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.lfc.consumer.data.local.FeedChannels
 import com.lfc.consumer.data.model.FeedUiState
 import com.lfc.consumer.data.model.displayName
 import com.lfc.consumer.ui.theme.XhsBackground
-import com.lfc.consumer.ui.theme.XhsRed
-import com.lfc.consumer.ui.theme.XhsTextPrimary
 import com.lfc.consumer.ui.theme.XhsTextSecondary
 import kotlinx.coroutines.flow.distinctUntilChanged
-
-val XHS_FEED_TABS = listOf("推荐", "最新", "二手闲置", "校园", "活动", "美食", "学习", "生活")
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DiscoverFeedScreen(
     feedState: FeedUiState,
+    cityLabel: String,
+    recommendedChannels: List<String>,
     onRefresh: () -> Unit,
     onLoadMore: () -> Unit,
+    onPrimaryTabSelected: (String) -> Unit,
     onTabSelected: (String) -> Unit,
+    onMessageClick: () -> Unit,
     onSearchClick: () -> Unit,
+    onToggleChannelPanel: () -> Unit,
+    onCollapseChannelPanel: () -> Unit,
+    onToggleChannelEditMode: () -> Unit,
+    onAddChannel: (String) -> Unit,
+    onRemoveChannel: (String) -> Unit,
     onPostClick: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyStaggeredGridState()
-    val selectedIndex = XHS_FEED_TABS.indexOf(feedState.selectedTab).coerceAtLeast(0)
+    val isFollowingTab = feedState.primaryTab == "关注"
+    val myChannels = feedState.myChannels.ifEmpty { FeedChannels.defaultMyChannels }
+    val showChannelPanel = feedState.isChannelPanelExpanded && !isFollowingTab
 
-    LaunchedEffect(feedState.selectedTab) {
-        listState.scrollToItem(0)
+    LaunchedEffect(feedState.selectedTab, feedState.primaryTab, showChannelPanel) {
+        if (!showChannelPanel) {
+            listState.scrollToItem(0)
+        }
     }
 
-    LaunchedEffect(listState, feedState.hasMore, feedState.isLoadingMore) {
+    LaunchedEffect(listState, feedState.hasMore, feedState.isLoadingMore, showChannelPanel) {
+        if (showChannelPanel) return@LaunchedEffect
         snapshotFlow {
             val info = listState.layoutInfo
             val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: -1
@@ -93,80 +88,44 @@ fun DiscoverFeedScreen(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(Color.White),
+                .background(Color.White)
+                .statusBarsPadding(),
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .statusBarsPadding()
-                    .padding(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(36.dp)
-                        .clip(RoundedCornerShape(18.dp))
-                        .background(Color(0xFFF5F5F5))
-                        .clickable(onClick = onSearchClick)
-                        .padding(horizontal = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(
-                        Icons.Default.Search,
-                        contentDescription = null,
-                        tint = XhsTextSecondary,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("搜索校园笔记、活动", color = XhsTextSecondary, fontSize = 14.sp)
-                }
-            }
-
-            ScrollableTabRow(
-                selectedTabIndex = selectedIndex,
-                containerColor = Color.White,
-                contentColor = XhsRed,
-                edgePadding = 12.dp,
-                divider = {},
-                indicator = { tabPositions ->
-                    if (selectedIndex < tabPositions.size) {
-                        TabRowDefaults.SecondaryIndicator(
-                            modifier = Modifier
-                                .tabIndicatorOffset(tabPositions[selectedIndex])
-                                .height(3.dp)
-                                .clip(RoundedCornerShape(topStart = 2.dp, topEnd = 2.dp)),
-                            color = XhsRed,
-                        )
-                    }
-                },
-            ) {
-                XHS_FEED_TABS.forEachIndexed { index, title ->
-                    Tab(
-                        selected = selectedIndex == index,
-                        onClick = { onTabSelected(title) },
-                        text = {
-                            Text(
-                                title,
-                                fontSize = 15.sp,
-                                fontWeight = if (selectedIndex == index) FontWeight.Bold else FontWeight.Normal,
-                                color = if (selectedIndex == index) XhsTextPrimary else XhsTextSecondary,
-                            )
-                        },
-                    )
-                }
-            }
-
-            Text(
-                text = "推广内容已明确标注，优先展示不代表官方背书",
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color.White)
-                    .padding(horizontal = 12.dp)
-                    .padding(bottom = 6.dp),
-                color = XhsTextSecondary,
-                fontSize = 11.sp,
+            XhsFeedPrimaryTabRow(
+                selectedTab = feedState.primaryTab,
+                cityLabel = cityLabel,
+                onTabSelected = onPrimaryTabSelected,
+                onMessageClick = onMessageClick,
+                onSearchClick = onSearchClick,
+                modifier = Modifier.padding(top = 2.dp, bottom = 2.dp),
             )
+
+            if (!isFollowingTab) {
+                XhsFeedCategoryTabRow(
+                    myChannels = myChannels,
+                    selectedTab = feedState.selectedTab,
+                    isPanelExpanded = feedState.isChannelPanelExpanded,
+                    onTabSelected = onTabSelected,
+                    onExpandPanel = onToggleChannelPanel,
+                )
+            }
+
+            if (showChannelPanel) {
+                XhsFeedChannelPanel(
+                    myChannels = myChannels,
+                    recommendedChannels = recommendedChannels,
+                    isEditMode = feedState.isChannelEditMode,
+                    onToggleEditMode = onToggleChannelEditMode,
+                    onCollapse = onCollapseChannelPanel,
+                    onChannelClick = onTabSelected,
+                    onAddChannel = onAddChannel,
+                    onRemoveChannel = onRemoveChannel,
+                )
+            }
+        }
+
+        if (showChannelPanel) {
+            return@Column
         }
 
         PullToRefreshBox(
@@ -176,15 +135,20 @@ fun DiscoverFeedScreen(
         ) {
             when {
                 feedState.isInitialLoading && feedState.posts.isEmpty() -> {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = XhsRed)
-                    }
+                    FeedGridSkeleton()
                 }
                 feedState.posts.isEmpty() -> {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Text(
-                            "暂无校园信息，点击 + 发布第一条吧",
+                            if (isFollowingTab) {
+                                "关注的人暂无动态\n去发现页看看热门内容吧"
+                            } else {
+                                "暂无笔记，点击 + 发布第一条吧"
+                            },
                             color = XhsTextSecondary,
+                            fontSize = 14.sp,
+                            textAlign = TextAlign.Center,
+                            lineHeight = if (isFollowingTab) 22.sp else 20.sp,
                         )
                     }
                 }
@@ -209,17 +173,7 @@ fun DiscoverFeedScreen(
                         }
                         if (feedState.isLoadingMore) {
                             item(span = StaggeredGridItemSpan.FullLine) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(16.dp),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    CircularProgressIndicator(
-                                        color = XhsRed,
-                                        modifier = Modifier.size(24.dp),
-                                    )
-                                }
+                                SkeletonLoadMoreFooter()
                             }
                         } else if (!feedState.hasMore) {
                             item(span = StaggeredGridItemSpan.FullLine) {

@@ -14,12 +14,13 @@ import {
   CreatePostBodyDto,
   UpdatePostBodyDto,
 } from '@module/post/dto/consumer-post.dto';
+import { PostProductBodyDto } from '@module/post/dto/post-product.dto';
 import {
   DeliveryMethod,
   PostProductCategory,
   ProductCondition,
 } from '@shared/enum/product.enum';
-import { PostProductBodyDto } from '@module/post/dto/post-product.dto';
+import { POST_CATEGORIES } from '@shared/enum/post-category.enum';
 
 export class PostProductBodySchema implements PostProductBodyDto {
   @IsNumber({}, { message: '商品价格格式不正确' })
@@ -51,6 +52,10 @@ export class CreatePostBodySchema implements CreatePostBodyDto {
   title?: string;
 
   @IsOptional()
+  @IsEnum(POST_CATEGORIES, { message: '笔记类型不正确' })
+  category?: string;
+
+  @IsOptional()
   @IsString()
   @MaxLength(5000, { message: '正文不能超过5000字' })
   content?: string;
@@ -65,6 +70,19 @@ export class CreatePostBodySchema implements CreatePostBodyDto {
   @ValidateNested()
   @Type(() => PostProductBodySchema)
   product?: PostProductBodySchema;
+
+  @IsOptional()
+  @IsNumber({}, { message: '纬度格式不正确' })
+  latitude?: number;
+
+  @IsOptional()
+  @IsNumber({}, { message: '经度格式不正确' })
+  longitude?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255, { message: '地址不能超过255字' })
+  location?: string;
 }
 
 export class UpdatePostBodySchema implements UpdatePostBodyDto {
@@ -72,6 +90,10 @@ export class UpdatePostBodySchema implements UpdatePostBodyDto {
   @IsString()
   @MaxLength(100, { message: '标题不能超过100字' })
   title?: string;
+
+  @IsOptional()
+  @IsEnum(POST_CATEGORIES, { message: '笔记类型不正确' })
+  category?: string;
 
   @IsOptional()
   @IsString()
@@ -88,4 +110,17 @@ export class UpdatePostBodySchema implements UpdatePostBodyDto {
   @ValidateNested()
   @Type(() => PostProductBodySchema)
   product?: PostProductBodySchema | null;
+
+  @IsOptional()
+  @IsNumber({}, { message: '纬度格式不正确' })
+  latitude?: number;
+
+  @IsOptional()
+  @IsNumber({}, { message: '经度格式不正确' })
+  longitude?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255, { message: '地址不能超过255字' })
+  location?: string;
 }

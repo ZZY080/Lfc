@@ -168,14 +168,7 @@ private fun ActivityFeedContent(
             when {
                 feedState.isInitialLoading && feedState.activities.isEmpty() -> {
                     item(key = "loading") {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(240.dp),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            CircularProgressIndicator(color = XhsRed)
-                        }
+                        ActivityFeedSkeleton(itemCount = 2)
                     }
                 }
                 feedState.activities.isEmpty() -> {
@@ -204,17 +197,7 @@ private fun ActivityFeedContent(
                     }
                     if (feedState.isLoadingMore) {
                         item(key = "loading-more") {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(16.dp),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                CircularProgressIndicator(
-                                    color = XhsRed,
-                                    modifier = Modifier.size(24.dp),
-                                )
-                            }
+                            SkeletonLoadMoreFooter()
                         }
                     } else if (!feedState.hasMore) {
                         item(key = "end") {
@@ -365,6 +348,13 @@ private fun ActivityCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
+                Spacer(modifier = Modifier.height(4.dp))
+                XhsDistanceLabel(
+                    targetLatitude = activity.latitude,
+                    targetLongitude = activity.longitude,
+                    fontSize = 13.sp,
+                    iconSize = 15.dp,
+                )
                 Spacer(modifier = Modifier.height(6.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),

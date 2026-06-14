@@ -15,9 +15,16 @@ data class AuthResponse(
     val user: UserDto,
 )
 
+data class RefreshTokenRequest(
+    val refreshToken: String,
+)
+
+const val DEFAULT_POST_CATEGORY = "校园生活"
+
 data class PostDto(
     val id: Int,
     val title: String,
+    val category: String = DEFAULT_POST_CATEGORY,
     val content: String,
     val authorId: Int,
     val createdAt: String,
@@ -33,6 +40,10 @@ data class PostDto(
     val author: UserDto? = null,
     val product: PostProductDto? = null,
     val promotion: PromotionMetaDto? = null,
+    val isVisible: Boolean = true,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val location: String? = null,
 )
 
 data class PostProductDto(
@@ -40,7 +51,7 @@ data class PostProductDto(
     val postId: Int,
     val price: String,
     val originalPrice: String? = null,
-    val category: String = "SECOND_HAND",
+    val category: String = "GENERAL",
     val condition: String = "GOOD",
     val deliveryMethod: String = "PICKUP",
     val status: String = "ON_SALE",
@@ -62,8 +73,33 @@ data class PostCommentDto(
     val userId: Int,
     val content: String,
     val parentId: Int? = null,
+    val rootId: Int? = null,
+    val likeCount: Int = 0,
+    val isLiked: Boolean = false,
     val createdAt: String,
     val author: UserDto? = null,
+    val replyCount: Int? = null,
+    val previewReplies: List<PostCommentDto>? = null,
+)
+
+data class PostCommentsUiState(
+    val comments: List<PostCommentDto> = emptyList(),
+    val topLevelIds: List<Int> = emptyList(),
+    val replyCounts: Map<Int, Int> = emptyMap(),
+    val replyPages: Map<Int, Int> = emptyMap(),
+    val replyHasMore: Map<Int, Boolean> = emptyMap(),
+    val page: Int = 1,
+    val hasMore: Boolean = true,
+    val sort: String = "default",
+    val isInitialLoading: Boolean = false,
+    val isLoadingMore: Boolean = false,
+    val loadingReplyRoots: Set<Int> = emptySet(),
+)
+
+data class CommentLikeStateDto(
+    val commentId: Int,
+    val likeCount: Int,
+    val isLiked: Boolean,
 )
 
 data class CreatePostCommentRequest(
@@ -120,7 +156,11 @@ data class ProfileTabsUiState(
 
 data class FeedUiState(
     val posts: List<PostDto> = emptyList(),
+    val primaryTab: String = "发现",
     val selectedTab: String = "推荐",
+    val myChannels: List<String> = emptyList(),
+    val isChannelPanelExpanded: Boolean = false,
+    val isChannelEditMode: Boolean = false,
     val page: Int = 1,
     val hasMore: Boolean = true,
     val isRefreshing: Boolean = false,
@@ -151,16 +191,24 @@ data class SearchUiState(
 
 data class CreatePostRequest(
     val title: String? = null,
+    val category: String? = null,
     val content: String? = null,
     val images: List<String>? = null,
     val product: PostProductRequest? = null,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val location: String? = null,
 )
 
 data class UpdatePostRequest(
     val title: String? = null,
+    val category: String? = null,
     val content: String? = null,
     val images: List<String>? = null,
     val product: PostProductRequest? = null,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val location: String? = null,
 )
 
 data class UploadImageResponse(
@@ -646,13 +694,7 @@ fun PostDto.toChatProductPayload(): ChatProductPayload? {
 fun PostDto.productDisplayTitle(): String {
     val trimmedTitle = title.trim()
     val trimmedContent = content.trim()
-    val categoryLabel = when (product?.category?.uppercase()) {
-        "SECOND_HAND" -> "二手闲置"
-        "DIGITAL" -> "数码"
-        "BOOK" -> "书籍"
-        "DAILY" -> "日用"
-        else -> "闲置"
-    }
+    val categoryLabel = postProductCategoryLabel(product?.category)
     val titleLooksWeak = trimmedTitle.isBlank() ||
         trimmedTitle in setOf("图片笔记", "校园笔记") ||
         trimmedTitle == trimmedContent.take(30) ||

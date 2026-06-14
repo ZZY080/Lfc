@@ -1,7 +1,28 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+}
+
+fun loadLocalProperty(key: String): String? {
+    val localProperties = Properties()
+    val localPropertiesFile = rootProject.file("local.properties")
+    if (localPropertiesFile.exists()) {
+        localProperties.load(localPropertiesFile.inputStream())
+    }
+    return localProperties.getProperty(key)?.trim()?.takeIf { it.isNotEmpty() }
+}
+
+/** Retrofit requires a trailing slash on baseUrl. */
+fun normalizeApiBaseUrl(url: String): String =
+    if (url.endsWith("/")) url else "$url/"
+
+fun resolveDeviceApiBaseUrl(): String {
+    val fromLocal = loadLocalProperty("API_BASE_URL")
+    val fromGradle = (project.findProperty("DEV_API_BASE_URL") as String?)?.trim()
+    return normalizeApiBaseUrl(fromLocal ?: fromGradle ?: "http://192.168.0.104:8000/api/")
 }
 
 android {
@@ -16,10 +37,21 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        buildConfigField("String", "API_BASE_URL", "\"http://192.168.0.104:8000/api/\"")
         val amapApiKey = (project.findProperty("AMAP_API_KEY") as String?)?.trim().orEmpty()
         buildConfigField("String", "AMAP_API_KEY", "\"$amapApiKey\"")
         manifestPlaceholders["AMAP_API_KEY"] = amapApiKey
+    }
+
+    flavorDimensions += "target"
+    productFlavors {
+        create("emulator") {
+            dimension = "target"
+            buildConfigField("String", "API_BASE_URL", "\"${resolveDeviceApiBaseUrl()}\"")
+        }
+        create("device") {
+            dimension = "target"
+            buildConfigField("String", "API_BASE_URL", "\"${resolveDeviceApiBaseUrl()}\"")
+        }
     }
 
     buildTypes {
@@ -43,6 +75,17 @@ android {
         buildConfig = true
     }
 }
+
+/** 模拟器可选：adb reverse 让 127.0.0.1:8000 也能连宿主机（App 已优先用 10.0.2.2） */
+tasks.register<Exec>("adbReverseDevServer") {
+    group = "android"
+    description = "adb reverse tcp:8000 tcp:8000 for emulator localhost fallback"
+    commandLine("adb", "reverse", "tcp:8000", "tcp:8000")
+    isIgnoreExitValue = true
+}
+
+tasks.matching { it.name.startsWith("install") && it.name.contains("Emulator", ignoreCase = true) }
+    .configureEach { dependsOn("adbReverseDevServer") }
 
 dependencies {
     // AndroidX Core

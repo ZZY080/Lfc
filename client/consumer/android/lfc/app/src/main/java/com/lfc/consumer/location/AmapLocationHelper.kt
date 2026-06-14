@@ -10,15 +10,28 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 
 object AmapLocationHelper {
     @Volatile
-    private var privacyInitialized = false
+    private var privacyShown = false
+    @Volatile
+    private var privacyAgreed = false
 
-    fun ensurePrivacy(context: Context) {
-        if (privacyInitialized) return
+    /** 展示高德隐私政策（不表示用户已同意） */
+    fun showPrivacyPolicy(context: Context) {
+        if (privacyShown) return
         synchronized(this) {
-            if (privacyInitialized) return
+            if (privacyShown) return
             AMapLocationClient.updatePrivacyShow(context.applicationContext, true, true)
+            privacyShown = true
+        }
+    }
+
+    /** 用户同意隐私政策后调用 */
+    fun agreePrivacy(context: Context) {
+        showPrivacyPolicy(context)
+        if (privacyAgreed) return
+        synchronized(this) {
+            if (privacyAgreed) return
             AMapLocationClient.updatePrivacyAgree(context.applicationContext, true)
-            privacyInitialized = true
+            privacyAgreed = true
         }
     }
 
@@ -27,7 +40,10 @@ object AmapLocationHelper {
             return Result.failure(IllegalStateException("请先在 gradle.properties 配置 AMAP_API_KEY"))
         }
 
-        ensurePrivacy(context.applicationContext)
+        if (!privacyAgreed) {
+            return Result.failure(IllegalStateException("使用定位前需先同意隐私政策"))
+        }
+        showPrivacyPolicy(context)
 
         return suspendCancellableCoroutine { continuation ->
             val client = AMapLocationClient(context.applicationContext)
@@ -59,6 +75,18 @@ object AmapLocationHelper {
                 client.onDestroy()
             }
             client.startLocation()
+        }
+    }
+
+    suspend fun reverseGeocode(
+        latitude: Double,
+        longitude: Double,
+    ): Result<String> {
+        val address = GeocodeAddressHelper.reverseGeocode(latitude, longitude)
+        return if (!address.isNullOrBlank()) {
+            Result.success(address)
+        } else {
+            Result.failure(IllegalStateException("逆地理编码无结果"))
         }
     }
 

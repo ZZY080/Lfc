@@ -7,6 +7,9 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
@@ -24,6 +27,9 @@ class TokenManager(private val context: Context) {
     private val userIdKey = stringPreferencesKey("user_id")
     private val emailKey = stringPreferencesKey("user_email")
     private val studentIdKey = stringPreferencesKey("student_id")
+
+    private val _sessionExpiredEvents = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val sessionExpiredEvents: SharedFlow<Unit> = _sessionExpiredEvents.asSharedFlow()
 
     val isLoggedInFlow: Flow<Boolean> = context.dataStore.data.map { !it[tokenKey].isNullOrBlank() }
 
@@ -55,8 +61,20 @@ class TokenManager(private val context: Context) {
         }
     }
 
+    suspend fun updateTokens(accessToken: String, refreshToken: String) {
+        context.dataStore.edit { prefs ->
+            prefs[tokenKey] = accessToken
+            prefs[refreshTokenKey] = refreshToken
+        }
+    }
+
     suspend fun clearSession() {
         context.dataStore.edit { it.clear() }
+    }
+
+    suspend fun clearSessionAndNotify() {
+        clearSession()
+        _sessionExpiredEvents.emit(Unit)
     }
 
     suspend fun getToken(): String? {

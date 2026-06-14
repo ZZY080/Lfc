@@ -6,6 +6,6 @@ import com.lfc.consumer.location.AmapLocationHelper
 class LfcApplication : Application() {
     override fun onCreate() {
         super.onCreate()
-        AmapLocationHelper.ensurePrivacy(this)
+        AmapLocationHelper.showPrivacyPolicy(this)
     }
 }

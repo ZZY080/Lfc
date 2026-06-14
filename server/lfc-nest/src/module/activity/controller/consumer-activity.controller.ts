@@ -95,6 +95,24 @@ export class ConsumerActivityController {
     return this.consumerActivityService.remove(userId, id);
   }
 
+  @Patch(':id/off-shelf')
+  @UseGuards(JwtAuthGuard)
+  offShelf(
+    @CurrentUser('userId') userId: number,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.consumerActivityService.offShelf(userId, id);
+  }
+
+  @Patch(':id/on-shelf')
+  @UseGuards(JwtAuthGuard)
+  onShelf(
+    @CurrentUser('userId') userId: number,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.consumerActivityService.onShelf(userId, id);
+  }
+
   @Post(':id/join')
   @UseGuards(JwtAuthGuard)
   join(

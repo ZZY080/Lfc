@@ -1,6 +1,5 @@
 package com.lfc.consumer.ui.home
 
-import android.app.Activity
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -8,18 +7,24 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.requiredHeight
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
@@ -92,6 +97,7 @@ import com.lfc.consumer.data.model.ActivityDto
 import com.lfc.consumer.data.model.PostDto
 import com.lfc.consumer.data.model.ProfileCommentDto
 import com.lfc.consumer.data.model.displayName
+import com.lfc.consumer.ui.findActivity
 import com.lfc.consumer.ui.theme.XhsRed
 import com.lfc.consumer.ui.theme.XhsTextPrimary
 import com.lfc.consumer.ui.theme.XhsTextSecondary
@@ -239,6 +245,8 @@ private val profileCoverDark = Color(0xFF1A2329)
 private val profileGridHorizontalPadding = 8.dp
 private val profileGridItemSpacing = 8.dp
 private val topBarHeight = 48.dp
+/** 独立主页：封面 300dp + Tab 栏等，用于计算内容区填满剩余空间 */
+private val standaloneProfileHeaderEstimate = 372.dp
 
 private fun Modifier.breakOutHorizontalPadding(padding: Dp): Modifier = layout { measurable, constraints ->
     val paddingPx = padding.roundToPx()
@@ -295,11 +303,19 @@ fun XhsProfileScreen(
     onTabSelected: ((Int) -> Unit)? = null,
     onEditPost: ((PostDto) -> Unit)? = null,
     onDeletePost: ((Int) -> Unit)? = null,
+    onOffShelfPost: ((Int) -> Unit)? = null,
+    onOnShelfPost: ((Int) -> Unit)? = null,
     onEditActivity: ((ActivityDto) -> Unit)? = null,
     onDeleteActivity: ((Int) -> Unit)? = null,
+    onOffShelfActivity: ((Int) -> Unit)? = null,
+    onOnShelfActivity: ((Int) -> Unit)? = null,
     onOpenSideMenu: (() -> Unit)? = null,
     selectedContentTab: Int? = null,
     onContentTabChange: ((Int) -> Unit)? = null,
+    /** NavHost 独立主页：固定屏幕高度，避免 LazyVerticalStaggeredGrid 收到无限高度约束 */
+    standalonePage: Boolean = false,
+    /** 主 Tab「我」沉浸式：内容延伸到底栏下方，需额外 bottom padding */
+    immersiveBottomPadding: Dp = 0.dp,
 ) {
     var internalTab by remember { mutableIntStateOf(0) }
     val selectedTab = selectedContentTab ?: internalTab
@@ -312,27 +328,39 @@ fun XhsProfileScreen(
         }
     }
     val view = LocalView.current
-
-    DisposableEffect(Unit) {
-        if (!view.isInEditMode) {
-            val window = (view.context as Activity).window
-            val controller = WindowCompat.getInsetsController(window, view)
-            val previous = controller.isAppearanceLightStatusBars
-            controller.isAppearanceLightStatusBars = false
-            onDispose { controller.isAppearanceLightStatusBars = previous }
-        } else {
-            onDispose { }
+    val screenHeight = LocalConfiguration.current.screenHeightDp.dp
+    var scrollReady by remember { mutableStateOf(!standalonePage) }
+    LaunchedEffect(standalonePage, profile?.userId, isLoading) {
+        if (!standalonePage) {
+            scrollReady = true
+            return@LaunchedEffect
+        }
+        scrollReady = false
+        if (!isLoading) {
+            kotlinx.coroutines.yield()
+            scrollReady = true
         }
     }
 
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .background(Color(0xFFF5F5F5)),
+    DisposableEffect(mode) {
+        val activity = view.context.findActivity()
+        if (!view.isInEditMode && activity != null) {
+            val window = activity.window
+            WindowCompat.setDecorFitsSystemWindows(window, false)
+        }
+        onDispose { }
+    }
+
+    @Composable
+    fun ProfileScrollContent(
+        scrollModifier: Modifier,
+        tabPlaceholderMinHeight: Dp? = null,
     ) {
+        Box(modifier = scrollModifier) {
         when {
-            isLoading -> XhsDetailLoading(Modifier.fillMaxSize())
+            isLoading -> ProfilePageSkeleton(Modifier.fillMaxSize())
             profile == null -> XhsDetailEmpty("用户不存在", Modifier.fillMaxSize())
+            !scrollReady -> ProfilePageSkeleton(Modifier.fillMaxSize())
             else -> {
                 val tabLocked = selectedTab in 2..PROFILE_LIKES_TAB &&
                     !profile.isTabAccessible(mode, selectedTab)
@@ -360,6 +388,14 @@ fun XhsProfileScreen(
                 val showStickyTabs by remember {
                     derivedStateOf { gridState.firstVisibleItemIndex >= 1 }
                 }
+
+                val showCollapsedHeader = !showTabPlaceholder && (isCollapsed || showStickyTabs)
+
+                ProfileImmersiveSystemBars(
+                    mode = mode,
+                    isCollapsed = showCollapsedHeader,
+                    view = view,
+                )
 
                 LaunchedEffect(selectedTab) {
                     gridState.scrollToItem(0)
@@ -392,7 +428,7 @@ fun XhsProfileScreen(
                     state = pullRefreshState,
                     isRefreshing = tabUiState.isRefreshing,
                     onRefresh = onRefresh,
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = scrollModifier,
                     indicator = {
                         PullToRefreshDefaults.Indicator(
                             isRefreshing = tabUiState.isRefreshing,
@@ -408,11 +444,11 @@ fun XhsProfileScreen(
                         contentPadding = PaddingValues(
                             start = profileGridHorizontalPadding,
                             end = profileGridHorizontalPadding,
-                            bottom = 16.dp,
+                            bottom = 16.dp + immersiveBottomPadding,
                         ),
                         horizontalArrangement = Arrangement.spacedBy(profileGridItemSpacing),
                         verticalItemSpacing = profileGridItemSpacing,
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = scrollModifier,
                     ) {
                         item(span = StaggeredGridItemSpan.FullLine) {
                             Box(
@@ -449,6 +485,7 @@ fun XhsProfileScreen(
                                     tabLocked = tabLocked,
                                     isInitialLoading = tabUiState.isInitialLoading,
                                     emptyMessage = profileTabEmptyMessage(selectedTab),
+                                    contentMinHeight = tabPlaceholderMinHeight,
                                 )
                             }
                         } else when (selectedTab) {
@@ -460,6 +497,8 @@ fun XhsProfileScreen(
                                 onPostClick = onPostClick,
                                 onEditPost = onEditPost,
                                 onDeletePost = onDeletePost,
+                                onOffShelfPost = onOffShelfPost,
+                                onOnShelfPost = onOnShelfPost,
                             )
                             1 -> renderActivitiesTab(
                                 activities = profileActivities,
@@ -469,6 +508,8 @@ fun XhsProfileScreen(
                                 onActivityClick = onActivityClick,
                                 onEditActivity = onEditActivity,
                                 onDeleteActivity = onDeleteActivity,
+                                onOffShelfActivity = onOffShelfActivity,
+                                onOnShelfActivity = onOnShelfActivity,
                             )
                             2 -> renderCommentsTab(
                                 comments = profileComments,
@@ -494,17 +535,7 @@ fun XhsProfileScreen(
 
                         if (tabUiState.isLoadingMore) {
                             item(span = StaggeredGridItemSpan.FullLine) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(16.dp),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    CircularProgressIndicator(
-                                        color = XhsRed,
-                                        modifier = Modifier.size(24.dp),
-                                    )
-                                }
+                                SkeletonLoadMoreFooter()
                             }
                         }
                     }
@@ -513,7 +544,7 @@ fun XhsProfileScreen(
                 XhsProfileTopOverlay(
                     profile = profile,
                     mode = mode,
-                    isCollapsed = !showTabPlaceholder && (isCollapsed || showStickyTabs),
+                    isCollapsed = showCollapsedHeader,
                     onBack = onBack,
                     onMessage = onMessage,
                     onEditProfile = onEditProfile,
@@ -530,7 +561,7 @@ fun XhsProfileScreen(
                     ) {
                         Spacer(
                             modifier = Modifier
-                                .statusBarsPadding()
+                                .windowInsetsPadding(WindowInsets.statusBars)
                                 .height(topBarHeight),
                         )
                         XhsProfileTabBar(
@@ -543,6 +574,44 @@ fun XhsProfileScreen(
                     }
                 }
             }
+        }
+        }
+    }
+
+    val background = Color(0xFFF5F5F5)
+    if (standalonePage) {
+        BoxWithConstraints(
+            modifier = modifier
+                .fillMaxSize()
+                .background(background),
+        ) {
+            val pageHeight = if (constraints.hasBoundedHeight) maxHeight else screenHeight
+            val scrollModifier = Modifier
+                .fillMaxWidth()
+                .height(pageHeight)
+            val tabPlaceholderMinHeight = (pageHeight - standaloneProfileHeaderEstimate)
+                .coerceAtLeast(200.dp)
+            ProfileScrollContent(
+                scrollModifier = scrollModifier,
+                tabPlaceholderMinHeight = tabPlaceholderMinHeight,
+            )
+        }
+    } else {
+        BoxWithConstraints(
+            modifier = modifier
+                .fillMaxSize()
+                .background(background),
+        ) {
+            val boundedHeight = if (constraints.hasBoundedHeight && maxHeight < screenHeight * 2) {
+                maxHeight
+            } else {
+                screenHeight
+            }
+            ProfileScrollContent(
+                Modifier
+                    .fillMaxWidth()
+                    .requiredHeight(boundedHeight),
+            )
         }
     }
 }
@@ -605,17 +674,23 @@ private fun LazyStaggeredGridItemScope.ProfileTabPlaceholderItem(
     tabLocked: Boolean,
     isInitialLoading: Boolean,
     emptyMessage: String,
+    contentMinHeight: Dp? = null,
 ) {
-    val minHeight = (LocalConfiguration.current.screenHeightDp * 0.42f).dp
+    val defaultMin = (LocalConfiguration.current.screenHeightDp * 0.42f).dp
+    val heightModifier = if (contentMinHeight != null) {
+        Modifier.height(contentMinHeight)
+    } else {
+        Modifier.heightIn(min = defaultMin)
+    }
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = minHeight)
+            .then(heightModifier)
             .background(Color.White),
         contentAlignment = Alignment.Center,
     ) {
         when {
-            isInitialLoading -> CircularProgressIndicator(color = XhsRed)
+            isInitialLoading -> FeedGridSkeleton(modifier = Modifier.fillMaxSize(), itemCount = 4)
             tabLocked -> XhsProfileLockedHint(isSelf = false)
             else -> Text(
                 text = emptyMessage,
@@ -635,6 +710,8 @@ private fun androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridScop
     onPostClick: (Int) -> Unit,
     onEditPost: ((PostDto) -> Unit)?,
     onDeletePost: ((Int) -> Unit)?,
+    onOffShelfPost: ((Int) -> Unit)? = null,
+    onOnShelfPost: ((Int) -> Unit)? = null,
 ) {
     items(posts, key = { it.id }) { post ->
         var showMenu by remember(post.id) { mutableStateOf(false) }
@@ -664,6 +741,23 @@ private fun androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridScop
                             onEditPost(post)
                         },
                     )
+                    if (!post.isVisible && onOnShelfPost != null) {
+                        DropdownMenuItem(
+                            text = { Text("上架") },
+                            onClick = {
+                                showMenu = false
+                                onOnShelfPost(post.id)
+                            },
+                        )
+                    } else if (post.isVisible && onOffShelfPost != null) {
+                        DropdownMenuItem(
+                            text = { Text("下架") },
+                            onClick = {
+                                showMenu = false
+                                onOffShelfPost(post.id)
+                            },
+                        )
+                    }
                     DropdownMenuItem(
                         text = { Text("删除") },
                         onClick = {
@@ -756,9 +850,12 @@ private fun androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridScop
     onActivityClick: (Int) -> Unit,
     onEditActivity: ((ActivityDto) -> Unit)?,
     onDeleteActivity: ((Int) -> Unit)?,
+    onOffShelfActivity: ((Int) -> Unit)? = null,
+    onOnShelfActivity: ((Int) -> Unit)? = null,
 ) {
     items(activities, key = { it.id }) { activity ->
         var showMenu by remember(activity.id) { mutableStateOf(false) }
+        val status = activity.status.uppercase()
 
         Box(
             modifier = if (isSelf && onEditActivity != null && onDeleteActivity != null) {
@@ -784,6 +881,23 @@ private fun androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridScop
                             onEditActivity(activity)
                         },
                     )
+                    if (status == "OFF_SHELF" && onOnShelfActivity != null) {
+                        DropdownMenuItem(
+                            text = { Text("上架") },
+                            onClick = {
+                                showMenu = false
+                                onOnShelfActivity(activity.id)
+                            },
+                        )
+                    } else if (status == "APPROVED" && onOffShelfActivity != null) {
+                        DropdownMenuItem(
+                            text = { Text("下架") },
+                            onClick = {
+                                showMenu = false
+                                onOffShelfActivity(activity.id)
+                            },
+                        )
+                    }
                     DropdownMenuItem(
                         text = { Text("删除") },
                         onClick = {
@@ -810,8 +924,8 @@ private fun XhsProfileHeaderBlock(
     onShowMyQr: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
-    val coverUrl = profile.coverUrl ?: profile.posts.firstNotNullOfOrNull { it.images?.firstOrNull() }
-    val coverHeight = if (mode == XhsProfileMode.Other) 300.dp else 248.dp
+    val coverUrl = profile.coverUrl
+        ?: profile.posts.orEmpty().firstNotNullOfOrNull { it.images?.firstOrNull() }
     val sheetCorner = if (mode == XhsProfileMode.Other) 18.dp else 14.dp
     val coverOverlay = Brush.verticalGradient(
         colors = listOf(
@@ -820,167 +934,197 @@ private fun XhsProfileHeaderBlock(
             Color.Black.copy(alpha = 0.72f),
         ),
     )
+    val coverFallbackGradient = Brush.verticalGradient(
+        colors = listOf(
+            Color(0xFF3D5360),
+            Color(0xFF243038),
+            profileCoverDark,
+        ),
+    )
+
+    @Composable
+    fun ProfileCoverBackground(modifier: Modifier = Modifier) {
+        if (coverUrl != null) {
+            AsyncImage(
+                model = coverUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = modifier,
+            )
+        } else {
+            Box(modifier = modifier.background(coverFallbackGradient))
+        }
+    }
+
+    @Composable
+    fun ProfileIdentityBlock(avatarSize: Dp, nameFontSize: androidx.compose.ui.unit.TextUnit) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            XhsProfileAvatar(
+                label = profile.displayName,
+                size = avatarSize.value.toInt(),
+                avatarUrl = profile.avatarUrl,
+            )
+            Column(modifier = Modifier.padding(start = 14.dp)) {
+                Text(
+                    text = profile.displayName,
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = nameFontSize,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "莲峰号：${profile.lfcNo}",
+                        color = Color.White.copy(alpha = 0.78f),
+                        fontSize = 12.sp,
+                    )
+                    if (mode == XhsProfileMode.Other) {
+                        IconButton(
+                            onClick = { copyLfcNo(context, profile.lfcNo) },
+                            modifier = Modifier.size(24.dp),
+                        ) {
+                            Icon(
+                                Icons.Outlined.ContentCopy,
+                                contentDescription = "复制莲峰号",
+                                tint = Color.White.copy(alpha = 0.85f),
+                                modifier = Modifier.size(13.dp),
+                            )
+                        }
+                    } else if (onShowMyQr != null) {
+                        IconButton(
+                            onClick = onShowMyQr,
+                            modifier = Modifier.size(24.dp),
+                        ) {
+                            Icon(
+                                Icons.Default.QrCode2,
+                                contentDescription = "我的二维码",
+                                tint = Color.White.copy(alpha = 0.85f),
+                                modifier = Modifier.size(14.dp),
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @Composable
+    fun ProfileMetaBlock() {
+        Spacer(modifier = Modifier.height(14.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(28.dp)) {
+            XhsProfileStatWhite(count = profile.followingCount, label = "关注")
+            XhsProfileStatWhite(count = profile.followerCount, label = "粉丝")
+            XhsProfileStatWhite(count = profile.likeAndFavoriteCount, label = "获赞与收藏")
+        }
+        Spacer(modifier = Modifier.height(10.dp))
+        Text(
+            text = profile.bio,
+            color = Color.White.copy(alpha = 0.88f),
+            fontSize = 13.sp,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+
+    @Composable
+    fun SelfSummaryBar(modifier: Modifier = Modifier) {
+        Row(
+            modifier = modifier
+                .fillMaxWidth()
+                .background(profileCoverDark.copy(alpha = 0.92f))
+                .padding(vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            XhsProfileSummaryCard(
+                title = "笔记",
+                value = "${profile.postCount}",
+                modifier = Modifier.weight(1f),
+            )
+            XhsProfileSummaryCard(
+                title = "活动",
+                value = "${profile.activities.size}",
+                modifier = Modifier.weight(1f),
+            )
+            XhsProfileSummaryCard(
+                title = "报名",
+                value = "${profile.participationCount}",
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
 
     Column(modifier = Modifier.fillMaxWidth()) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(coverHeight),
-        ) {
-            if (coverUrl != null) {
-                AsyncImage(
-                    model = coverUrl,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            } else {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.verticalGradient(
-                                colors = listOf(
-                                    Color(0xFF3D5360),
-                                    Color(0xFF243038),
-                                    profileCoverDark,
-                                ),
-                            ),
-                        ),
-                )
-            }
-            Box(modifier = Modifier.fillMaxSize().background(coverOverlay))
-
-            Column(
+        if (mode == XhsProfileMode.Self) {
+            // 封面与统计条同容器：背景图 matchParentSize 铺满，消除中间空隙
+            Box(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .statusBarsPadding()
-                    .padding(top = topBarHeight + 8.dp, start = 16.dp, end = 16.dp, bottom = 16.dp),
-                verticalArrangement = Arrangement.Bottom,
+                    .fillMaxWidth()
+                    .wrapContentHeight(),
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    XhsProfileAvatar(
-                        label = profile.displayName,
-                        size = if (mode == XhsProfileMode.Other) 72 else 68,
-                        avatarUrl = profile.avatarUrl,
-                    )
-                    Column(modifier = Modifier.padding(start = 14.dp)) {
-                        Text(
-                            text = profile.displayName,
-                            color = Color.White,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = if (mode == XhsProfileMode.Other) 22.sp else 20.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = "莲峰号：${profile.lfcNo}",
-                                color = Color.White.copy(alpha = 0.78f),
-                                fontSize = 12.sp,
-                            )
-                            if (mode == XhsProfileMode.Other) {
-                                IconButton(
-                                    onClick = { copyLfcNo(context, profile.lfcNo) },
-                                    modifier = Modifier.size(24.dp),
-                                ) {
-                                    Icon(
-                                        Icons.Outlined.ContentCopy,
-                                        contentDescription = "复制莲峰号",
-                                        tint = Color.White.copy(alpha = 0.85f),
-                                        modifier = Modifier.size(13.dp),
-                                    )
-                                }
-                            } else if (onShowMyQr != null) {
-                                IconButton(
-                                    onClick = onShowMyQr,
-                                    modifier = Modifier.size(24.dp),
-                                ) {
-                                    Icon(
-                                        Icons.Default.QrCode2,
-                                        contentDescription = "我的二维码",
-                                        tint = Color.White.copy(alpha = 0.85f),
-                                        modifier = Modifier.size(14.dp),
-                                    )
-                                }
+                ProfileCoverBackground(Modifier.matchParentSize())
+                Box(Modifier.matchParentSize().background(coverOverlay))
+                Column(Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .windowInsetsPadding(WindowInsets.statusBars)
+                            .padding(
+                                top = topBarHeight + 8.dp,
+                                start = 16.dp,
+                                end = 16.dp,
+                                bottom = 12.dp,
+                            ),
+                    ) {
+                        ProfileIdentityBlock(avatarSize = 68.dp, nameFontSize = 20.sp)
+                        ProfileMetaBlock()
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            XhsProfileTagChip("校园用户")
+                            if (profile.participationCount > 0) {
+                                XhsProfileTagChip("已报名 ${profile.participationCount}")
                             }
                         }
                     }
+                    SelfSummaryBar()
                 }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                Row(horizontalArrangement = Arrangement.spacedBy(28.dp)) {
-                    XhsProfileStatWhite(count = profile.followingCount, label = "关注")
-                    XhsProfileStatWhite(count = profile.followerCount, label = "粉丝")
-                    XhsProfileStatWhite(count = profile.likeAndFavoriteCount, label = "获赞与收藏")
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                Text(
-                    text = profile.bio,
-                    color = Color.White.copy(alpha = 0.88f),
-                    fontSize = 13.sp,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-
-                if (mode == XhsProfileMode.Other && onFollowToggle != null) {
-                    Spacer(modifier = Modifier.height(14.dp))
-                    XhsOtherProfileActionRow(
-                        isFollowing = profile.isFollowing,
-                        onFollowToggle = onFollowToggle,
-                        onMessage = onMessage,
-                        onShare = onShare,
-                    )
-                } else if (mode == XhsProfileMode.Self) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        XhsProfileTagChip("校园用户")
-                        if (profile.participationCount > 0) {
-                            XhsProfileTagChip("已报名 ${profile.participationCount}")
-                        }
+            }
+        } else {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(300.dp),
+            ) {
+                ProfileCoverBackground(Modifier.fillMaxSize())
+                Box(modifier = Modifier.fillMaxSize().background(coverOverlay))
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .windowInsetsPadding(WindowInsets.statusBars)
+                        .padding(top = topBarHeight + 8.dp, start = 16.dp, end = 16.dp, bottom = 16.dp),
+                    verticalArrangement = Arrangement.Bottom,
+                ) {
+                    ProfileIdentityBlock(avatarSize = 72.dp, nameFontSize = 22.sp)
+                    ProfileMetaBlock()
+                    if (onFollowToggle != null) {
+                        Spacer(modifier = Modifier.height(14.dp))
+                        XhsOtherProfileActionRow(
+                            isFollowing = profile.isFollowing,
+                            onFollowToggle = onFollowToggle,
+                            onMessage = onMessage,
+                            onShare = onShare,
+                        )
                     }
                 }
             }
-        }
-
-        if (mode == XhsProfileMode.Self) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(profileCoverDark)
-                    .padding(vertical = 10.dp),
-                horizontalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                XhsProfileSummaryCard(
-                    title = "笔记",
-                    value = "${profile.postCount}",
-                    modifier = Modifier.weight(1f),
-                )
-                XhsProfileSummaryCard(
-                    title = "活动",
-                    value = "${profile.activities.size}",
-                    modifier = Modifier.weight(1f),
-                )
-                XhsProfileSummaryCard(
-                    title = "报名",
-                    value = "${profile.participationCount}",
-                    modifier = Modifier.weight(1f),
-                )
-            }
-        }
-
-        if (mode == XhsProfileMode.Other) {
             Spacer(modifier = Modifier.height(12.dp))
         }
 
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .offset(y = if (mode == XhsProfileMode.Other) 0.dp else (-10).dp)
+                .offset(y = if (mode == XhsProfileMode.Other) 0.dp else (-14).dp)
                 .clip(RoundedCornerShape(topStart = sheetCorner, topEnd = sheetCorner))
                 .background(Color.White),
         ) {
@@ -1072,6 +1216,35 @@ private fun copyLfcNo(context: Context, lfcNo: String) {
 }
 
 @Composable
+private fun ProfileImmersiveSystemBars(
+    mode: XhsProfileMode,
+    isCollapsed: Boolean,
+    view: android.view.View,
+) {
+    DisposableEffect(mode, isCollapsed) {
+        if (view.isInEditMode) {
+            onDispose { }
+        } else {
+            val activity = view.context.findActivity()
+            if (activity == null) {
+                onDispose { }
+            } else {
+                val controller = WindowCompat.getInsetsController(activity.window, view)
+                val previousStatus = controller.isAppearanceLightStatusBars
+                val previousNav = controller.isAppearanceLightNavigationBars
+                val lightIcons = mode == XhsProfileMode.Self && isCollapsed
+                controller.isAppearanceLightStatusBars = lightIcons
+                controller.isAppearanceLightNavigationBars = lightIcons
+                onDispose {
+                    controller.isAppearanceLightStatusBars = previousStatus
+                    controller.isAppearanceLightNavigationBars = previousNav
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun XhsProfileTopOverlay(
     profile: XhsProfileData,
     mode: XhsProfileMode,
@@ -1085,12 +1258,30 @@ private fun XhsProfileTopOverlay(
 ) {
     var showMoreMenu by remember { mutableStateOf(false) }
 
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(if (isCollapsed) profileCoverDark else Color.Transparent)
-            .statusBarsPadding(),
-    ) {
+    Box(modifier = Modifier.fillMaxWidth()) {
+        if (!isCollapsed) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(topBarHeight + 72.dp)
+                    .align(Alignment.TopCenter)
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color.Black.copy(alpha = 0.52f),
+                                Color.Black.copy(alpha = 0.22f),
+                                Color.Transparent,
+                            ),
+                        ),
+                    ),
+            )
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(if (isCollapsed) profileCoverDark else Color.Transparent)
+                .windowInsetsPadding(WindowInsets.statusBars),
+        ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1205,6 +1396,7 @@ private fun XhsProfileTopOverlay(
                 }
             }
         }
+        }
     }
 }
 
@@ -1251,14 +1443,6 @@ private fun XhsProfileTabBar(
                             color = if (selected) XhsTextPrimary else XhsTextSecondary,
                         )
                     }
-                    Spacer(modifier = Modifier.height(5.dp))
-                    Box(
-                        modifier = Modifier
-                            .width(if (selected) 24.dp else 0.dp)
-                            .height(3.dp)
-                            .clip(RoundedCornerShape(1.5.dp))
-                            .background(if (selected) XhsRed else Color.Transparent),
-                    )
                 }
             }
         }
@@ -1280,14 +1464,12 @@ private fun XhsProfileTabEmptyHint(text: String) {
 
 @Composable
 private fun XhsProfileTabLoadingHint() {
-    Box(
+    FeedGridSkeleton(
         modifier = Modifier
             .fillMaxWidth()
             .background(Color.White),
-        contentAlignment = Alignment.Center,
-    ) {
-        androidx.compose.material3.CircularProgressIndicator(color = XhsRed)
-    }
+        itemCount = 4,
+    )
 }
 
 @Composable

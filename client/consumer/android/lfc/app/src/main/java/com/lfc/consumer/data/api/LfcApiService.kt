@@ -6,11 +6,13 @@ import com.lfc.consumer.data.model.AuthResponse
 import com.lfc.consumer.data.model.CreateActivityRequest
 import com.lfc.consumer.data.model.CreatePostRequest
 import com.lfc.consumer.data.model.LoginRequest
+import com.lfc.consumer.data.model.RefreshTokenRequest
 import com.lfc.consumer.data.model.ChatMessageDto
 import com.lfc.consumer.data.model.ConversationDto
 import com.lfc.consumer.data.model.CreateConversationRequest
 import com.lfc.consumer.data.model.NotificationDto
 import com.lfc.consumer.data.model.SendChatMessageRequest
+import com.lfc.consumer.data.model.CommentLikeStateDto
 import com.lfc.consumer.data.model.CreatePostCommentRequest
 import com.lfc.consumer.data.model.PostCommentDto
 import com.lfc.consumer.data.model.PostDto
@@ -58,6 +60,9 @@ import retrofit2.http.Path
 interface LfcApiService {
     @POST("consumer/auth/login")
     suspend fun login(@Body request: LoginRequest): AuthResponse
+
+    @POST("consumer/auth/refresh")
+    suspend fun refreshToken(@Body request: RefreshTokenRequest): AuthResponse
 
     @Multipart
     @POST("consumer/auth/register")
@@ -203,7 +208,20 @@ interface LfcApiService {
     suspend fun togglePostFavorite(@Path("id") id: Int): PostSocialStateDto
 
     @GET("consumer/post/{id}/comments")
-    suspend fun getPostComments(@Path("id") id: Int): List<PostCommentDto>
+    suspend fun getPostComments(
+        @Path("id") id: Int,
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 20,
+        @Query("sort") sort: String = "default",
+    ): PaginatedResponse<PostCommentDto>
+
+    @GET("consumer/post/{id}/comments/{commentId}/replies")
+    suspend fun getPostCommentReplies(
+        @Path("id") postId: Int,
+        @Path("commentId") commentId: Int,
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 20,
+    ): PaginatedResponse<PostCommentDto>
 
     @POST("consumer/post/{id}/comments")
     suspend fun createPostComment(
@@ -213,6 +231,9 @@ interface LfcApiService {
 
     @DELETE("consumer/post/comments/{commentId}")
     suspend fun deletePostComment(@Path("commentId") commentId: Int)
+
+    @POST("consumer/post/comments/{commentId}/like")
+    suspend fun toggleCommentLike(@Path("commentId") commentId: Int): CommentLikeStateDto
 
     @POST("consumer/post")
     suspend fun createPost(@Body request: CreatePostRequest): PostDto
@@ -239,6 +260,12 @@ interface LfcApiService {
 
     @DELETE("consumer/post/{id}")
     suspend fun deletePost(@Path("id") id: Int)
+
+    @PATCH("consumer/post/{id}/off-shelf")
+    suspend fun offShelfPost(@Path("id") id: Int): PostDto
+
+    @PATCH("consumer/post/{id}/on-shelf")
+    suspend fun onShelfPost(@Path("id") id: Int): PostDto
 
     @GET("consumer/activity/feed")
     suspend fun getActivityFeed(
@@ -269,6 +296,12 @@ interface LfcApiService {
 
     @DELETE("consumer/activity/{id}")
     suspend fun deleteActivity(@Path("id") id: Int)
+
+    @PATCH("consumer/activity/{id}/off-shelf")
+    suspend fun offShelfActivity(@Path("id") id: Int): ActivityDto
+
+    @PATCH("consumer/activity/{id}/on-shelf")
+    suspend fun onShelfActivity(@Path("id") id: Int): ActivityDto
 
     @POST("consumer/activity/{id}/join")
     suspend fun joinActivity(@Path("id") id: Int): ActivityParticipantDto

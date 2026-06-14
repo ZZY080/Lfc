@@ -17,6 +17,10 @@ import {
   UpdatePostBodySchema,
 } from '@module/post/schema/consumer-post.schema';
 import { CreatePostCommentBodySchema } from '@module/post/schema/post-social.schema';
+import {
+  PostCommentQuerySchema,
+  PostCommentReplyQuerySchema,
+} from '@module/post/schema/post-comment.schema';
 import { PostFeedQuerySchema } from '@module/post/schema/post-feed.schema';
 import { JwtAuthGuard } from '@shared/guard/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '@shared/guard/optional-jwt-auth.guard';
@@ -80,8 +84,36 @@ export class ConsumerPostController {
   }
 
   @Get(':id/comments')
-  findComments(@Param('id', ParseIntPipe) id: number) {
-    return this.consumerPostSocialService.findComments(id);
+  @UseGuards(OptionalJwtAuthGuard)
+  findComments(
+    @Param('id', ParseIntPipe) id: number,
+    @Query() query: PostCommentQuerySchema,
+    @CurrentUser('userId') userId?: number,
+  ) {
+    return this.consumerPostSocialService.findComments(
+      id,
+      query.page,
+      query.limit,
+      query.sort ?? 'default',
+      userId,
+    );
+  }
+
+  @Get(':id/comments/:commentId/replies')
+  @UseGuards(OptionalJwtAuthGuard)
+  findCommentReplies(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('commentId', ParseIntPipe) commentId: number,
+    @Query() query: PostCommentReplyQuerySchema,
+    @CurrentUser('userId') userId?: number,
+  ) {
+    return this.consumerPostSocialService.findCommentReplies(
+      id,
+      commentId,
+      query.page,
+      query.limit,
+      userId,
+    );
   }
 
   @Post(':id/comments')
@@ -101,6 +133,15 @@ export class ConsumerPostController {
     @Param('commentId', ParseIntPipe) commentId: number,
   ) {
     return this.consumerPostSocialService.removeComment(userId, commentId);
+  }
+
+  @Post('comments/:commentId/like')
+  @UseGuards(JwtAuthGuard)
+  toggleCommentLike(
+    @CurrentUser('userId') userId: number,
+    @Param('commentId', ParseIntPipe) commentId: number,
+  ) {
+    return this.consumerPostSocialService.toggleCommentLike(userId, commentId);
   }
 
   @Get(':id')
@@ -147,5 +188,23 @@ export class ConsumerPostController {
     @Param('id', ParseIntPipe) id: number,
   ) {
     return this.consumerPostService.onShelfProduct(userId, id);
+  }
+
+  @Patch(':id/off-shelf')
+  @UseGuards(JwtAuthGuard)
+  offShelf(
+    @CurrentUser('userId') userId: number,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.consumerPostService.offShelf(userId, id);
+  }
+
+  @Patch(':id/on-shelf')
+  @UseGuards(JwtAuthGuard)
+  onShelf(
+    @CurrentUser('userId') userId: number,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.consumerPostService.onShelf(userId, id);
   }
 }

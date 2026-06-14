@@ -1,5 +1,7 @@
 package com.lfc.consumer.ui.home
 
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
@@ -12,8 +14,10 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -47,6 +51,10 @@ import com.lfc.consumer.data.model.displayName
 import com.lfc.consumer.data.model.postBoostBidHint
 import com.lfc.consumer.data.model.postBoostPriceHint
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.lfc.consumer.ui.legal.LegalDocumentId
+import com.lfc.consumer.ui.legal.LegalDocumentScreen
+import com.lfc.consumer.data.local.FeedChannels
+import com.lfc.consumer.location.extractFeedCityLabel
 import com.lfc.consumer.ui.theme.XhsRed
 import androidx.compose.ui.unit.sp
 
@@ -80,6 +88,12 @@ fun HomeScreen(
         navController.navigate("profile_qr_scan")
     }
 
+    fun openAuthorProfile(authorId: Int) {
+        navController.navigate("user_profile/$authorId") {
+            launchSingleTop = true
+        }
+    }
+
     fun handleProfileScanTarget(target: ProfileScanTarget) {
         coroutineScope.launch {
             val userId = when (target) {
@@ -87,7 +101,7 @@ fun HomeScreen(
                 is ProfileScanTarget.ByLfcNo -> viewModel.resolveUserIdByLfcNo(target.lfcNo)
             }
             if (userId != null) {
-                navController.navigate("user_profile/$userId")
+                openAuthorProfile(userId)
             } else {
                 snackbarHostState.showSnackbar("无法识别该用户")
             }
@@ -121,6 +135,7 @@ fun HomeScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
+        CompositionLocalProvider(LocalUserLocation provides uiState.userLocation) {
         NavHost(
             navController = navController,
             startDestination = "main",
@@ -151,10 +166,24 @@ fun HomeScreen(
                         when (selectedTab) {
                         0 -> DiscoverFeedScreen(
                             feedState = uiState.feed,
-                            onRefresh = { viewModel.loadFeed(refresh = true) },
+                            cityLabel = extractFeedCityLabel(uiState.userLocation?.address),
+                            recommendedChannels = FeedChannels.recommendedFor(
+                                uiState.feed.myChannels.ifEmpty { FeedChannels.defaultMyChannels },
+                            ),
+                            onRefresh = {
+                                viewModel.refreshUserLocation()
+                                viewModel.loadFeed(refresh = true)
+                            },
                             onLoadMore = viewModel::loadMoreFeed,
+                            onPrimaryTabSelected = viewModel::selectFeedPrimaryTab,
                             onTabSelected = viewModel::selectFeedTab,
+                            onMessageClick = { selectedTab = 2 },
                             onSearchClick = { navController.navigate("search") },
+                            onToggleChannelPanel = viewModel::toggleFeedChannelPanel,
+                            onCollapseChannelPanel = viewModel::collapseFeedChannelPanel,
+                            onToggleChannelEditMode = viewModel::toggleFeedChannelEditMode,
+                            onAddChannel = viewModel::addFeedChannel,
+                            onRemoveChannel = viewModel::removeFeedChannel,
                             onPostClick = { postId ->
                                 navController.navigate("post_detail/$postId")
                             },
@@ -164,7 +193,10 @@ fun HomeScreen(
                         )
                         1 -> ActivityFeedScreen(
                             feedState = uiState.activityFeed,
-                            onRefresh = { viewModel.loadActivityFeed(refresh = true) },
+                            onRefresh = {
+                                viewModel.refreshUserLocation()
+                                viewModel.loadActivityFeed(refresh = true)
+                            },
                             onLoadMore = viewModel::loadMoreActivityFeed,
                             onJoin = viewModel::joinActivity,
                             onActivityClick = { activityId ->
@@ -220,6 +252,8 @@ fun HomeScreen(
                                 navController.navigate("post_detail/$postId")
                             },
                             onDeletePost = viewModel::deletePost,
+                            onOffShelfPost = viewModel::offShelfPost,
+                            onOnShelfPost = viewModel::onShelfPost,
                             onEditActivity = { activity ->
                                 editingActivity = activity
                                 navController.navigate("edit_activity")
@@ -228,6 +262,8 @@ fun HomeScreen(
                                 navController.navigate("activity_detail/$activityId")
                             },
                             onDeleteActivity = viewModel::deleteActivity,
+                            onOffShelfActivity = viewModel::offShelfActivity,
+                            onOnShelfActivity = viewModel::onShelfActivity,
                             onLogout = onLogout,
                             onEditProfile = { navController.navigate("edit_profile") },
                             onShare = {
@@ -244,9 +280,8 @@ fun HomeScreen(
                                 profileContentTab = tab
                                 viewModel.loadProfileTab(tab)
                             },
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(bottom = padding.calculateBottomPadding()),
+                            immersiveBottomPadding = padding.calculateBottomPadding(),
+                            modifier = Modifier.fillMaxSize(),
                         )
                         }
                     }
@@ -370,11 +405,10 @@ fun HomeScreen(
                 }
                 PostDetailScreen(
                     post = uiState.selectedPost,
-                    comments = uiState.postComments,
+                    commentsUi = uiState.postCommentsUi,
                     currentUserLabel = uiState.myProfile?.displayName() ?: userSession?.studentId ?: "我",
                     currentUserAvatarUrl = uiState.myProfile?.avatarUrl,
                     isLoading = uiState.isPostLoading,
-                    isCommentsLoading = uiState.isPostCommentsLoading,
                     isSocialSubmitting = uiState.isPostSocialSubmitting,
                     onBack = {
                         viewModel.clearSelectedPost()
@@ -382,12 +416,20 @@ fun HomeScreen(
                     },
                     onLike = { viewModel.togglePostLike(postId) },
                     onFavorite = { viewModel.togglePostFavorite(postId) },
-                    onSubmitComment = { content, parentId ->
-                        viewModel.submitPostComment(postId, content, parentId)
+                    onSubmitComment = { content, parentId, imageUri ->
+                        viewModel.submitPostComment(postId, content, parentId, imageUri)
                     },
-                    onAuthorClick = { authorId ->
-                        navController.navigate("user_profile/$authorId")
+                    onLikeComment = { comment ->
+                        viewModel.toggleCommentLike(postId, comment.id)
                     },
+                    onLoadMoreComments = viewModel::loadMorePostComments,
+                    onLoadMoreReplies = { rootId ->
+                        viewModel.loadMoreCommentReplies(postId, rootId)
+                    },
+                    onCommentSortChange = { sort ->
+                        viewModel.setPostCommentSort(postId, sort)
+                    },
+                    onAuthorClick = ::openAuthorProfile,
                     isAuthorFollowing = uiState.detailAuthorFollowing ?: false,
                     onFollowToggle = {
                         uiState.selectedPost?.authorId?.let { viewModel.toggleDetailAuthorFollow(it) }
@@ -406,6 +448,34 @@ fun HomeScreen(
                         }
                     } ?: uiState.promotionConfig?.postBoostPriceHint(),
                     postBoostBidHint = uiState.promotionConfig?.postBoostBidHint(),
+                    onEdit = uiState.selectedPost?.takeIf { post ->
+                        (uiState.myProfile?.id ?: userSession?.userId) == post.authorId
+                    }?.let { post ->
+                        {
+                            editingPost = post
+                            navController.navigate("edit_post")
+                        }
+                    },
+                    onDelete = uiState.selectedPost?.takeIf { post ->
+                        (uiState.myProfile?.id ?: userSession?.userId) == post.authorId
+                    }?.let {
+                        {
+                            viewModel.deletePost(postId) {
+                                viewModel.clearSelectedPost()
+                                navController.popBackStack()
+                            }
+                        }
+                    },
+                    onOffShelf = uiState.selectedPost?.takeIf { post ->
+                        (uiState.myProfile?.id ?: userSession?.userId) == post.authorId
+                    }?.let {
+                        { viewModel.offShelfPost(postId) }
+                    },
+                    onOnShelf = uiState.selectedPost?.takeIf { post ->
+                        (uiState.myProfile?.id ?: userSession?.userId) == post.authorId
+                    }?.let {
+                        { viewModel.onShelfPost(postId) }
+                    },
                 )
             }
 
@@ -429,7 +499,7 @@ fun HomeScreen(
                     currentUserId = uiState.myProfile?.id ?: userSession?.userId,
                     onBack = { navController.popBackStack() },
                     onViewNote = { navController.navigate("post_detail/$postId") },
-                    onAuthorClick = { authorId -> navController.navigate("user_profile/$authorId") },
+                    onAuthorClick = ::openAuthorProfile,
                     onContactSeller = {
                         uiState.selectedPost?.let { post ->
                             viewModel.startConversationWithProductFromPost(post) { conversationId ->
@@ -449,30 +519,44 @@ fun HomeScreen(
             composable(
                 route = "user_profile/{userId}",
                 arguments = listOf(navArgument("userId") { type = NavType.IntType }),
+                // 含 LazyVerticalStaggeredGrid，侧滑动画会传入无限高度导致闪退
+                enterTransition = { EnterTransition.None },
+                exitTransition = { ExitTransition.None },
+                popEnterTransition = { EnterTransition.None },
+                popExitTransition = { ExitTransition.None },
             ) { backStackEntry ->
                 val userId = backStackEntry.arguments?.getInt("userId") ?: return@composable
                 LaunchedEffect(userId) {
                     userProfileContentTab = 0
                     viewModel.loadUserProfile(userId)
                 }
+                val profileForUser = uiState.selectedUserProfile?.takeIf { it.id == userId }
+                val isLoadingProfile = profileForUser == null &&
+                    (uiState.isUserProfileLoading || uiState.visitorProfileTabs.targetUserId == userId)
+                key(userId) {
                 UserProfileScreen(
-                    profile = uiState.selectedUserProfile,
-                    isLoading = uiState.isUserProfileLoading,
-                    isSelf = userSession?.userId == userId,
-                    profileNotes = uiState.profileNotes,
-                    profileActivities = uiState.profileActivities,
-                    favoritePosts = uiState.profileFavoritePosts,
-                    favoriteActivities = uiState.profileFavoriteActivities,
-                    likedPosts = uiState.profileLikedPosts,
-                    likedActivities = uiState.profileLikedActivities,
-                    comments = uiState.profileComments,
+                    modifier = Modifier.fillMaxSize(),
+                    profile = profileForUser,
+                    isLoading = isLoadingProfile,
+                    isSelf = (uiState.myProfile?.id ?: userSession?.userId) == userId,
+                    profileNotes = uiState.visitorProfileNotes,
+                    profileActivities = uiState.visitorProfileActivities,
+                    favoritePosts = uiState.visitorProfileFavoritePosts,
+                    favoriteActivities = uiState.visitorProfileFavoriteActivities,
+                    likedPosts = uiState.visitorProfileLikedPosts,
+                    likedActivities = uiState.visitorProfileLikedActivities,
+                    comments = uiState.visitorProfileComments,
                     tabUiState = profileTabUiStateFor(
                         selectedTab = userProfileContentTab,
-                        profileTabs = uiState.profileTabs,
+                        profileTabs = uiState.visitorProfileTabs,
                     ),
                     selectedContentTab = userProfileContentTab,
-                    onRefresh = { viewModel.refreshProfileTab(userProfileContentTab, userId) },
-                    onLoadMore = { viewModel.loadMoreProfileTab(userProfileContentTab, userId) },
+                    onRefresh = {
+                        viewModel.refreshProfileTab(userProfileContentTab, userId, forceVisitorBucket = true)
+                    },
+                    onLoadMore = {
+                        viewModel.loadMoreProfileTab(userProfileContentTab, userId, forceVisitorBucket = true)
+                    },
                     onBack = {
                         viewModel.clearUserProfile()
                         navController.popBackStack()
@@ -494,9 +578,10 @@ fun HomeScreen(
                     },
                     onTabSelected = { tab ->
                         userProfileContentTab = tab
-                        viewModel.loadProfileTab(tab, userId)
+                        viewModel.loadProfileTab(tab, userId, forceVisitorBucket = true)
                     },
                 )
+                }
             }
 
             composable("profile_search") {
@@ -530,7 +615,26 @@ fun HomeScreen(
                     onPrivacyChange = viewModel::updatePrivacySettings,
                     onAuthorizeAlipay = viewModel::authorizeAlipayAccount,
                     onUnbindAlipay = viewModel::unbindAlipayAccount,
+                    onOpenLegalDocument = { docId ->
+                        navController.navigate("legal_document/${docId.routeKey}")
+                    },
                 )
+            }
+
+            composable(
+                route = "legal_document/{docKey}",
+                arguments = listOf(navArgument("docKey") { type = NavType.StringType }),
+            ) { backStackEntry ->
+                val docKey = backStackEntry.arguments?.getString("docKey")
+                val docId = docKey?.let { LegalDocumentId.fromRouteKey(it) }
+                if (docId == null) {
+                    navController.popBackStack()
+                } else {
+                    LegalDocumentScreen(
+                        documentId = docId,
+                        onBack = { navController.popBackStack() },
+                    )
+                }
             }
 
             composable("orders") {
@@ -642,9 +746,7 @@ fun HomeScreen(
                     onJoin = { viewModel.joinActivity(activityId) },
                     onLike = { viewModel.toggleActivityLike(activityId) },
                     onFavorite = { viewModel.toggleActivityFavorite(activityId) },
-                    onAuthorClick = { authorId ->
-                        navController.navigate("user_profile/$authorId")
-                    },
+                    onAuthorClick = ::openAuthorProfile,
                     onFollowToggle = {
                         uiState.selectedActivity?.authorId?.let { viewModel.toggleDetailAuthorFollow(it) }
                     },
@@ -660,6 +762,34 @@ fun HomeScreen(
                         }
                     } ?: uiState.promotionConfig?.activityPromotePriceHint(),
                     activityPromoteBidHint = uiState.promotionConfig?.activityPromoteBidHint(),
+                    onEdit = uiState.selectedActivity?.takeIf { activity ->
+                        uiState.myProfile?.id == activity.authorId
+                    }?.let { activity ->
+                        {
+                            editingActivity = activity
+                            navController.navigate("edit_activity")
+                        }
+                    },
+                    onDelete = uiState.selectedActivity?.takeIf { activity ->
+                        uiState.myProfile?.id == activity.authorId
+                    }?.let {
+                        {
+                            viewModel.deleteActivity(activityId) {
+                                viewModel.clearSelectedActivity()
+                                navController.popBackStack()
+                            }
+                        }
+                    },
+                    onOffShelf = uiState.selectedActivity?.takeIf { activity ->
+                        uiState.myProfile?.id == activity.authorId
+                    }?.let {
+                        { viewModel.offShelfActivity(activityId) }
+                    },
+                    onOnShelf = uiState.selectedActivity?.takeIf { activity ->
+                        uiState.myProfile?.id == activity.authorId
+                    }?.let {
+                        { viewModel.onShelfActivity(activityId) }
+                    },
                 )
             }
 
@@ -671,13 +801,17 @@ fun HomeScreen(
                     alipayLoginIdMasked = uiState.myProfile?.alipayLoginIdMasked,
                     onBack = { navController.popBackStack() },
                     onBindAlipay = { navController.navigate("settings") },
-                    onSubmit = { title, content, imageUris, product ->
+                    onSubmit = { title, content, imageUris, category, product, latitude, longitude, location ->
                         isSubmitting = true
                         viewModel.createPost(
                             title = title,
                             content = content,
                             imageUris = imageUris,
+                            category = category,
                             product = product,
+                            latitude = latitude,
+                            longitude = longitude,
+                            location = location,
                             onSuccess = {
                                 navController.popBackStack("main", inclusive = false)
                                 selectedTab = 0
@@ -727,7 +861,7 @@ fun HomeScreen(
                     alipayLoginIdMasked = uiState.myProfile?.alipayLoginIdMasked,
                     onBack = { navController.popBackStack() },
                     onBindAlipay = { navController.navigate("settings") },
-                    onSubmit = { title, content, imageUris, _ ->
+                    onSubmit = { title, content, imageUris, category, _, latitude, longitude, location ->
                         editingPost?.let { post ->
                             isSubmitting = true
                             viewModel.updatePost(
@@ -736,6 +870,10 @@ fun HomeScreen(
                                 content = content,
                                 imageUris = imageUris,
                                 existingImages = post.images.orEmpty(),
+                                category = category,
+                                latitude = latitude,
+                                longitude = longitude,
+                                location = location,
                                 onSuccess = { navController.popBackStack() },
                                 onComplete = { isSubmitting = false },
                             )
@@ -774,6 +912,7 @@ fun HomeScreen(
                     },
                 )
             }
+        }
         }
 
         ProfileSideMenuOverlay(

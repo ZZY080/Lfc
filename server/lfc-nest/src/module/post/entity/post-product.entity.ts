@@ -42,7 +42,7 @@ export class PostProductEntity {
   @Column({
     type: 'enum',
     enum: PostProductCategory,
-    default: PostProductCategory.SECOND_HAND,
+    default: PostProductCategory.GENERAL,
   })
   category: PostProductCategory;
 

@@ -5,11 +5,12 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In } from 'typeorm';
+import { Repository, In, IsNull } from 'typeorm';
 import { PostEntity } from '@module/post/entity/post.entity';
 import { PostLikeEntity } from '@module/post/entity/post-like.entity';
 import { PostFavoriteEntity } from '@module/post/entity/post-favorite.entity';
 import { PostCommentEntity } from '@module/post/entity/post-comment.entity';
+import { PostCommentLikeEntity } from '@module/post/entity/post-comment-like.entity';
 import { RoleAuthzService } from '@shared/auth/role-authz.service';
 import { UserRole } from '@shared/enum/user-role.enum';
 import { CreatePostCommentBodyDto } from '@module/post/dto/post-social.dto';
@@ -29,6 +30,8 @@ export class ConsumerPostSocialService {
     private readonly favoriteRepository: Repository<PostFavoriteEntity>,
     @InjectRepository(PostCommentEntity)
     private readonly commentRepository: Repository<PostCommentEntity>,
+    @InjectRepository(PostCommentLikeEntity)
+    private readonly commentLikeRepository: Repository<PostCommentLikeEntity>,
     private readonly roleAuthzService: RoleAuthzService,
   ) {}
 
@@ -128,13 +131,178 @@ export class ConsumerPostSocialService {
     return this.buildSocialState(post, userId);
   }
 
-  async findComments(postId: number) {
+  async findComments(
+    postId: number,
+    page?: number,
+    limit?: number,
+    sort: 'default' | 'newest' = 'default',
+    userId?: number,
+  ) {
     await this.findPost(postId);
-    return this.commentRepository.find({
-      where: { postId },
+    const { page: normalizedPage, limit: normalizedLimit, skip } =
+      normalizePagination(page, limit);
+    const order = sort === 'newest' ? 'DESC' : 'ASC';
+
+    const [topLevel, total] = await this.commentRepository.findAndCount({
+      where: { postId, parentId: IsNull() },
+      relations: ['author'],
+      order: { createdAt: order as 'ASC' | 'DESC' },
+      skip,
+      take: normalizedLimit,
+    });
+
+    if (topLevel.length === 0) {
+      return createPaginatedResult([], total, normalizedPage, normalizedLimit);
+    }
+
+    const rootIds = topLevel.map((comment) => comment.id);
+    const [replyCounts, previewReplies] = await Promise.all([
+      this.countRepliesByRoot(postId, rootIds),
+      this.loadPreviewReplies(postId, rootIds, userId),
+    ]);
+
+    const enrichedTop = await this.enrichComments(topLevel, userId);
+    const items = enrichedTop.map((comment) => ({
+      ...comment,
+      replyCount: replyCounts.get(comment.id) ?? 0,
+      previewReplies: previewReplies.get(comment.id) ?? [],
+    }));
+
+    return createPaginatedResult(
+      items,
+      total,
+      normalizedPage,
+      normalizedLimit,
+    );
+  }
+
+  async findCommentReplies(
+    postId: number,
+    rootCommentId: number,
+    page?: number,
+    limit?: number,
+    userId?: number,
+  ) {
+    await this.findPost(postId);
+    const root = await this.commentRepository.findOne({
+      where: { id: rootCommentId, postId, parentId: IsNull() },
+    });
+    if (!root) {
+      throw new NotFoundException('评论不存在');
+    }
+
+    const normalizedPage = Math.max(page ?? 1, 1);
+    const normalizedLimit = Math.min(Math.max(limit ?? 20, 1), 50);
+    const skip = (normalizedPage - 1) * normalizedLimit;
+
+    const [replies, total] = await this.commentRepository.findAndCount({
+      where: { postId, rootId: rootCommentId },
       relations: ['author'],
       order: { createdAt: 'ASC' },
+      skip,
+      take: normalizedLimit,
     });
+
+    const items = await this.enrichComments(replies, userId);
+    return createPaginatedResult(
+      items,
+      total,
+      normalizedPage,
+      normalizedLimit,
+    );
+  }
+
+  private async countRepliesByRoot(postId: number, rootIds: number[]) {
+    const counts = new Map<number, number>();
+    if (rootIds.length === 0) {
+      return counts;
+    }
+
+    const rows = await this.commentRepository
+      .createQueryBuilder('comment')
+      .select('comment.rootId', 'rootId')
+      .addSelect('COUNT(*)', 'count')
+      .where('comment.postId = :postId', { postId })
+      .andWhere('comment.rootId IN (:...rootIds)', { rootIds })
+      .groupBy('comment.rootId')
+      .getRawMany<{ rootId: string; count: string }>();
+
+    rows.forEach((row) => {
+      counts.set(Number(row.rootId), Number(row.count));
+    });
+    return counts;
+  }
+
+  private async loadPreviewReplies(
+    postId: number,
+    rootIds: number[],
+    userId?: number,
+    previewSize = 2,
+  ) {
+    const previews = new Map<number, PostCommentEntity[]>();
+    if (rootIds.length === 0) {
+      return previews;
+    }
+
+    await Promise.all(
+      rootIds.map(async (rootId) => {
+        const replies = await this.commentRepository.find({
+          where: { postId, rootId },
+          relations: ['author'],
+          order: { createdAt: 'ASC' },
+          take: previewSize,
+        });
+        previews.set(rootId, replies);
+      }),
+    );
+
+    const flatReplies = [...previews.values()].flat();
+    const enriched = await this.enrichComments(flatReplies, userId);
+    const enrichedMap = new Map(enriched.map((reply) => [reply.id, reply]));
+
+    const result = new Map<number, typeof enriched>();
+    previews.forEach((replies, rootId) => {
+      result.set(
+        rootId,
+        replies.flatMap((reply) => {
+          const item = enrichedMap.get(reply.id);
+          return item ? [item] : [];
+        }),
+      );
+    });
+    return result;
+  }
+
+  async toggleCommentLike(userId: number, commentId: number) {
+    await this.roleAuthzService.assertRole(userId, UserRole.CONSUMER);
+    const comment = await this.commentRepository.findOne({
+      where: { id: commentId },
+    });
+    if (!comment) {
+      throw new NotFoundException('评论不存在');
+    }
+
+    const existing = await this.commentLikeRepository.findOne({
+      where: { commentId, userId },
+    });
+
+    if (existing) {
+      await this.commentLikeRepository.remove(existing);
+      comment.likeCount = Math.max(0, comment.likeCount - 1);
+    } else {
+      await this.commentLikeRepository.save(
+        this.commentLikeRepository.create({ commentId, userId }),
+      );
+      comment.likeCount += 1;
+    }
+
+    await this.commentRepository.save(comment);
+
+    return {
+      commentId: comment.id,
+      likeCount: comment.likeCount,
+      isLiked: !existing,
+    };
   }
 
   async createComment(
@@ -146,14 +314,15 @@ export class ConsumerPostSocialService {
     const post = await this.findPost(postId);
     const content = body.content.trim();
 
-    if (body.parentId) {
-      const parent = await this.commentRepository.findOne({
-        where: { id: body.parentId, postId },
-      });
-      if (!parent) {
-        throw new BadRequestException('回复的评论不存在');
-      }
+    const parent = body.parentId
+      ? await this.commentRepository.findOne({
+          where: { id: body.parentId, postId },
+        })
+      : null;
+    if (body.parentId && !parent) {
+      throw new BadRequestException('回复的评论不存在');
     }
+    const rootId = parent ? (parent.rootId ?? parent.id) : null;
 
     const comment = await this.commentRepository.save(
       this.commentRepository.create({
@@ -161,16 +330,22 @@ export class ConsumerPostSocialService {
         userId,
         content,
         parentId: body.parentId ?? null,
+        rootId,
       }),
     );
 
     post.commentCount += 1;
     await this.postRepository.save(post);
 
-    return this.commentRepository.findOne({
+    const saved = await this.commentRepository.findOne({
       where: { id: comment.id },
       relations: ['author'],
     });
+    if (!saved) {
+      throw new NotFoundException('评论不存在');
+    }
+    const [enriched] = await this.enrichComments([saved], userId);
+    return enriched;
   }
 
   async removeComment(userId: number, commentId: number) {
@@ -295,6 +470,34 @@ export class ConsumerPostSocialService {
     return createPaginatedResult(items, total, normalizedPage, normalizedLimit);
   }
 
+  private async enrichComments(
+    comments: PostCommentEntity[],
+    userId?: number,
+  ) {
+    if (comments.length === 0) {
+      return [];
+    }
+
+    if (!userId) {
+      return comments.map((comment) => ({
+        ...comment,
+        isLiked: false,
+      }));
+    }
+
+    const commentIds = comments.map((comment) => comment.id);
+    const likes = await this.commentLikeRepository.find({
+      where: { userId, commentId: In(commentIds) },
+      select: ['commentId'],
+    });
+    const likedIds = new Set(likes.map((item) => item.commentId));
+
+    return comments.map((comment) => ({
+      ...comment,
+      isLiked: likedIds.has(comment.id),
+    }));
+  }
+
   private async attachPostsToComments(
     comments: PostCommentEntity[],
     userId: number,
@@ -303,7 +506,9 @@ export class ConsumerPostSocialService {
       return [];
     }
 
-    const postIds = [...new Set(comments.map((item) => item.postId))];
+    const enrichedComments = await this.enrichComments(comments, userId);
+
+    const postIds = [...new Set(enrichedComments.map((item) => item.postId))];
     const posts = await this.postRepository.find({
       where: { id: In(postIds) },
       relations: ['author'],
@@ -311,7 +516,7 @@ export class ConsumerPostSocialService {
     const enrichedPosts = await this.enrichPosts(posts, userId);
     const enrichedMap = new Map(enrichedPosts.map((post) => [post.id, post]));
 
-    return comments.map((comment) => ({
+    return enrichedComments.map((comment) => ({
       ...comment,
       post: enrichedMap.get(comment.postId) ?? null,
     }));

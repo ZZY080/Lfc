@@ -8,6 +8,7 @@ import { PostProductEntity } from '@module/post/entity/post-product.entity';
 import { PostLikeEntity } from '@module/post/entity/post-like.entity';
 import { PostFavoriteEntity } from '@module/post/entity/post-favorite.entity';
 import { PostCommentEntity } from '@module/post/entity/post-comment.entity';
+import { PostCommentLikeEntity } from '@module/post/entity/post-comment-like.entity';
 import { ActivityEntity } from '@module/activity/entity/activity.entity';
 import { ActivityParticipantEntity } from '@module/activity/entity/activity-participant.entity';
 import { ActivityLikeEntity } from '@module/activity/entity/activity-like.entity';
@@ -42,6 +43,7 @@ import { PaymentAfterSalesEntity } from '@module/payment/entity/payment-after-sa
           PostLikeEntity,
           PostFavoriteEntity,
           PostCommentEntity,
+          PostCommentLikeEntity,
           ActivityEntity,
           ActivityParticipantEntity,
           ActivityLikeEntity,

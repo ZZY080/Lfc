@@ -293,9 +293,7 @@ fun SearchResultScreen(
         ) {
             when {
                 searchState.isLoading -> {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = XhsRed)
-                    }
+                    FeedGridSkeleton()
                 }
                 isEmpty -> {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -391,14 +389,7 @@ private fun SearchProfilePostCard(
 
 @Composable
 private fun SearchLoadingFooter() {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(16.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        CircularProgressIndicator(color = XhsRed, modifier = Modifier.size(24.dp))
-    }
+    SkeletonLoadMoreFooter()
 }
 
 @Composable

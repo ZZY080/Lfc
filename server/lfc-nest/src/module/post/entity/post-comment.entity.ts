@@ -23,8 +23,15 @@ export class PostCommentEntity {
   @Column({ type: 'text' })
   content: string;
 
+  @Column({ name: 'like_count', default: 0 })
+  likeCount: number;
+
   @Column({ name: 'parent_id', nullable: true })
   parentId: number | null;
+
+  /** 所属楼层（一级评论 id），便于按楼分页查回复 */
+  @Column({ name: 'root_id', type: 'int', nullable: true })
+  rootId: number | null;
 
   @ManyToOne(() => PostEntity, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'post_id' })

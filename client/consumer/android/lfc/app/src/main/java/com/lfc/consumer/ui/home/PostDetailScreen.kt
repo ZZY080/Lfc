@@ -1,78 +1,62 @@
 package com.lfc.consumer.ui.home
 
-import androidx.compose.foundation.BorderStroke
+import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshotFlow
+import com.lfc.consumer.data.model.PostCommentsUiState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.outlined.Send
-import androidx.compose.material.icons.filled.ChatBubbleOutline
-import androidx.compose.material.icons.filled.Create
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.StarBorder
-import androidx.compose.material.icons.outlined.Sort
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lfc.consumer.data.model.PostCommentDto
 import com.lfc.consumer.data.model.PostDto
 import com.lfc.consumer.data.model.displayName
-import com.lfc.consumer.ui.theme.XhsRed
 import com.lfc.consumer.ui.theme.XhsTextPrimary
 import com.lfc.consumer.ui.theme.XhsTextSecondary
 
 @Composable
 fun PostDetailScreen(
     post: PostDto?,
-    comments: List<PostCommentDto>,
+    commentsUi: PostCommentsUiState,
     currentUserLabel: String,
     currentUserAvatarUrl: String? = null,
     isLoading: Boolean,
-    isCommentsLoading: Boolean,
     isSocialSubmitting: Boolean,
     onBack: () -> Unit,
     onLike: () -> Unit,
     onFavorite: () -> Unit,
-    onSubmitComment: (String, Int?) -> Unit,
+    onSubmitComment: (String, Int?, Uri?) -> Unit,
+    onLikeComment: (PostCommentDto) -> Unit = {},
+    onLoadMoreComments: () -> Unit = {},
+    onLoadMoreReplies: (Int) -> Unit = {},
+    onCommentSortChange: (String) -> Unit = {},
     onAuthorClick: (Int) -> Unit = {},
     onFollowToggle: () -> Unit = {},
     isAuthorFollowing: Boolean = false,
@@ -84,10 +68,49 @@ fun PostDetailScreen(
     postBoostActiveHint: String = "擦亮期间将在推荐流优先展示",
     postBoostPriceHint: String? = null,
     postBoostBidHint: String? = null,
+    onEdit: (() -> Unit)? = null,
+    onDelete: (() -> Unit)? = null,
+    onOffShelf: (() -> Unit)? = null,
+    onOnShelf: (() -> Unit)? = null,
 ) {
     var commentInput by remember { mutableStateOf("") }
     var replyToCommentId by remember { mutableStateOf<Int?>(null) }
     var replyToLabel by remember { mutableStateOf<String?>(null) }
+    var showComposer by remember { mutableStateOf(false) }
+    var pendingCommentImageUri by remember { mutableStateOf<Uri?>(null) }
+    var openComposerPickImage by remember { mutableStateOf(false) }
+
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
+
+    fun openComposer(replyId: Int? = null, replyLabel: String? = null, pickImage: Boolean = false) {
+        replyToCommentId = replyId
+        replyToLabel = replyLabel
+        openComposerPickImage = pickImage
+        showComposer = true
+    }
+
+    fun dismissComposer() {
+        keyboardController?.hide()
+        focusManager.clearFocus()
+        showComposer = false
+        replyToCommentId = null
+        replyToLabel = null
+        pendingCommentImageUri = null
+        openComposerPickImage = false
+    }
+
+    fun submitComment() {
+        val content = commentInput.trim()
+        if (content.isBlank() && pendingCommentImageUri == null) return
+        onSubmitComment(content, replyToCommentId, pendingCommentImageUri)
+        commentInput = ""
+        dismissComposer()
+    }
+
+    BackHandler(enabled = showComposer) {
+        dismissComposer()
+    }
 
     Box(
         modifier = Modifier
@@ -105,6 +128,30 @@ fun PostDetailScreen(
                 val displayBody = postDisplayBody(post)
                 val product = post.product
                 val isSelf = currentUserId != null && currentUserId == post.authorId
+                val commentThreads = remember(commentsUi) { buildCommentThreads(commentsUi) }
+                val commentIndex = remember(commentsUi.comments) { commentsUi.comments.associateBy { it.id } }
+                val sortOrder = commentSortOrder(commentsUi.sort)
+                val listState = rememberLazyListState()
+                val mentionCandidates = remember(post.id, commentsUi.comments) {
+                    buildCommentMentionCandidates(
+                        postAuthorId = post.authorId,
+                        postAuthorLabel = authorLabel,
+                        comments = commentsUi.comments,
+                    )
+                }
+
+                LaunchedEffect(listState, commentsUi.hasMore, commentsUi.isLoadingMore, commentThreads.size) {
+                    snapshotFlow {
+                        val layoutInfo = listState.layoutInfo
+                        val total = layoutInfo.totalItemsCount
+                        val lastVisible = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+                        total > 0 && lastVisible >= total - 3
+                    }.collect { nearEnd ->
+                        if (nearEnd && commentsUi.hasMore && !commentsUi.isLoadingMore && !commentsUi.isInitialLoading) {
+                            onLoadMoreComments()
+                        }
+                    }
+                }
 
                 Column(modifier = Modifier.fillMaxSize()) {
                     PostDetailHeader(
@@ -116,162 +163,159 @@ fun PostDetailScreen(
                         onBack = onBack,
                         onAuthorClick = onAuthorClick,
                         onFollowToggle = onFollowToggle,
+                        isSelf = isSelf,
+                        isOffShelf = !post.isVisible,
+                        onEdit = onEdit,
+                        onDelete = onDelete,
+                        onOffShelf = onOffShelf,
+                        onOnShelf = onOnShelf,
                     )
 
-                    LazyColumn(
+                    Box(
                         modifier = Modifier
                             .weight(1f)
-                            .imePadding(),
+                            .fillMaxWidth(),
                     ) {
-                        if (images.isNotEmpty()) {
-                            item {
-                                XhsDetailImageCarousel(
-                                    images = images,
-                                    contentDescription = displayTitle ?: post.title,
-                                )
-                            }
-                        }
-
-                        item {
-                            PostDetailContentSection(
-                                title = displayTitle,
-                                body = displayBody,
-                                createdAt = post.createdAt,
-                                hasImages = images.isNotEmpty(),
-                            )
-                        }
-
-                        if (product != null) {
-                            item {
-                                PostProductLinkCard(
-                                    post = post,
-                                    product = product,
-                                    onClick = { onProductClick(post.id) },
-                                )
-                            }
-                        }
-
-                        if (isSelf && onBoost != null) {
-                            item {
-                                PromotionOwnerActionCard(
-                                    promotion = post.promotion,
-                                    actionLabel = postBoostActionLabel,
-                                    activeHint = postBoostActiveHint,
-                                    cooldownHint = post.promotion?.nextAvailableAt?.let {
-                                        "冷却中，下次可擦亮：$it"
-                                    },
-                                    priceHint = postBoostPriceHint,
-                                    bidHint = postBoostBidHint,
-                                    isSubmitting = isPromotionSubmitting,
-                                    onAction = onBoost,
-                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                                )
-                            }
-                        }
-
-                        item {
-                            PostCommentsHeader(commentCount = post.commentCount)
-                        }
-
-                        item {
-                            PostQuickCommentRow(
-                                userLabel = currentUserLabel,
-                                userAvatarUrl = currentUserAvatarUrl,
-                                onClick = { /* focus handled by bottom bar */ },
-                            )
-                        }
-
-                        if (isCommentsLoading) {
-                            item {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(24.dp),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Text("加载评论中…", color = XhsTextSecondary, fontSize = 14.sp)
-                                }
-                            }
-                        } else if (comments.isEmpty()) {
-                            item {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 16.dp, vertical = 28.dp),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Text(
-                                        "还没有评论，快来抢沙发吧",
-                                        color = XhsTextSecondary,
-                                        fontSize = 14.sp,
+                        LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
+                            if (images.isNotEmpty()) {
+                                item {
+                                    XhsDetailImageCarousel(
+                                        images = images,
+                                        contentDescription = displayTitle ?: post.title,
                                     )
                                 }
                             }
+
+                            item {
+                                PostDetailContentSection(
+                                    title = displayTitle,
+                                    body = displayBody,
+                                    createdAt = post.createdAt,
+                                    hasImages = images.isNotEmpty(),
+                                    latitude = post.latitude,
+                                    longitude = post.longitude,
+                                )
+                            }
+
+                            if (product != null) {
+                                item {
+                                    PostProductLinkCard(
+                                        post = post,
+                                        product = product,
+                                        onClick = { onProductClick(post.id) },
+                                    )
+                                }
+                            }
+
+                            if (isSelf && onBoost != null) {
+                                item {
+                                    PromotionOwnerActionCard(
+                                        promotion = post.promotion,
+                                        actionLabel = postBoostActionLabel,
+                                        activeHint = postBoostActiveHint,
+                                        cooldownHint = post.promotion?.nextAvailableAt?.let {
+                                            "冷却中，下次可擦亮：$it"
+                                        },
+                                        priceHint = postBoostPriceHint,
+                                        bidHint = postBoostBidHint,
+                                        isSubmitting = isPromotionSubmitting,
+                                        onAction = onBoost,
+                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                                    )
+                                }
+                            }
+
+                            item {
+                                PostCommentsHeader(
+                                    commentCount = post.commentCount,
+                                    sortOrder = sortOrder,
+                                    onSortToggle = { onCommentSortChange(nextCommentSort(commentsUi.sort)) },
+                                )
+                            }
+                            item {
+                                PostQuickCommentTrigger(
+                                    userLabel = currentUserLabel,
+                                    userAvatarUrl = currentUserAvatarUrl,
+                                    onClick = { openComposer() },
+                                    onImageClick = { openComposer(pickImage = true) },
+                                )
+                            }
+
+                            when {
+                                commentsUi.isInitialLoading -> {
+                                    item { PostCommentsLoadingState() }
+                                }
+                                commentThreads.isEmpty() -> {
+                                    item { PostCommentsEmptyState() }
+                                }
+                                else -> {
+                                    items(
+                                        items = commentThreads,
+                                        key = { it.root.id },
+                                    ) { thread ->
+                                        val isFirstComment = thread.root.id == commentThreads.first().root.id &&
+                                            commentsUi.sort == "default"
+                                        PostCommentThreadItem(
+                                            thread = thread,
+                                            postAuthorId = post.authorId,
+                                            commentIndex = commentIndex,
+                                            isFirstComment = isFirstComment,
+                                            onReplyTo = { comment ->
+                                                openComposer(
+                                                    replyId = comment.id,
+                                                    replyLabel = comment.author?.displayName()
+                                                        ?: "同学${comment.userId}",
+                                                )
+                                            },
+                                            onLikeComment = onLikeComment,
+                                            onLoadMoreReplies = { onLoadMoreReplies(thread.root.id) },
+                                        )
+                                    }
+                                }
+                            }
+
+                            if (commentThreads.isNotEmpty() && (commentsUi.isLoadingMore || commentsUi.hasMore)) {
+                                item {
+                                    PostCommentsLoadMoreFooter(isLoading = commentsUi.isLoadingMore)
+                                }
+                            }
+
+                            item { Spacer(modifier = Modifier.height(8.dp)) }
+                        }
+
+                        if (showComposer) {
+                            PostCommentScrim(onDismiss = ::dismissComposer)
+                        }
+                    }
+
+                    Box(modifier = Modifier.imePadding()) {
+                        if (showComposer) {
+                            PostCommentExpandedPanel(
+                                replyToLabel = replyToLabel,
+                                value = commentInput,
+                                onValueChange = { commentInput = it },
+                                pendingImageUri = pendingCommentImageUri,
+                                onPendingImageChange = { pendingCommentImageUri = it },
+                                requestPickImageOnOpen = openComposerPickImage,
+                                onPickImageRequestHandled = { openComposerPickImage = false },
+                                mentionCandidates = mentionCandidates,
+                                isSubmitting = isSocialSubmitting,
+                                onSubmit = ::submitComment,
+                            )
                         } else {
-                            val topLevel = comments.filter { it.parentId == null }
-                            items(topLevel, key = { it.id }) { comment ->
-                                PostCommentItem(
-                                    comment = comment,
-                                    postAuthorId = post.authorId,
-                                    replies = comments.filter { it.parentId == comment.id },
-                                    onReply = {
-                                        replyToCommentId = comment.id
-                                        replyToLabel = comment.author?.displayName() ?: "同学${comment.userId}"
-                                    },
-                                )
-                            }
-                        }
-
-                        item { Spacer(modifier = Modifier.height(12.dp)) }
-                    }
-
-                    if (replyToLabel != null) {
-                        Surface(color = Color(0xFFF8F8F8)) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text(
-                                    text = "回复 $replyToLabel",
-                                    modifier = Modifier.weight(1f),
-                                    fontSize = 13.sp,
-                                    color = XhsTextSecondary,
-                                )
-                                Text(
-                                    text = "取消",
-                                    modifier = Modifier.clickable {
-                                        replyToCommentId = null
-                                        replyToLabel = null
-                                    },
-                                    fontSize = 13.sp,
-                                    color = XhsRed,
-                                )
-                            }
+                            PostDetailInteractionBar(
+                                likeCount = post.likeCount,
+                                favoriteCount = post.favoriteCount,
+                                commentCount = post.commentCount,
+                                isLiked = post.isLiked,
+                                isFavorited = post.isFavorited,
+                                isSubmitting = isSocialSubmitting,
+                                onCommentClick = { openComposer() },
+                                onLike = onLike,
+                                onFavorite = onFavorite,
+                            )
                         }
                     }
-
-                    XhsPostDetailBottomBar(
-                        likeCount = post.likeCount,
-                        favoriteCount = post.favoriteCount,
-                        commentCount = post.commentCount,
-                        isLiked = post.isLiked,
-                        isFavorited = post.isFavorited,
-                        commentInput = commentInput,
-                        onCommentInputChange = { commentInput = it },
-                        isSubmitting = isSocialSubmitting,
-                        onLike = onLike,
-                        onFavorite = onFavorite,
-                        onSubmitComment = {
-                            if (commentInput.isNotBlank()) {
-                                onSubmitComment(commentInput.trim(), replyToCommentId)
-                                commentInput = ""
-                                replyToCommentId = null
-                                replyToLabel = null
-                            }
-                        },
-                    )
                 }
             }
         }
@@ -300,8 +344,13 @@ private fun PostDetailHeader(
     onBack: () -> Unit,
     onAuthorClick: (Int) -> Unit,
     onFollowToggle: () -> Unit,
+    isSelf: Boolean = false,
+    isOffShelf: Boolean = false,
+    onEdit: (() -> Unit)? = null,
+    onDelete: (() -> Unit)? = null,
+    onOffShelf: (() -> Unit)? = null,
+    onOnShelf: (() -> Unit)? = null,
 ) {
-    val isSelf = currentUserId != null && currentUserId == authorId
     XhsDetailAuthorHeader(
         authorLabel = authorLabel,
         authorId = authorId,
@@ -316,13 +365,25 @@ private fun PostDetailHeader(
             )
         }
 
-        IconButton(onClick = { }, modifier = Modifier.size(40.dp)) {
-            Icon(
-                Icons.Default.Share,
-                contentDescription = "分享",
-                tint = XhsTextPrimary,
-                modifier = Modifier.size(20.dp),
+        if (isSelf && onEdit != null && onDelete != null && onOffShelf != null && onOnShelf != null) {
+            OwnerContentManageButton(
+                showShelfActions = true,
+                isOffShelf = isOffShelf,
+                contentLabel = "笔记",
+                onEdit = onEdit,
+                onDelete = onDelete,
+                onOffShelf = onOffShelf,
+                onOnShelf = onOnShelf,
             )
+        } else {
+            IconButton(onClick = { }, modifier = Modifier.size(40.dp)) {
+                Icon(
+                    Icons.Default.Share,
+                    contentDescription = "分享",
+                    tint = XhsTextPrimary,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
         }
     }
 }
@@ -333,6 +394,8 @@ private fun PostDetailContentSection(
     body: String,
     createdAt: String,
     hasImages: Boolean,
+    latitude: Double? = null,
+    longitude: Double? = null,
 ) {
     Column(
         modifier = Modifier
@@ -366,301 +429,12 @@ private fun PostDetailContentSection(
             fontSize = 12.sp,
             color = XhsTextSecondary,
         )
-    }
-}
-
-@Composable
-private fun PostCommentsHeader(commentCount: Int) {
-    HorizontalDivider(color = Color(0xFFF5F5F5), thickness = 6.dp)
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = "共 $commentCount 条评论",
-            modifier = Modifier.weight(1f),
-            fontWeight = FontWeight.Bold,
-            fontSize = 14.sp,
-            color = XhsTextPrimary,
+        Spacer(modifier = Modifier.height(8.dp))
+        XhsDistanceLabel(
+            targetLatitude = latitude,
+            targetLongitude = longitude,
+            fontSize = 12.sp,
+            iconSize = 13.dp,
         )
-        Icon(
-            Icons.Outlined.Sort,
-            contentDescription = "排序",
-            tint = XhsTextSecondary,
-            modifier = Modifier.size(18.dp),
-        )
-    }
-}
-
-@Composable
-private fun PostQuickCommentRow(
-    userLabel: String,
-    userAvatarUrl: String? = null,
-    onClick: () -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        XhsProfileAvatar(label = userLabel, size = 32, avatarUrl = userAvatarUrl)
-        Spacer(modifier = Modifier.width(10.dp))
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .height(36.dp)
-                .clip(RoundedCornerShape(18.dp))
-                .background(Color(0xFFF5F5F5))
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = onClick,
-                ),
-            contentAlignment = Alignment.CenterStart,
-        ) {
-            Text(
-                text = "留下你的想法吧",
-                modifier = Modifier.padding(horizontal = 14.dp),
-                color = XhsTextSecondary,
-                fontSize = 14.sp,
-            )
-        }
-    }
-}
-
-@Composable
-private fun PostCommentItem(
-    comment: PostCommentDto,
-    postAuthorId: Int,
-    replies: List<PostCommentDto>,
-    onReply: () -> Unit,
-) {
-    val authorLabel = comment.author?.displayName() ?: "同学${comment.userId}"
-    val authorAvatarUrl = comment.author?.avatarUrl
-    val isAuthor = comment.userId == postAuthorId
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-    ) {
-        Row(verticalAlignment = Alignment.Top) {
-            XhsProfileAvatar(label = authorLabel, size = 34, avatarUrl = authorAvatarUrl)
-            Spacer(modifier = Modifier.width(10.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = authorLabel,
-                        fontSize = 13.sp,
-                        color = XhsTextSecondary,
-                    )
-                    if (isAuthor) {
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Surface(
-                            shape = RoundedCornerShape(4.dp),
-                            color = XhsRed.copy(alpha = 0.1f),
-                        ) {
-                            Text(
-                                text = "作者",
-                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
-                                fontSize = 10.sp,
-                                color = XhsRed,
-                            )
-                        }
-                    }
-                }
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = comment.content,
-                    fontSize = 15.sp,
-                    color = XhsTextPrimary,
-                    lineHeight = 22.sp,
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = formatRelativeTime(comment.createdAt),
-                        fontSize = 11.sp,
-                        color = XhsTextSecondary,
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text(
-                        text = "回复",
-                        modifier = Modifier.clickable(onClick = onReply),
-                        fontSize = 12.sp,
-                        color = XhsTextSecondary,
-                        fontWeight = FontWeight.Medium,
-                    )
-                }
-            }
-            Icon(
-                Icons.Default.FavoriteBorder,
-                contentDescription = "赞",
-                tint = Color(0xFFCCCCCC),
-                modifier = Modifier
-                    .size(18.dp)
-                    .padding(top = 2.dp),
-            )
-        }
-
-        if (replies.isNotEmpty()) {
-            Column(
-                modifier = Modifier
-                    .padding(start = 44.dp, top = 10.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0xFFFAFAFA))
-                    .padding(10.dp),
-            ) {
-                replies.forEach { reply ->
-                    PostReplyItem(
-                        reply = reply,
-                        postAuthorId = postAuthorId,
-                    )
-                    if (reply != replies.last()) {
-                        Spacer(modifier = Modifier.height(10.dp))
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun PostReplyItem(
-    reply: PostCommentDto,
-    postAuthorId: Int,
-) {
-    val replyLabel = reply.author?.displayName() ?: "同学${reply.userId}"
-    val replyAvatarUrl = reply.author?.avatarUrl
-    val isAuthor = reply.userId == postAuthorId
-
-    Row {
-        XhsProfileAvatar(label = replyLabel, size = 22, avatarUrl = replyAvatarUrl)
-        Spacer(modifier = Modifier.width(8.dp))
-        Column {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(replyLabel, fontSize = 12.sp, color = XhsTextSecondary)
-                if (isAuthor) {
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("作者", fontSize = 10.sp, color = XhsRed)
-                }
-            }
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = reply.content,
-                fontSize = 14.sp,
-                color = XhsTextPrimary,
-                lineHeight = 20.sp,
-            )
-        }
-    }
-}
-
-@Composable
-fun XhsPostDetailBottomBar(
-    likeCount: Int,
-    favoriteCount: Int,
-    commentCount: Int,
-    isLiked: Boolean,
-    isFavorited: Boolean,
-    commentInput: String,
-    onCommentInputChange: (String) -> Unit,
-    isSubmitting: Boolean,
-    onLike: () -> Unit,
-    onFavorite: () -> Unit,
-    onSubmitComment: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        shadowElevation = 6.dp,
-        color = Color.White,
-    ) {
-        Column {
-            HorizontalDivider(color = Color(0xFFEEEEEE))
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .navigationBarsPadding()
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Row(
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(38.dp)
-                        .clip(RoundedCornerShape(19.dp))
-                        .background(Color(0xFFF5F5F5))
-                        .padding(horizontal = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(
-                        Icons.Default.Create,
-                        contentDescription = null,
-                        tint = XhsTextSecondary,
-                        modifier = Modifier.size(16.dp),
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    BasicTextField(
-                        value = commentInput,
-                        onValueChange = onCommentInputChange,
-                        enabled = !isSubmitting,
-                        singleLine = true,
-                        textStyle = TextStyle(fontSize = 14.sp, color = XhsTextPrimary),
-                        cursorBrush = SolidColor(XhsRed),
-                        decorationBox = { inner ->
-                            Box(contentAlignment = Alignment.CenterStart) {
-                                if (commentInput.isEmpty()) {
-                                    Text("说点什么...", color = XhsTextSecondary, fontSize = 14.sp)
-                                }
-                                inner()
-                            }
-                        },
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-
-                if (commentInput.isNotBlank()) {
-                    IconButton(onClick = onSubmitComment, enabled = !isSubmitting) {
-                        Icon(
-                            Icons.AutoMirrored.Outlined.Send,
-                            contentDescription = "发送",
-                            tint = XhsRed,
-                        )
-                    }
-                } else {
-                    Spacer(modifier = Modifier.width(4.dp))
-                    XhsDetailSocialChip(
-                        icon = {
-                            Icon(
-                                if (isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                                contentDescription = "点赞",
-                                tint = if (isLiked) XhsRed else XhsTextPrimary,
-                                modifier = Modifier.size(24.dp),
-                            )
-                        },
-                        count = likeCount,
-                        onClick = onLike,
-                        enabled = !isSubmitting,
-                    )
-                    XhsDetailSocialChip(
-                        icon = {
-                            Icon(
-                                if (isFavorited) Icons.Default.Star else Icons.Default.StarBorder,
-                                contentDescription = "收藏",
-                                tint = if (isFavorited) Color(0xFFFFB800) else XhsTextPrimary,
-                                modifier = Modifier.size(24.dp),
-                            )
-                        },
-                        count = favoriteCount,
-                        onClick = onFavorite,
-                        enabled = !isSubmitting,
-                    )
-                }
-            }
-        }
     }
 }

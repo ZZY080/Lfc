@@ -1,8 +1,16 @@
 export enum PostProductCategory {
+  GENERAL = 'GENERAL',
   SECOND_HAND = 'SECOND_HAND',
   DIGITAL = 'DIGITAL',
   BOOK = 'BOOK',
   DAILY = 'DAILY',
+  CLOTHING = 'CLOTHING',
+  FOOD = 'FOOD',
+  BEAUTY = 'BEAUTY',
+  SPORTS = 'SPORTS',
+  HANDMADE = 'HANDMADE',
+  TICKET = 'TICKET',
+  SERVICE = 'SERVICE',
   OTHER = 'OTHER',
 }
 

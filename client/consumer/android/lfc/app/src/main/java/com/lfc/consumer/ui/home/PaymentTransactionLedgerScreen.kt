@@ -131,9 +131,7 @@ fun PaymentTransactionLedgerScreen(
         ) {
             when {
                 state.isInitialLoading && state.items.isEmpty() -> {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = XhsRed)
-                    }
+                    PaymentLedgerSkeleton()
                 }
                 state.items.isEmpty() -> {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -152,18 +150,7 @@ fun PaymentTransactionLedgerScreen(
                         }
                         if (state.isLoadingMore) {
                             item(key = "loading-more") {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(16.dp),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    CircularProgressIndicator(
-                                        color = XhsRed,
-                                        modifier = Modifier.size(24.dp),
-                                        strokeWidth = 2.dp,
-                                    )
-                                }
+                                SkeletonLoadMoreFooter()
                             }
                         } else if (!state.hasMore) {
                             item(key = "end") {

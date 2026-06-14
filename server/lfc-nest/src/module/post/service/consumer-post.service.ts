@@ -9,6 +9,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { PostEntity } from '@module/post/entity/post.entity';
+import { UserFollowEntity } from '@module/user/entity/user-follow.entity';
 import { RoleAuthzService } from '@shared/auth/role-authz.service';
 import { UserRole } from '@shared/enum/user-role.enum';
 import {
@@ -27,30 +28,48 @@ import {
   createPaginatedResult,
   normalizePagination,
 } from '@shared/dto/paginated-result.dto';
+import { AmapGeocodeService } from '@integration/amap/amap-geocode.service';
+import {
+  DEFAULT_POST_CATEGORY,
+  POST_CATEGORY_SET,
+} from '@shared/enum/post-category.enum';
 
 @Injectable()
 export class ConsumerPostService {
   private static readonly MAX_IMAGES = 20;
-  private static readonly MARKETPLACE_TABS = new Set(['二手闲置', '闲置']);
+  private static readonly MARKETPLACE_TABS = new Set(['好物', '商品', '二手闲置', '闲置']);
 
   constructor(
     @InjectRepository(PostEntity)
     private readonly postRepository: Repository<PostEntity>,
+    @InjectRepository(UserFollowEntity)
+    private readonly followRepository: Repository<UserFollowEntity>,
     private readonly roleAuthzService: RoleAuthzService,
     private readonly postSocialService: ConsumerPostSocialService,
     private readonly postProductService: ConsumerPostProductService,
     private readonly userAlipayService: UserAlipayService,
     @Inject(forwardRef(() => ConsumerPromotionService))
     private readonly consumerPromotionService: ConsumerPromotionService,
+    private readonly amapGeocodeService: AmapGeocodeService,
   ) {}
 
   async create(userId: number, body: CreatePostBodyDto) {
     await this.roleAuthzService.assertRole(userId, UserRole.CONSUMER);
     const normalized = this.normalizePostBody(body);
+    const latitude = body.latitude ?? null;
+    const longitude = body.longitude ?? null;
+    const location = await this.resolvePostLocationText({
+      latitude,
+      longitude,
+      location: body.location,
+    });
     const post = this.postRepository.create({
       ...normalized,
       authorId: userId,
       likeCount: 0,
+      latitude,
+      longitude,
+      location,
     });
     const saved = await this.postRepository.save(post);
 
@@ -78,12 +97,65 @@ export class ConsumerPostService {
   ): Promise<PostFeedResultDto> {
     const page = query.page ?? 1;
     const limit = Math.min(query.limit ?? 10, 30);
+    if (query.tab === '关注') {
+      return this.findFollowingFeedPaginated(userId, page, limit);
+    }
     const sort = query.sort ?? (query.tab === '最新' ? 'latest' : 'recommend');
 
     if (sort === 'latest') {
       return this.findFeedPaginated(query, userId, page, limit, 'latest');
     }
     return this.findRecommendFeedWithBoostSlots(query, userId, page, limit);
+  }
+
+  private async findFollowingFeedPaginated(
+    userId: number | undefined,
+    page: number,
+    limit: number,
+  ): Promise<PostFeedResultDto> {
+    if (!userId) {
+      return {
+        items: [],
+        total: 0,
+        page,
+        limit,
+        hasMore: false,
+      };
+    }
+
+    const follows = await this.followRepository.find({
+      where: { followerId: userId },
+      select: ['followingId'],
+    });
+    const authorIds = follows.map((item) => item.followingId);
+    if (authorIds.length === 0) {
+      return {
+        items: [],
+        total: 0,
+        page,
+        limit,
+        hasMore: false,
+      };
+    }
+
+    const skip = (page - 1) * limit;
+    const qb = this.postRepository
+      .createQueryBuilder('post')
+      .leftJoinAndSelect('post.author', 'author')
+      .where('post.isVisible = :visible', { visible: true })
+      .andWhere('post.authorId IN (:...authorIds)', { authorIds })
+      .orderBy('post.createdAt', 'DESC');
+
+    const [items, total] = await qb.skip(skip).take(limit).getManyAndCount();
+    const enrichedItems = await this.enrichPostsWithProduct(items, userId);
+
+    return {
+      items: enrichedItems,
+      total,
+      page,
+      limit,
+      hasMore: skip + items.length < total,
+    };
   }
 
   private async findFeedPaginated(
@@ -173,7 +245,8 @@ export class ConsumerPostService {
 
     const qb = this.postRepository
       .createQueryBuilder('post')
-      .leftJoinAndSelect('post.author', 'author');
+      .leftJoinAndSelect('post.author', 'author')
+      .andWhere('post.isVisible = :visible', { visible: true });
 
     if (isMarketplaceTab) {
       qb.innerJoin(
@@ -188,10 +261,12 @@ export class ConsumerPostService {
         keyword,
       });
     } else if (query.tab && !['推荐', '最新'].includes(query.tab)) {
-      const tabKeyword = `%${query.tab.trim()}%`;
-      qb.andWhere('(post.title LIKE :tabKeyword OR post.content LIKE :tabKeyword)', {
-        tabKeyword,
-      });
+      const tab = query.tab.trim();
+      const tabKeyword = `%${tab}%`;
+      qb.andWhere(
+        `(post.category = :tab OR (post.category IS NULL AND (post.title LIKE :tabKeyword OR post.content LIKE :tabKeyword)))`,
+        { tab, tabKeyword },
+      );
     }
 
     return qb;
@@ -238,8 +313,9 @@ export class ConsumerPostService {
   }
 
   async findByAuthor(authorId: number, viewerId?: number) {
+    const isSelf = viewerId != null && viewerId === authorId;
     const posts = await this.postRepository.find({
-      where: { authorId },
+      where: isSelf ? { authorId } : { authorId, isVisible: true },
       relations: ['author'],
       order: { createdAt: 'DESC' },
     });
@@ -254,8 +330,9 @@ export class ConsumerPostService {
   ) {
     const { page: normalizedPage, limit: normalizedLimit, skip } =
       normalizePagination(page, limit);
+    const isSelf = viewerId != null && viewerId === authorId;
     const [posts, total] = await this.postRepository.findAndCount({
-      where: { authorId },
+      where: isSelf ? { authorId } : { authorId, isVisible: true },
       relations: ['author'],
       order: { createdAt: 'DESC' },
       skip,
@@ -271,6 +348,9 @@ export class ConsumerPostService {
       relations: ['author'],
     });
     if (!post) {
+      throw new NotFoundException('信息不存在');
+    }
+    if (!post.isVisible && post.authorId !== userId) {
       throw new NotFoundException('信息不存在');
     }
     await this.postRepository.increment({ id }, 'viewCount', 1);
@@ -294,8 +374,25 @@ export class ConsumerPostService {
       title: body.title ?? post.title,
       content: body.content ?? post.content,
       images: body.images ?? post.images ?? [],
+      category: body.category ?? post.category,
     });
     Object.assign(post, normalized);
+    if (body.latitude !== undefined) {
+      post.latitude = body.latitude;
+    }
+    if (body.longitude !== undefined) {
+      post.longitude = body.longitude;
+    }
+    if (body.location !== undefined) {
+      post.location = body.location?.trim() || null;
+    }
+    if (!post.location && post.latitude != null && post.longitude != null) {
+      post.location = await this.resolvePostLocationText({
+        latitude: post.latitude,
+        longitude: post.longitude,
+        location: null,
+      });
+    }
     const saved = await this.postRepository.save(post);
 
     if (body.product === null) {
@@ -330,6 +427,31 @@ export class ConsumerPostService {
     return { message: '删除成功' };
   }
 
+  async offShelf(userId: number, postId: number) {
+    const post = await this.assertOwnedPost(userId, postId);
+    if (!post.isVisible) {
+      return this.findOne(postId, userId);
+    }
+    post.isVisible = false;
+    post.boostedUntil = null;
+    await this.postRepository.save(post);
+    const product = await this.postProductService.findByPostId(postId);
+    if (product?.status === PostProductStatus.ON_SALE) {
+      await this.postProductService.offShelf(postId, userId);
+    }
+    return this.findOne(postId, userId);
+  }
+
+  async onShelf(userId: number, postId: number) {
+    const post = await this.assertOwnedPost(userId, postId);
+    if (post.isVisible) {
+      return this.findOne(postId, userId);
+    }
+    post.isVisible = true;
+    await this.postRepository.save(post);
+    return this.findOne(postId, userId);
+  }
+
   offShelfProduct(userId: number, postId: number) {
     return this.postProductService.offShelf(postId, userId);
   }
@@ -338,12 +460,26 @@ export class ConsumerPostService {
     return this.postProductService.onShelf(postId, userId);
   }
 
+  private async assertOwnedPost(userId: number, postId: number) {
+    const post = await this.postRepository.findOne({ where: { id: postId } });
+    if (!post) {
+      throw new NotFoundException('信息不存在');
+    }
+    if (post.authorId !== userId) {
+      throw new ForbiddenException('无权操作该信息');
+    }
+    return post;
+  }
+
   private async enrichPostsWithProduct(posts: PostEntity[], userId?: number) {
     const productMap = await this.postProductService.findMapByPostIds(
       posts.map((post) => post.id),
     );
     const socialPosts = await this.postSocialService.enrichPosts(posts, userId);
-    return socialPosts.map((post) => {
+    const locatedPosts = await Promise.all(
+      socialPosts.map((post) => this.ensurePostLocation(post)),
+    );
+    return locatedPosts.map((post) => {
       const product = productMap.get(post.id);
       const withProduct = {
         ...post,
@@ -354,6 +490,41 @@ export class ConsumerPostService {
         userId,
       );
     });
+  }
+
+  private async ensurePostLocation(post: PostEntity): Promise<PostEntity> {
+    if (post.location || post.latitude == null || post.longitude == null) {
+      return post;
+    }
+
+    const location = await this.amapGeocodeService.reverseGeocode(
+      post.longitude,
+      post.latitude,
+    );
+    if (!location) {
+      return post;
+    }
+
+    await this.postRepository.update({ id: post.id }, { location });
+    return { ...post, location };
+  }
+
+  private async resolvePostLocationText(body: {
+    latitude?: number | null;
+    longitude?: number | null;
+    location?: string | null;
+  }): Promise<string | null> {
+    const trimmed = body.location?.trim();
+    if (trimmed) {
+      return trimmed;
+    }
+    if (body.latitude == null || body.longitude == null) {
+      return null;
+    }
+    return this.amapGeocodeService.reverseGeocode(
+      body.longitude,
+      body.latitude,
+    );
   }
 
   private normalizePostBody(body: CreatePostBodyDto) {
@@ -371,6 +542,18 @@ export class ConsumerPostService {
       body.title?.trim() ||
       content.slice(0, 30) ||
       (images.length > 0 ? '图片笔记' : '校园笔记');
-    return { title, content, images };
+    const category = this.normalizeCategory(body.category);
+    return { title, content, images, category };
+  }
+
+  private normalizeCategory(category?: string | null) {
+    const trimmed = category?.trim();
+    if (!trimmed) {
+      return DEFAULT_POST_CATEGORY;
+    }
+    if (!POST_CATEGORY_SET.has(trimmed)) {
+      throw new BadRequestException('笔记类型不正确');
+    }
+    return trimmed;
   }
 }

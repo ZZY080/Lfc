@@ -2,7 +2,7 @@ package com.lfc.consumer.ui.home
 
 fun paymentBizTypeLabel(bizType: String): String = when (bizType) {
     "ACTIVITY_JOIN" -> "校园活动"
-    "POST_PRODUCT_PURCHASE" -> "闲置商品"
+    "POST_PRODUCT_PURCHASE" -> "笔记商品"
     "POST_BOOST" -> "笔记擦亮"
     "ACTIVITY_PROMOTE" -> "活动推广"
     else -> "订单"

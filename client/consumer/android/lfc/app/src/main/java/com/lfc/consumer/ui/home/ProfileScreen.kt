@@ -2,6 +2,8 @@ package com.lfc.consumer.ui.home
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import com.lfc.consumer.data.model.ActivityDto
 import com.lfc.consumer.data.model.PostDto
 import com.lfc.consumer.data.model.ProfileCommentDto
@@ -25,9 +27,13 @@ fun ProfileScreen(
     onEditPost: (PostDto) -> Unit,
     onViewPost: (Int) -> Unit,
     onDeletePost: (Int) -> Unit,
+    onOffShelfPost: (Int) -> Unit = {},
+    onOnShelfPost: (Int) -> Unit = {},
     onEditActivity: (ActivityDto) -> Unit,
     onViewActivity: (Int) -> Unit,
     onDeleteActivity: (Int) -> Unit,
+    onOffShelfActivity: (Int) -> Unit = {},
+    onOnShelfActivity: (Int) -> Unit = {},
     onLogout: () -> Unit,
     onEditProfile: () -> Unit,
     onShare: () -> Unit,
@@ -40,11 +46,13 @@ fun ProfileScreen(
     unreadCount: Int = 0,
     onTabSelected: (Int) -> Unit,
     modifier: Modifier = Modifier,
+    immersiveBottomPadding: Dp = 0.dp,
 ) {
     XhsProfileScreen(
         profile = profile?.toXhsProfileData(),
         mode = XhsProfileMode.Self,
         isLoading = profile == null,
+        immersiveBottomPadding = immersiveBottomPadding,
         profileNotes = profileNotes,
         profileActivities = profileActivities,
         profileFavoritePosts = favoritePosts,
@@ -72,8 +80,12 @@ fun ProfileScreen(
         onTabSelected = onTabSelected,
         onEditPost = onEditPost,
         onDeletePost = onDeletePost,
+        onOffShelfPost = onOffShelfPost,
+        onOnShelfPost = onOnShelfPost,
         onEditActivity = onEditActivity,
         onDeleteActivity = onDeleteActivity,
+        onOffShelfActivity = onOffShelfActivity,
+        onOnShelfActivity = onOnShelfActivity,
         modifier = modifier,
     )
 }
