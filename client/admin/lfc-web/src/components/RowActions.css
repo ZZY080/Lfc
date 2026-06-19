@@ -1,0 +1,39 @@
+.row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.action-btn {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.action-btn:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+.action-btn-danger {
+  color: var(--danger);
+  border-color: rgba(220, 38, 38, 0.3);
+}
+
+.action-btn-danger:hover {
+  background: var(--danger-light);
+}
+
+.action-btn-primary {
+  color: var(--primary);
+  border-color: rgba(37, 99, 235, 0.3);
+}
+
+.action-btn-primary:hover {
+  background: var(--primary-light);
+}

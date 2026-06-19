@@ -26,6 +26,9 @@ export class PostCommentEntity {
   @Column({ name: 'like_count', default: 0 })
   likeCount: number;
 
+  @Column({ name: 'is_visible', type: 'boolean', default: true })
+  isVisible: boolean;
+
   @Column({ name: 'parent_id', nullable: true })
   parentId: number | null;
 

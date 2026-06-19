@@ -460,7 +460,7 @@ private fun ProductC2CTradeNotice(
                 append("\n")
                 append("确认收货后分账给卖家 · ${autoConfirmDays}天未确认将自动完成")
                 append("\n")
-                append("未确认收货前可在订单中心申请全额退款")
+                append("未确认收货前可在订单中心申请退款（需管理员审核）")
             },
             fontSize = 12.sp,
             color = Color(0xFF996633),

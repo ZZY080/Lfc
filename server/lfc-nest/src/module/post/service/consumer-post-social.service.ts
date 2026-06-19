@@ -144,7 +144,7 @@ export class ConsumerPostSocialService {
     const order = sort === 'newest' ? 'DESC' : 'ASC';
 
     const [topLevel, total] = await this.commentRepository.findAndCount({
-      where: { postId, parentId: IsNull() },
+      where: { postId, parentId: IsNull(), isVisible: true },
       relations: ['author'],
       order: { createdAt: order as 'ASC' | 'DESC' },
       skip,

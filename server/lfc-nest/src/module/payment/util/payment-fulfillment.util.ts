@@ -126,11 +126,16 @@ export function buildOrderFulfillmentGuarantee(input: {
   if (afterSales) {
     switch (afterSales.status) {
       case PaymentAfterSalesStatus.PENDING:
+        return {
+          title: '履约保障',
+          summary: '退款申请待管理员审核，通过后将原路退款',
+          steps: buildSteps(stepLabels, 4),
+        };
       case PaymentAfterSalesStatus.APPROVED:
       case PaymentAfterSalesStatus.REFUNDING:
         return {
           title: '履约保障',
-          summary: '售后处理中，审核通过后将原路退款',
+          summary: '退款审核已通过，款项原路退回中',
           steps: buildSteps(stepLabels, 4),
         };
       case PaymentAfterSalesStatus.REFUNDED:

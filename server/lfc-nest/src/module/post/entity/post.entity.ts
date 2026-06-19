@@ -9,6 +9,7 @@ import {
 } from 'typeorm';
 import { UserEntity } from '@module/user/entity/user.entity';
 import { DEFAULT_POST_CATEGORY } from '@shared/enum/post-category.enum';
+import { PostStatus } from '@shared/enum/post-status.enum';
 
 @Entity({ name: 'post' })
 export class PostEntity {
@@ -46,6 +47,17 @@ export class PostEntity {
   /** 是否在公域 Feed/搜索展示；作者本人仍可见 */
   @Column({ name: 'is_visible', type: 'boolean', default: true })
   isVisible: boolean;
+
+  @Column({
+    type: 'enum',
+    enum: PostStatus,
+    default: PostStatus.PENDING,
+  })
+  status: PostStatus;
+
+  /** 管理员审核意见（拒绝时填写） */
+  @Column({ name: 'review_comment', type: 'text', nullable: true })
+  reviewComment: string | null;
 
   /** 发布时定位（可选），用于展示距离 */
   @Column({ type: 'double', nullable: true })

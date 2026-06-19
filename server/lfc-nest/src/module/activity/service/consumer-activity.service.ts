@@ -289,6 +289,7 @@ export class ConsumerActivityService {
       maxParticipants: body.maxParticipants ?? activity.maxParticipants,
       fee: body.fee !== undefined ? this.normalizeFee(body.fee) : activity.fee,
       status: ActivityStatus.PENDING,
+      reviewComment: null,
     });
     const saved = await this.activityRepository.save(activity);
     await this.notificationService.sendActivitySubmitted(userId, saved);

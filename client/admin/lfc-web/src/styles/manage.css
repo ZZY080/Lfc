@@ -1,0 +1,409 @@
+/* 管理后台统一布局与组件样式 */
+
+.page {
+  max-width: 1200px;
+}
+
+.filter-tabs {
+  display: flex;
+  gap: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px;
+}
+
+.filter-tab {
+  padding: 6px 14px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s, color 0.15s;
+}
+
+.filter-tab:hover {
+  background: var(--surface-hover);
+}
+
+.filter-tab.active {
+  background: var(--primary-light);
+  color: var(--primary);
+  font-weight: 500;
+}
+
+.filter-select {
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+  background: var(--surface);
+  color: var(--text-primary);
+  font-family: inherit;
+}
+
+.filter-select:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.btn-sm {
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+/* 卡片列表 */
+.manage-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.manage-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+}
+
+.manage-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.manage-card-header h3,
+.manage-card-title {
+  margin: 0 0 4px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.manage-meta {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.manage-meta a {
+  color: var(--primary);
+  text-decoration: none;
+}
+
+.manage-meta a:hover {
+  text-decoration: underline;
+}
+
+.manage-content {
+  margin: 0 0 12px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.manage-content.clamped {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.manage-images {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  overflow-x: auto;
+}
+
+.manage-images img {
+  width: 72px;
+  height: 72px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.manage-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+}
+
+.manage-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.manage-actions.spread {
+  justify-content: space-between;
+}
+
+.manage-details {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+  margin: 0 0 16px;
+}
+
+.manage-details div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.legal-admin-card,
+.legal-admin-preview {
+  margin-bottom: 20px;
+}
+
+.legal-url-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.legal-url {
+  flex: 1;
+  min-width: 200px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  font-size: 13px;
+  color: var(--text-primary);
+  word-break: break-all;
+}
+
+.legal-related-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+
+.legal-related-nav a {
+  color: var(--primary);
+  text-decoration: none;
+}
+
+.legal-related-nav a:hover {
+  text-decoration: underline;
+}
+
+.legal-admin-preview .legal-document {
+  margin-top: 16px;
+  max-width: none;
+}
+
+.manage-details dt {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.manage-details dd {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.review-comment {
+  margin: 0 0 12px;
+  padding: 12px;
+  border-radius: 8px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+}
+
+.review-comment strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 12px;
+  color: #b91c1c;
+}
+
+.review-comment p,
+.review-comment dd {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #7f1d1d;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* 表格列表 */
+.table-wrap {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  overflow-x: auto;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.data-table th,
+.data-table td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.data-table th {
+  font-weight: 500;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.data-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.data-table tbody tr:hover {
+  background: var(--surface-hover);
+}
+
+.empty-cell {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 32px !important;
+}
+
+.cell-email {
+  max-width: 200px;
+  word-break: break-all;
+}
+
+.cell-mono {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12px;
+  word-break: break-all;
+  max-width: 160px;
+}
+
+.cell-subject {
+  max-width: 200px;
+}
+
+/* 状态徽章 */
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.status-pill.success,
+.user-status-active,
+.order-status.status-settled {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.status-pill.danger,
+.user-status-banned,
+.order-status.status-failed {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.status-pill.warning,
+.order-status.status-pending,
+.after-sales-status.status-pending {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.status-pill.info,
+.order-status.status-paid,
+.order-status.status-confirmed {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.status-pill.muted,
+.order-status.status-refunded,
+.order-status.status-closed {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.after-sales-status.status-refunded {
+  background: #d1fae5;
+  color: #047857;
+}
+
+.after-sales-status.status-rejected {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.ban-reason,
+.reject-hint {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+  max-width: 200px;
+}
+
+.empty-state p {
+  margin: 0;
+}
+
+@media (prefers-color-scheme: dark) {
+  .review-comment {
+    background: rgba(127, 29, 29, 0.2);
+    border-color: rgba(248, 113, 113, 0.3);
+  }
+
+  .review-comment strong {
+    color: #fca5a5;
+  }
+
+  .review-comment p,
+  .review-comment dd {
+    color: #fecaca;
+  }
+
+  .status-pill.success,
+  .user-status-active {
+    background: rgba(6, 95, 70, 0.3);
+    color: #6ee7b7;
+  }
+
+  .status-pill.danger,
+  .user-status-banned {
+    background: rgba(153, 27, 27, 0.3);
+    color: #fca5a5;
+  }
+}

@@ -28,4 +28,5 @@ import { ActivityStatus } from '@shared/enum/user-role.enum';
 
 export interface ReviewActivityBodyDto {
   status: ActivityStatus.APPROVED | ActivityStatus.REJECTED;
+  reviewComment?: string;
 }

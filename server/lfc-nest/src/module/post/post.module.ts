@@ -9,12 +9,17 @@ import { PostCommentEntity } from '@module/post/entity/post-comment.entity';
 import { UserEntity } from '@module/user/entity/user.entity';
 import { UserFollowEntity } from '@module/user/entity/user-follow.entity';
 import { ConsumerPostController } from '@module/post/controller/consumer-post.controller';
+import { AdminPostController } from '@module/post/controller/admin-post.controller';
+import { AdminCommentController } from '@module/post/controller/admin-comment.controller';
 import { ConsumerGeocodeController } from '@module/post/controller/consumer-geocode.controller';
 import { ConsumerPostService } from '@module/post/service/consumer-post.service';
 import { ConsumerPostSocialService } from '@module/post/service/consumer-post-social.service';
 import { ConsumerPostProductService } from '@module/post/service/consumer-post-product.service';
+import { AdminPostService } from '@module/post/service/admin-post.service';
+import { AdminCommentService } from '@module/post/service/admin-comment.service';
 import { UserAlipayModule } from '@module/user/user-alipay.module';
 import { PromotionModule } from '@module/promotion/promotion.module';
+import { MessageModule } from '@module/message/message.module';
 import { RoleAuthzService } from '@shared/auth/role-authz.service';
 
 @Module({
@@ -31,12 +36,20 @@ import { RoleAuthzService } from '@shared/auth/role-authz.service';
     ]),
     forwardRef(() => UserAlipayModule),
     forwardRef(() => PromotionModule),
+    MessageModule,
   ],
-  controllers: [ConsumerPostController, ConsumerGeocodeController],
+  controllers: [
+    ConsumerPostController,
+    ConsumerGeocodeController,
+    AdminPostController,
+    AdminCommentController,
+  ],
   providers: [
     ConsumerPostService,
     ConsumerPostSocialService,
     ConsumerPostProductService,
+    AdminPostService,
+    AdminCommentService,
     RoleAuthzService,
   ],
   exports: [

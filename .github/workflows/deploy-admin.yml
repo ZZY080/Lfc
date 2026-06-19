@@ -1,0 +1,86 @@
+name: Deploy Admin Web
+
+on:
+  push:
+    branches:
+      - development
+      - master
+    paths:
+      - 'client/admin/lfc-web/**'
+      - '.github/workflows/deploy-admin.yml'
+
+jobs:
+  build-lfc-web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20.19.4"
+
+      - run: npm install -g pnpm
+
+      - name: Build lfc-web
+        run: |
+          cd client/admin/lfc-web
+          pnpm install
+          pnpm run build
+
+      - name: Create lfc-web-build.zip
+        run: |
+          cd client/admin/lfc-web
+          zip -r lfc-web-build.zip dist
+
+      - name: Upload lfc-web-build
+        uses: actions/upload-artifact@v4
+        with:
+          name: lfc-web-build
+          path: client/admin/lfc-web/lfc-web-build.zip
+
+  deploy-lfc-web:
+    runs-on: ubuntu-latest
+    needs: build-lfc-web
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: lfc-web-build
+          path: ./build-output
+
+      - name: Setup SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+
+      - name: Deploy lfc-web build
+        env:
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+        run: |
+          if [ "$GITHUB_REF_NAME" = "development" ]; then
+            ENV_DIR="dev"
+          elif [ "$GITHUB_REF_NAME" = "master" ]; then
+            ENV_DIR="prod"
+          else
+            echo "❌ Unsupported branch: $GITHUB_REF_NAME"
+            exit 1
+          fi
+
+          SERVER_PATH="/www/project/Lfc/client/admin/lfc-web/$ENV_DIR"
+
+          echo "📦 部署到服务器目录: $SERVER_PATH"
+
+          ssh -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST "mkdir -p $SERVER_PATH"
+
+          rsync -avz -e "ssh -o StrictHostKeyChecking=no" ./build-output/lfc-web-build.zip $SSH_USER@$SSH_HOST:$SERVER_PATH/
+
+          ssh -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST "
+            cd $SERVER_PATH &&
+            unzip -o lfc-web-build.zip &&
+            rm -f lfc-web-build.zip
+          "

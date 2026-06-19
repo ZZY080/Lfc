@@ -22,7 +22,9 @@ import { ConsumerPostSocialService } from '@module/post/service/consumer-post-so
 import { ConsumerPostProductService } from '@module/post/service/consumer-post-product.service';
 import { UserAlipayService } from '@module/user/service/user-alipay.service';
 import { ConsumerPromotionService } from '@module/promotion/service/consumer-promotion.service';
+import { NotificationService } from '@module/message/service/notification.service';
 import { PostProductEntity } from '@module/post/entity/post-product.entity';
+import { PostStatus } from '@shared/enum/post-status.enum';
 import { PostProductStatus } from '@shared/enum/product.enum';
 import {
   createPaginatedResult,
@@ -51,6 +53,7 @@ export class ConsumerPostService {
     @Inject(forwardRef(() => ConsumerPromotionService))
     private readonly consumerPromotionService: ConsumerPromotionService,
     private readonly amapGeocodeService: AmapGeocodeService,
+    private readonly notificationService: NotificationService,
   ) {}
 
   async create(userId: number, body: CreatePostBodyDto) {
@@ -70,6 +73,8 @@ export class ConsumerPostService {
       latitude,
       longitude,
       location,
+      isVisible: false,
+      status: PostStatus.PENDING,
     });
     const saved = await this.postRepository.save(post);
 
@@ -80,6 +85,8 @@ export class ConsumerPostService {
       }
       await this.postProductService.createForPost(saved.id, body.product);
     }
+
+    await this.notificationService.sendPostSubmitted(userId, saved);
 
     return this.findOne(saved.id, userId);
   }
@@ -143,6 +150,7 @@ export class ConsumerPostService {
       .createQueryBuilder('post')
       .leftJoinAndSelect('post.author', 'author')
       .where('post.isVisible = :visible', { visible: true })
+      .andWhere('post.status = :approved', { approved: PostStatus.APPROVED })
       .andWhere('post.authorId IN (:...authorIds)', { authorIds })
       .orderBy('post.createdAt', 'DESC');
 
@@ -246,7 +254,8 @@ export class ConsumerPostService {
     const qb = this.postRepository
       .createQueryBuilder('post')
       .leftJoinAndSelect('post.author', 'author')
-      .andWhere('post.isVisible = :visible', { visible: true });
+      .andWhere('post.isVisible = :visible', { visible: true })
+      .andWhere('post.status = :approved', { approved: PostStatus.APPROVED });
 
     if (isMarketplaceTab) {
       qb.innerJoin(
@@ -315,7 +324,9 @@ export class ConsumerPostService {
   async findByAuthor(authorId: number, viewerId?: number) {
     const isSelf = viewerId != null && viewerId === authorId;
     const posts = await this.postRepository.find({
-      where: isSelf ? { authorId } : { authorId, isVisible: true },
+      where: isSelf
+        ? { authorId }
+        : { authorId, isVisible: true, status: PostStatus.APPROVED },
       relations: ['author'],
       order: { createdAt: 'DESC' },
     });
@@ -332,7 +343,9 @@ export class ConsumerPostService {
       normalizePagination(page, limit);
     const isSelf = viewerId != null && viewerId === authorId;
     const [posts, total] = await this.postRepository.findAndCount({
-      where: isSelf ? { authorId } : { authorId, isVisible: true },
+      where: isSelf
+        ? { authorId }
+        : { authorId, isVisible: true, status: PostStatus.APPROVED },
       relations: ['author'],
       order: { createdAt: 'DESC' },
       skip,
@@ -350,7 +363,11 @@ export class ConsumerPostService {
     if (!post) {
       throw new NotFoundException('信息不存在');
     }
-    if (!post.isVisible && post.authorId !== userId) {
+    const isAuthor = userId != null && post.authorId === userId;
+    if (
+      !isAuthor &&
+      (post.status !== PostStatus.APPROVED || !post.isVisible)
+    ) {
       throw new NotFoundException('信息不存在');
     }
     await this.postRepository.increment({ id }, 'viewCount', 1);
@@ -393,7 +410,17 @@ export class ConsumerPostService {
         location: null,
       });
     }
+    const shouldResubmit = post.status === PostStatus.REJECTED;
+    if (shouldResubmit) {
+      post.status = PostStatus.PENDING;
+      post.reviewComment = null;
+      post.isVisible = false;
+    }
     const saved = await this.postRepository.save(post);
+
+    if (shouldResubmit) {
+      await this.notificationService.sendPostSubmitted(userId, saved);
+    }
 
     if (body.product === null) {
       const existing = await this.postProductService.findByPostId(id);
@@ -429,10 +456,11 @@ export class ConsumerPostService {
 
   async offShelf(userId: number, postId: number) {
     const post = await this.assertOwnedPost(userId, postId);
-    if (!post.isVisible) {
+    if (post.status === PostStatus.OFF_SHELF && !post.isVisible) {
       return this.findOne(postId, userId);
     }
     post.isVisible = false;
+    post.status = PostStatus.OFF_SHELF;
     post.boostedUntil = null;
     await this.postRepository.save(post);
     const product = await this.postProductService.findByPostId(postId);
@@ -444,11 +472,14 @@ export class ConsumerPostService {
 
   async onShelf(userId: number, postId: number) {
     const post = await this.assertOwnedPost(userId, postId);
-    if (post.isVisible) {
+    if (post.status === PostStatus.APPROVED && post.isVisible) {
       return this.findOne(postId, userId);
     }
-    post.isVisible = true;
+    post.isVisible = false;
+    post.status = PostStatus.PENDING;
+    post.reviewComment = null;
     await this.postRepository.save(post);
+    await this.notificationService.sendPostSubmitted(userId, post);
     return this.findOne(postId, userId);
   }
 

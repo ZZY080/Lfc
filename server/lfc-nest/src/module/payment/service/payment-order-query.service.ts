@@ -356,7 +356,7 @@ export class PaymentOrderQueryService {
     if (afterSales) {
       switch (afterSales.status) {
         case PaymentAfterSalesStatus.PENDING:
-          return '售后处理中';
+          return '退款待审核';
         case PaymentAfterSalesStatus.APPROVED:
         case PaymentAfterSalesStatus.REFUNDING:
           return '退款处理中';

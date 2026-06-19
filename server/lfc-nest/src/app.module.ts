@@ -23,6 +23,7 @@ import { AlipayModule } from '@integration/alipay/alipay.module';
 import { WechatPayModule } from '@integration/wechat-pay/wechat-pay.module';
 import { PaymentModule } from '@module/payment/payment.module';
 import { PromotionModule } from '@module/promotion/promotion.module';
+import { AdminModule } from '@module/admin/admin.module';
 
 @Module({
   imports: [
@@ -61,6 +62,7 @@ import { PromotionModule } from '@module/promotion/promotion.module';
     UserModule,
     PaymentModule,
     PromotionModule,
+    AdminModule,
   ],
 })
 export class AppModule {}

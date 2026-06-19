@@ -3,6 +3,11 @@ export enum UserRole {
   ADMIN = 'ADMIN',
 }
 
+export enum UserStatus {
+  ACTIVE = 'ACTIVE',
+  BANNED = 'BANNED',
+}
+
 export enum ActivityStatus {
   PENDING = 'PENDING',
   APPROVED = 'APPROVED',

@@ -5,6 +5,7 @@ import { PaymentPayoutEntity } from '@module/payment/entity/payment-payout.entit
 import { PaymentOrderReviewEntity } from '@module/payment/entity/payment-order-review.entity';
 import { PaymentAfterSalesEntity } from '@module/payment/entity/payment-after-sales.entity';
 import { ConsumerPaymentController } from '@module/payment/controller/consumer-payment.controller';
+import { AdminPaymentController } from '@module/payment/controller/admin-payment.controller';
 import { ConsumerPaymentService } from '@module/payment/service/consumer-payment.service';
 import { PaymentOrderService } from '@module/payment/service/payment-order.service';
 import { PaymentPayoutService } from '@module/payment/service/payment-payout.service';
@@ -17,8 +18,11 @@ import { PaymentTransactionQueryService } from '@module/payment/service/payment-
 import { PaymentReviewService } from '@module/payment/service/payment-review.service';
 import { PaymentAfterSalesService } from '@module/payment/service/payment-after-sales.service';
 import { PaymentCheckoutService } from '@module/payment/service/payment-checkout.service';
+import { AdminPaymentService } from '@module/payment/service/admin-payment.service';
+import { RoleAuthzService } from '@shared/auth/role-authz.service';
 import { ActivityModule } from '@module/activity/activity.module';
 import { PostModule } from '@module/post/post.module';
+import { MessageModule } from '@module/message/message.module';
 import { PromotionModule } from '@module/promotion/promotion.module';
 import { AlipayModule } from '@integration/alipay/alipay.module';
 import { UserAlipayModule } from '@module/user/user-alipay.module';
@@ -42,8 +46,9 @@ import { ActivityEntity } from '@module/activity/entity/activity.entity';
     forwardRef(() => PromotionModule),
     forwardRef(() => UserAlipayModule),
     forwardRef(() => AlipayModule),
+    MessageModule,
   ],
-  controllers: [ConsumerPaymentController],
+  controllers: [ConsumerPaymentController, AdminPaymentController],
   providers: [
     PaymentOrderService,
     PaymentOrderLockService,
@@ -57,6 +62,8 @@ import { ActivityEntity } from '@module/activity/entity/activity.entity';
     PaymentRefundService,
     PaymentCheckoutService,
     ConsumerPaymentService,
+    AdminPaymentService,
+    RoleAuthzService,
   ],
   exports: [
     PaymentOrderService,

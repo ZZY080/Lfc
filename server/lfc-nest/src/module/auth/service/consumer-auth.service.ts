@@ -10,7 +10,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import { UserEntity } from '@module/user/entity/user.entity';
-import { UserRole } from '@shared/enum/user-role.enum';
+import { UserRole, UserStatus } from '@shared/enum/user-role.enum';
 import { RedisService } from '@integration/redis/service/redis.service';
 import {
   AuthTokenDto,
@@ -85,6 +85,9 @@ export class ConsumerAuthService implements OnModuleInit {
     if (!user || user.role !== UserRole.CONSUMER) {
       throw new UnauthorizedException('邮箱或密码错误');
     }
+    if (user.status === UserStatus.BANNED) {
+      throw new UnauthorizedException('账号已被禁用');
+    }
 
     const valid = await bcrypt.compare(body.password, user.password);
     if (!valid) {
@@ -114,6 +117,9 @@ export class ConsumerAuthService implements OnModuleInit {
     });
     if (!user || user.role !== UserRole.CONSUMER) {
       throw new UnauthorizedException('用户不存在');
+    }
+    if (user.status === UserStatus.BANNED) {
+      throw new UnauthorizedException('账号已被禁用');
     }
 
     return this.issueTokens(user);

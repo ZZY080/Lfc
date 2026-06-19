@@ -3230,7 +3230,7 @@ class HomeViewModel(
                 )
                 refreshOrderCenter()
                 refreshAll()
-                _uiState.value = _uiState.value.copy(message = "售后申请已提交")
+                _uiState.value = _uiState.value.copy(message = "退款申请已提交，请等待管理员审核")
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(error = parseError(e, "申请售后失败"))
             } finally {

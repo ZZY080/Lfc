@@ -86,8 +86,18 @@ fun LegalConsentScreen(
                     )
                     Spacer(modifier = Modifier.height(10.dp))
                     LegalConsentLinkRow(
+                        title = "《C2C 交易安全保障说明》",
+                        onClick = { onOpenDocument(LegalDocumentId.C2C_SECURITY) },
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    LegalConsentLinkRow(
                         title = "《C2C 退货售后规则》",
                         onClick = { onOpenDocument(LegalDocumentId.C2C_AFTER_SALES) },
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    LegalConsentLinkRow(
+                        title = "《推广与广告服务说明》",
+                        onClick = { onOpenDocument(LegalDocumentId.PROMOTION_ADS) },
                     )
                     Spacer(modifier = Modifier.height(10.dp))
                     LegalConsentLinkRow(

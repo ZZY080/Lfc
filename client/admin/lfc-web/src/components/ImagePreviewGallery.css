@@ -1,0 +1,124 @@
+.image-preview-gallery {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.image-preview-gallery.size-sm {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+}
+
+.image-preview-thumb {
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: zoom-in;
+  flex-shrink: 0;
+  border-radius: 8px;
+}
+
+.image-preview-thumb img {
+  display: block;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  transition: opacity 0.15s ease;
+}
+
+.image-preview-thumb:hover img {
+  opacity: 0.9;
+}
+
+.image-preview-gallery.size-sm .image-preview-thumb img {
+  width: 72px;
+  height: 72px;
+}
+
+.image-preview-gallery.size-md .image-preview-thumb img {
+  width: 88px;
+  height: 88px;
+}
+
+.image-preview-gallery.size-lg .image-preview-thumb img {
+  width: 96px;
+  height: 96px;
+}
+
+.image-preview-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 64px;
+  background: rgba(0, 0, 0, 0.85);
+}
+
+.image-preview-full {
+  max-width: min(100%, 960px);
+  max-height: calc(100vh - 96px);
+  object-fit: contain;
+  border-radius: 8px;
+  user-select: none;
+}
+
+.image-preview-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-size: 28px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.image-preview-close:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.image-preview-counter {
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font-size: 13px;
+}
+
+.image-preview-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-size: 28px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.image-preview-nav:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.image-preview-nav-prev {
+  left: 16px;
+}
+
+.image-preview-nav-next {
+  right: 16px;
+}

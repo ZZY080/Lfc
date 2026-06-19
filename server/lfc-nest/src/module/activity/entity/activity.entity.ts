@@ -50,6 +50,10 @@ export class ActivityEntity {
   @Column({ type: 'enum', enum: ActivityStatus, default: ActivityStatus.PENDING })
   status: ActivityStatus;
 
+  /** 管理员审核意见（拒绝时填写） */
+  @Column({ name: 'review_comment', type: 'text', nullable: true })
+  reviewComment: string | null;
+
   @Column({ name: 'author_id' })
   authorId: number;
 

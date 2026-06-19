@@ -327,12 +327,14 @@ fun OrderCenterScreen(
         val ruleHint = when (order.bizType) {
             "ACTIVITY_JOIN" -> buildString {
                 append("· 活动未开始前可申请全额退款\n")
+                append("· 提交后需管理员审核，通过后将原路退款\n")
                 append("· 退款成功后自动取消报名资格\n")
                 append("· 退款将原路返回至支付宝，通常 1–7 个工作日到账\n")
                 append("· 活动开始后原则上不再受理退款")
             }
             else -> buildString {
                 append("· 未确认收货前可申请全额退款\n")
+                append("· 提交后需管理员审核，通过后将原路退款\n")
                 append("· 退款成功后商品将重新上架\n")
                 append("· 退款将原路返回至支付宝，通常 1–7 个工作日到账\n")
                 append("· 确认收货后如有争议请先与卖家协商")

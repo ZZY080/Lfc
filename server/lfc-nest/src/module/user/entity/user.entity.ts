@@ -6,7 +6,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { UserRole } from '@shared/enum/user-role.enum';
+import { UserRole, UserStatus } from '@shared/enum/user-role.enum';
 import { PostEntity } from '@module/post/entity/post.entity';
 import { ActivityEntity } from '@module/activity/entity/activity.entity';
 import { ActivityParticipantEntity } from '@module/activity/entity/activity-participant.entity';
@@ -75,6 +75,19 @@ export class UserEntity {
 
   @Column({ type: 'enum', enum: UserRole, default: UserRole.CONSUMER })
   role: UserRole;
+
+  @Column({
+    type: 'enum',
+    enum: UserStatus,
+    default: UserStatus.ACTIVE,
+  })
+  status: UserStatus;
+
+  @Column({ name: 'ban_reason', type: 'varchar', length: 255, nullable: true })
+  banReason: string | null;
+
+  @Column({ name: 'banned_at', type: 'datetime', nullable: true })
+  bannedAt: Date | null;
 
   @OneToMany(() => PostEntity, (post) => post.author)
   posts: PostEntity[];
