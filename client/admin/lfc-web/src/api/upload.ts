@@ -1,6 +1,5 @@
 import { ApiError } from './client'
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? ''
+import { getApiBaseUrl } from './baseUrl'
 
 export async function uploadPostImage(
   token: string,
@@ -10,7 +9,7 @@ export async function uploadPostImage(
   formData.append('file', file)
 
   const response = await fetch(
-    `${API_BASE}/api/consumer/upload/image?scope=post`,
+    `${getApiBaseUrl()}/api/consumer/upload/image?scope=post`,
     {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },

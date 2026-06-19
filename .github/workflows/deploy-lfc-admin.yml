@@ -1,4 +1,4 @@
-name: Deploy Admin Web
+name: Deploy lfc-admin
 
 on:
   push:
@@ -7,10 +7,11 @@ on:
       - master
     paths:
       - 'client/admin/lfc-web/**'
-      - '.github/workflows/deploy-admin.yml'
+      - '.github/workflows/deploy-lfc-admin.yml'
 
 jobs:
-  build-lfc-web:
+  build-lfc-admin:
+    name: build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,32 +21,34 @@ jobs:
         with:
           node-version: "20.19.4"
 
-      - run: npm install -g pnpm
+      - name: Setup pnpm
+        run: npm install -g pnpm
 
-      - name: Build lfc-web
+      - name: Build lfc-admin
         run: |
           cd client/admin/lfc-web
           pnpm install
           pnpm run build
 
-      - name: Create lfc-web-build.zip
+      - name: Package lfc-admin
         run: |
           cd client/admin/lfc-web
-          zip -r lfc-web-build.zip dist
+          zip -r lfc-admin-build.zip dist
 
-      - name: Upload lfc-web-build
+      - name: Upload lfc-admin artifact
         uses: actions/upload-artifact@v4
         with:
-          name: lfc-web-build
-          path: client/admin/lfc-web/lfc-web-build.zip
+          name: lfc-admin-build
+          path: client/admin/lfc-web/lfc-admin-build.zip
 
-  deploy-lfc-web:
+  deploy-lfc-admin:
+    name: deploy
     runs-on: ubuntu-latest
-    needs: build-lfc-web
+    needs: build-lfc-admin
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: lfc-web-build
+          name: lfc-admin-build
           path: ./build-output
 
       - name: Setup SSH
@@ -56,7 +59,7 @@ jobs:
           echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
 
-      - name: Deploy lfc-web build
+      - name: Deploy lfc-admin
         env:
           SSH_USER: ${{ secrets.SSH_USER }}
           SSH_HOST: ${{ secrets.SSH_HOST }}
@@ -64,6 +67,8 @@ jobs:
         run: |
           if [ "$GITHUB_REF_NAME" = "development" ]; then
             ENV_DIR="dev"
+          elif [ "$GITHUB_REF_NAME" = "staging" ]; then
+            ENV_DIR="staging"
           elif [ "$GITHUB_REF_NAME" = "master" ]; then
             ENV_DIR="prod"
           else
@@ -73,14 +78,14 @@ jobs:
 
           SERVER_PATH="/www/project/Lfc/client/admin/lfc-web/$ENV_DIR"
 
-          echo "📦 部署到服务器目录: $SERVER_PATH"
+          echo "📦 Deploy lfc-admin → $SERVER_PATH"
 
           ssh -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST "mkdir -p $SERVER_PATH"
 
-          rsync -avz -e "ssh -o StrictHostKeyChecking=no" ./build-output/lfc-web-build.zip $SSH_USER@$SSH_HOST:$SERVER_PATH/
+          rsync -avz -e "ssh -o StrictHostKeyChecking=no" ./build-output/lfc-admin-build.zip $SSH_USER@$SSH_HOST:$SERVER_PATH/
 
           ssh -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST "
             cd $SERVER_PATH &&
-            unzip -o lfc-web-build.zip &&
-            rm -f lfc-web-build.zip
+            unzip -o lfc-admin-build.zip &&
+            rm -f lfc-admin-build.zip
           "

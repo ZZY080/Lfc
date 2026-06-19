@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? ''
+import { getApiBaseUrl } from './baseUrl'
 
 let unauthorizedHandler: (() => void) | null = null
 
@@ -29,7 +29,7 @@ export async function request<T>(
     headers.set('Authorization', `Bearer ${token}`)
   }
 
-  const response = await fetch(`${API_BASE}${path}`, {
+  const response = await fetch(`${getApiBaseUrl()}${path}`, {
     ...options,
     headers,
   })
