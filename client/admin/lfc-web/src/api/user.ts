@@ -22,14 +22,14 @@ function buildQuery(params: object) {
 
 export function fetchUsers(token: string, params: UserListParams = {}) {
   return request<PaginatedResult<User>>(
-    `/api/admin/user${buildQuery(params)}`,
+    `/admin/user${buildQuery(params)}`,
     {},
     token,
   )
 }
 
 export function fetchUser(token: string, userId: number) {
-  return request<User>(`/api/admin/user/${userId}`, {}, token)
+  return request<User>(`/admin/user/${userId}`, {}, token)
 }
 
 export function createUser(
@@ -43,7 +43,7 @@ export function createUser(
   },
 ) {
   return request<User>(
-    '/api/admin/user',
+    '/admin/user',
     { method: 'POST', body: JSON.stringify(data) },
     token,
   )
@@ -61,7 +61,7 @@ export function updateUser(
   },
 ) {
   return request<User>(
-    `/api/admin/user/${userId}`,
+    `/admin/user/${userId}`,
     { method: 'PATCH', body: JSON.stringify(data) },
     token,
   )
@@ -74,7 +74,7 @@ export function updateUserStatus(
   banReason?: string,
 ) {
   return request<User>(
-    `/api/admin/user/${userId}/status`,
+    `/admin/user/${userId}/status`,
     {
       method: 'PATCH',
       body: JSON.stringify({ status, banReason }),
@@ -85,7 +85,7 @@ export function updateUserStatus(
 
 export function updateUserRole(token: string, userId: number, role: UserRole) {
   return request<User>(
-    `/api/admin/user/${userId}/role`,
+    `/admin/user/${userId}/role`,
     { method: 'PATCH', body: JSON.stringify({ role }) },
     token,
   )
@@ -93,7 +93,7 @@ export function updateUserRole(token: string, userId: number, role: UserRole) {
 
 export function deleteUser(token: string, userId: number) {
   return request<{ message: string }>(
-    `/api/admin/user/${userId}`,
+    `/admin/user/${userId}`,
     { method: 'DELETE' },
     token,
   )

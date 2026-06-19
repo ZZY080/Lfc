@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import android.content.Context
 import android.net.Uri
+import android.os.SystemClock
 import com.lfc.consumer.data.ApiClient
 import com.lfc.consumer.data.MediaUploadHelper
 import com.lfc.consumer.data.local.FeedChannelStore
@@ -23,6 +24,8 @@ import com.lfc.consumer.data.model.PostCommentDto
 import com.lfc.consumer.data.model.PostCommentsUiState
 import com.lfc.consumer.data.model.FeedUiState
 import com.lfc.consumer.data.model.ActivityFeedUiState
+import com.lfc.consumer.data.model.MessagesUiState
+import com.lfc.consumer.data.model.NotificationFeedUiState
 import com.lfc.consumer.data.model.SearchUiState
 import com.lfc.consumer.data.model.ChatMessageDto
 import com.lfc.consumer.data.model.ConversationDto
@@ -63,8 +66,7 @@ import com.lfc.consumer.data.model.BindAlipayAccountRequest
 import com.lfc.consumer.data.model.BindAlipayOAuthRequest
 import com.lfc.consumer.data.model.SendChatMessageRequest
 import com.lfc.consumer.data.model.UserProfileDto
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -98,7 +100,8 @@ data class HomeUiState(
     val myActivities: List<ActivityDto> = emptyList(),
     val myParticipations: List<ActivityParticipantDto> = emptyList(),
     val conversations: List<ConversationDto> = emptyList(),
-    val notifications: List<NotificationDto> = emptyList(),
+    val messages: MessagesUiState = MessagesUiState(),
+    val notificationFeed: NotificationFeedUiState = NotificationFeedUiState(),
     val unreadCount: Int = 0,
     val selectedNotification: NotificationDto? = null,
     val isNotificationLoading: Boolean = false,
@@ -174,6 +177,7 @@ class HomeViewModel(
 
     private val paymentGate = Any()
     private var paymentGateKey: String? = null
+    private var locationJob: Job? = null
 
     init {
         viewModelScope.launch {
@@ -200,11 +204,16 @@ class HomeViewModel(
     }
 
     fun refreshUserLocation() {
-        viewModelScope.launch {
-            AmapLocationHelper.getCurrentLocation(appContext)
-                .onSuccess { location ->
-                    _uiState.value = _uiState.value.copy(userLocation = location)
-                }
+        if (locationJob?.isActive == true) return
+        locationJob = viewModelScope.launch {
+            try {
+                AmapLocationHelper.getCurrentLocation(appContext)
+                    .onSuccess { location ->
+                        _uiState.value = _uiState.value.copy(userLocation = location)
+                    }
+            } catch (_: Exception) {
+                // 定位失败不影响主流程，避免未捕获异常导致进程退出
+            }
         }
     }
 
@@ -442,7 +451,6 @@ class HomeViewModel(
             try {
                 val profile = api.getMyProfile()
                 val myParticipations = api.getMyParticipations()
-                val notifications = api.getNotifications()
                 val unreadCount = loadTotalUnreadCount()
                 val myId = profile.id
                 _uiState.value = _uiState.value.copy(
@@ -451,7 +459,6 @@ class HomeViewModel(
                     myPosts = profile.posts.orEmpty(),
                     myActivities = profile.activities.orEmpty(),
                     myParticipations = myParticipations,
-                    notifications = notifications,
                     unreadCount = unreadCount,
                     isLoading = false,
                     profileNotes = emptyList(),
@@ -551,22 +558,24 @@ class HomeViewModel(
         _uiState.value = _uiState.value.copy(
             activityFeed = feed.copy(
                 isRefreshing = refresh,
-                isInitialLoading = refresh && feed.activities.isEmpty(),
+                isInitialLoading = !feed.hasLoadedOnce && feed.activities.isEmpty(),
                 isLoadingMore = !refresh && feed.hasMore,
                 page = page,
+                listResetNonce = if (refresh) feed.listResetNonce + 1 else feed.listResetNonce,
             ),
         )
 
         viewModelScope.launch {
+            val refreshStartedAt = if (refresh) SystemClock.elapsedRealtime() else 0L
             try {
                 val response = api.getActivityFeed(page = page, limit = ACTIVITY_FEED_PAGE_SIZE)
-                val current = _uiState.value.activityFeed
                 val joinedIds = _uiState.value.myParticipations.map { it.activityId }.toSet()
+                val currentActivities = _uiState.value.activityFeed.activities
                 val merged = if (refresh) {
                     response.items
                 } else {
-                    current.activities + response.items.filter { new ->
-                        current.activities.none { it.id == new.id }
+                    currentActivities + response.items.filter { new ->
+                        currentActivities.none { it.id == new.id }
                     }
                 }.map { activity ->
                     if (activity.isJoined || activity.id in joinedIds) {
@@ -574,24 +583,32 @@ class HomeViewModel(
                     } else {
                         activity
                     }
+                }.distinctBy { it.id }
+                if (refresh) {
+                    awaitMinPullRefreshDuration(refreshStartedAt)
                 }
                 _uiState.value = _uiState.value.copy(
-                    activityFeed = current.copy(
+                    activityFeed = _uiState.value.activityFeed.copy(
                         activities = merged,
                         page = page + 1,
                         hasMore = response.hasMore,
                         isRefreshing = false,
                         isInitialLoading = false,
                         isLoadingMore = false,
+                        hasLoadedOnce = true,
                     ),
                     activities = merged,
                 )
             } catch (e: Exception) {
+                if (refresh) {
+                    awaitMinPullRefreshDuration(refreshStartedAt)
+                }
                 _uiState.value = _uiState.value.copy(
                     activityFeed = _uiState.value.activityFeed.copy(
                         isRefreshing = false,
                         isInitialLoading = false,
                         isLoadingMore = false,
+                        hasLoadedOnce = true,
                     ),
                     error = parseError(e, "加载活动失败"),
                 )
@@ -827,7 +844,7 @@ class HomeViewModel(
         val lower = keyword.lowercase()
         return activities.filter { activity ->
             activity.title.lowercase().contains(lower) ||
-                activity.description.lowercase().contains(lower) ||
+                activity.description.orEmpty().lowercase().contains(lower) ||
                 activity.location.lowercase().contains(lower)
         }
     }
@@ -1799,12 +1816,20 @@ class HomeViewModel(
             try {
                 val notification = api.getNotification(id)
                 val unreadCount = loadTotalUnreadCount()
-                val notifications = _uiState.value.notifications.map {
-                    if (it.id == id) notification else it
-                }
+                val messages = _uiState.value.messages
+                val notificationFeed = _uiState.value.notificationFeed
                 _uiState.value = _uiState.value.copy(
                     selectedNotification = notification,
-                    notifications = notifications,
+                    messages = messages.copy(
+                        notificationPreview = messages.notificationPreview.map {
+                            if (it.id == id) notification else it
+                        },
+                    ),
+                    notificationFeed = notificationFeed.copy(
+                        notifications = notificationFeed.notifications.map {
+                            if (it.id == id) notification else it
+                        },
+                    ),
                     unreadCount = unreadCount,
                     isNotificationLoading = false,
                 )
@@ -1825,7 +1850,8 @@ class HomeViewModel(
         viewModelScope.launch {
             try {
                 api.markAllNotificationsRead()
-                refreshMessages()
+                loadMessages(refresh = true)
+                loadNotificationFeed(refresh = true)
                 _uiState.value = _uiState.value.copy(message = "已全部标记为已读")
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(error = parseError(e, "操作失败"))
@@ -1833,21 +1859,221 @@ class HomeViewModel(
         }
     }
 
-    fun refreshMessages() {
+    fun deleteNotification(notificationId: Int) {
+        val previousMessages = _uiState.value.messages
+        val previousFeed = _uiState.value.notificationFeed
+        _uiState.value = _uiState.value.copy(
+            messages = previousMessages.copy(
+                notificationPreview = previousMessages.notificationPreview.filter { it.id != notificationId },
+                notificationTotal = maxOf(0, previousMessages.notificationTotal - 1),
+            ),
+            notificationFeed = previousFeed.copy(
+                notifications = previousFeed.notifications.filter { it.id != notificationId },
+            ),
+        )
         viewModelScope.launch {
             try {
-                val conversations = api.getConversations()
-                val notifications = api.getNotifications()
-                val unreadCount = loadTotalUnreadCount()
+                api.deleteNotification(notificationId)
+                _uiState.value = _uiState.value.copy(unreadCount = loadTotalUnreadCount())
+            } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
-                    conversations = conversations,
-                    notifications = notifications,
+                    messages = previousMessages,
+                    notificationFeed = previousFeed,
+                    error = parseError(e, "删除通知失败"),
+                )
+            }
+        }
+    }
+
+    fun deleteConversation(conversationId: Int) {
+        val previousMessages = _uiState.value.messages
+        _uiState.value = _uiState.value.copy(
+            messages = previousMessages.copy(
+                conversations = previousMessages.conversations.filter { it.id != conversationId },
+            ),
+            conversations = previousMessages.conversations.filter { it.id != conversationId },
+        )
+        viewModelScope.launch {
+            try {
+                api.deleteConversation(conversationId)
+                _uiState.value = _uiState.value.copy(unreadCount = loadTotalUnreadCount())
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    messages = previousMessages,
+                    conversations = previousMessages.conversations,
+                    error = parseError(e, "删除会话失败"),
+                )
+            }
+        }
+    }
+
+    fun loadMessages(refresh: Boolean = false) {
+        val messages = _uiState.value.messages
+        if (refresh && messages.isRefreshing) return
+        if (!refresh && messages.isLoadingMore) return
+
+        val page = if (refresh) 1 else messages.page
+
+        _uiState.value = _uiState.value.copy(
+            messages = messages.copy(
+                isRefreshing = refresh,
+                isInitialLoading = !messages.hasLoadedOnce && messages.conversations.isEmpty(),
+                isLoadingMore = !refresh && messages.hasMore,
+                page = page,
+                listResetNonce = if (refresh) messages.listResetNonce + 1 else messages.listResetNonce,
+            ),
+        )
+
+        viewModelScope.launch {
+            val refreshStartedAt = if (refresh) SystemClock.elapsedRealtime() else 0L
+            try {
+                val conversationResponse = api.getConversations(page = page, limit = MESSAGES_CONVERSATION_PAGE_SIZE)
+                val notificationResponse = if (refresh || page == 1) {
+                    api.getNotifications(page = 1, limit = NOTIFICATION_PREVIEW_LIMIT)
+                } else {
+                    null
+                }
+                val notificationUnread = api.getNotificationUnreadCount().count
+                val unreadCount = loadTotalUnreadCount()
+                val currentMessages = _uiState.value.messages
+                val mergedConversations = if (refresh) {
+                    conversationResponse.items
+                } else {
+                    currentMessages.conversations + conversationResponse.items.filter { new ->
+                        currentMessages.conversations.none { it.id == new.id }
+                    }
+                }.distinctBy { it.id }
+                if (refresh) {
+                    awaitMinPullRefreshDuration(refreshStartedAt)
+                }
+                _uiState.value = _uiState.value.copy(
+                    messages = currentMessages.copy(
+                        conversations = mergedConversations,
+                        notificationPreview = notificationResponse?.items ?: currentMessages.notificationPreview,
+                        notificationTotal = notificationResponse?.total ?: currentMessages.notificationTotal,
+                        notificationUnreadCount = notificationUnread,
+                        page = page + 1,
+                        hasMore = conversationResponse.hasMore,
+                        isRefreshing = false,
+                        isInitialLoading = false,
+                        isLoadingMore = false,
+                        hasLoadedOnce = true,
+                    ),
+                    conversations = mergedConversations,
                     unreadCount = unreadCount,
                 )
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(error = parseError(e, "加载消息失败"))
+                if (refresh) {
+                    awaitMinPullRefreshDuration(refreshStartedAt)
+                }
+                _uiState.value = _uiState.value.copy(
+                    messages = _uiState.value.messages.copy(
+                        isRefreshing = false,
+                        isInitialLoading = false,
+                        isLoadingMore = false,
+                    ),
+                    error = parseError(e, "加载消息失败"),
+                )
             }
         }
+    }
+
+    fun loadMoreMessages() {
+        val messages = _uiState.value.messages
+        if (!messages.hasMore || messages.isLoadingMore || messages.isRefreshing) return
+        loadMessages(refresh = false)
+    }
+
+    fun refreshMessages() {
+        loadMessages(refresh = true)
+    }
+
+    fun loadNotificationFeed(refresh: Boolean = false) {
+        val feed = _uiState.value.notificationFeed
+        if (refresh && feed.isRefreshing) return
+        if (!refresh && feed.isLoadingMore) return
+
+        val page = if (refresh) 1 else feed.page
+
+        _uiState.value = _uiState.value.copy(
+            notificationFeed = feed.copy(
+                isRefreshing = refresh,
+                isInitialLoading = !feed.hasLoadedOnce && feed.notifications.isEmpty(),
+                isLoadingMore = !refresh && feed.hasMore,
+                page = page,
+                listResetNonce = if (refresh) feed.listResetNonce + 1 else feed.listResetNonce,
+            ),
+        )
+
+        viewModelScope.launch {
+            val refreshStartedAt = if (refresh) SystemClock.elapsedRealtime() else 0L
+            try {
+                val response = api.getNotifications(page = page, limit = NOTIFICATION_FEED_PAGE_SIZE)
+                val currentFeed = _uiState.value.notificationFeed
+                val merged = if (refresh) {
+                    response.items
+                } else {
+                    currentFeed.notifications + response.items.filter { new ->
+                        currentFeed.notifications.none { it.id == new.id }
+                    }
+                }.distinctBy { it.id }
+                val notificationUnread = api.getNotificationUnreadCount().count
+                if (refresh) {
+                    awaitMinPullRefreshDuration(refreshStartedAt)
+                }
+                val messagesState = _uiState.value.messages
+                _uiState.value = _uiState.value.copy(
+                    notificationFeed = currentFeed.copy(
+                        notifications = merged,
+                        page = page + 1,
+                        hasMore = response.hasMore,
+                        isRefreshing = false,
+                        isInitialLoading = false,
+                        isLoadingMore = false,
+                        hasLoadedOnce = true,
+                    ),
+                    messages = if (refresh) {
+                        messagesState.copy(
+                            notificationPreview = merged.take(NOTIFICATION_PREVIEW_LIMIT),
+                            notificationTotal = response.total,
+                            notificationUnreadCount = notificationUnread,
+                        )
+                    } else {
+                        messagesState.copy(notificationUnreadCount = notificationUnread)
+                    },
+                    unreadCount = loadTotalUnreadCount(),
+                )
+            } catch (e: Exception) {
+                if (refresh) {
+                    awaitMinPullRefreshDuration(refreshStartedAt)
+                }
+                _uiState.value = _uiState.value.copy(
+                    notificationFeed = _uiState.value.notificationFeed.copy(
+                        isRefreshing = false,
+                        isInitialLoading = false,
+                        isLoadingMore = false,
+                    ),
+                    error = parseError(e, "加载通知失败"),
+                )
+            }
+        }
+    }
+
+    fun loadMoreNotifications() {
+        val feed = _uiState.value.notificationFeed
+        if (!feed.hasMore || feed.isLoadingMore || feed.isRefreshing) return
+        loadNotificationFeed(refresh = false)
+    }
+
+    private fun patchConversationInMessages(
+        messages: MessagesUiState,
+        conversationId: Int,
+        patch: (ConversationDto) -> ConversationDto,
+    ): MessagesUiState {
+        val updated = messages.conversations.map { conversation ->
+            if (conversation.id == conversationId) patch(conversation) else conversation
+        }
+        return messages.copy(conversations = updated)
     }
 
     fun loadChat(conversationId: Int) {
@@ -1855,15 +2081,20 @@ class HomeViewModel(
             _uiState.value = _uiState.value.copy(isChatLoading = true, chatMessages = emptyList())
             try {
                 val messages = api.getChatMessages(conversationId)
-                val conversations = api.getConversations()
+                val currentMessages = _uiState.value.messages
+                var conversation = currentMessages.conversations.find { it.id == conversationId }
+                if (conversation == null) {
+                    val response = api.getConversations(page = 1, limit = MESSAGES_CONVERSATION_PAGE_SIZE)
+                    conversation = response.items.find { it.id == conversationId }
+                }
                 val unreadCount = loadTotalUnreadCount()
-                val conversation = conversations.find { it.id == conversationId }
                 if (_uiState.value.chatComposeAttachment == null && conversation != null) {
                     prepareChatCompose(conversation.peerUserId)
                 }
                 _uiState.value = _uiState.value.copy(
                     chatMessages = messages,
-                    conversations = conversations,
+                    messages = currentMessages,
+                    conversations = currentMessages.conversations,
                     selectedConversation = conversation,
                     unreadCount = unreadCount,
                     isChatLoading = false,
@@ -1924,11 +2155,22 @@ class HomeViewModel(
                 conversationId,
                 SendChatMessageRequest(content = content, messageType = messageType),
             )
-            val conversations = api.getConversations()
+            val currentMessages = _uiState.value.messages
+            val updatedMessages = patchConversationInMessages(
+                currentMessages,
+                conversationId,
+            ) { conversation ->
+                conversation.copy(
+                    lastMessageContent = message.content,
+                    lastMessageAt = message.createdAt,
+                )
+            }
             _uiState.value = _uiState.value.copy(
                 chatMessages = _uiState.value.chatMessages + message,
-                conversations = conversations,
-                selectedConversation = conversations.find { it.id == conversationId },
+                messages = updatedMessages,
+                conversations = updatedMessages.conversations,
+                selectedConversation = updatedMessages.conversations.find { it.id == conversationId }
+                    ?: _uiState.value.selectedConversation,
                 isChatSending = false,
             )
         } catch (e: Exception) {
@@ -1997,7 +2239,7 @@ class HomeViewModel(
         viewModelScope.launch {
             try {
                 val conversation = api.createConversation(CreateConversationRequest(peerUserId))
-                refreshMessages()
+                loadMessages(refresh = true)
                 onSuccess(conversation.id)
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(error = parseError(e, "发起私信失败"))
@@ -2015,7 +2257,7 @@ class HomeViewModel(
             try {
                 val conversation = api.createConversation(CreateConversationRequest(peerUserId))
                 sendChatPayloadInternal(conversation.id, product.toJson(), "PRODUCT")
-                refreshMessages()
+                loadMessages(refresh = true)
                 onSuccess(conversation.id)
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
@@ -3246,8 +3488,19 @@ class HomeViewModel(
         private const val PROFILE_FAVORITES_TAB = 3
         private const val PROFILE_LIKES_TAB = 4
         private const val ACTIVITY_FEED_PAGE_SIZE = 10
+        private const val MESSAGES_CONVERSATION_PAGE_SIZE = 20
+        private const val NOTIFICATION_PREVIEW_LIMIT = 4
+        private const val NOTIFICATION_FEED_PAGE_SIZE = 20
         private const val ORDER_PAGE_SIZE = 10
         private const val TRANSACTION_PAGE_SIZE = 15
+        private const val PULL_REFRESH_MIN_DURATION_MS = 350L
+    }
+
+    private suspend fun awaitMinPullRefreshDuration(startedAtMs: Long) {
+        val remain = PULL_REFRESH_MIN_DURATION_MS - (SystemClock.elapsedRealtime() - startedAtMs)
+        if (remain > 0) {
+            delay(remain)
+        }
     }
 
     fun openProfileSearch() {

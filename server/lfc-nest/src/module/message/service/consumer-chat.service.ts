@@ -25,6 +25,10 @@ import {
   parseChatActivitySharePayload,
   parseChatPostSharePayload,
 } from '@module/message/util/chat-share.util';
+import {
+  createPaginatedResult,
+  normalizePagination,
+} from '@shared/dto/paginated-result.dto';
 
 @Injectable()
 export class ConsumerChatService {
@@ -38,6 +42,35 @@ export class ConsumerChatService {
     private readonly roleAuthzService: RoleAuthzService,
   ) {}
 
+  async findConversationsPaginated(userId: number, page?: number, limit?: number) {
+    await this.roleAuthzService.assertRole(userId, UserRole.CONSUMER);
+    const { page: normalizedPage, limit: normalizedLimit, skip } =
+      normalizePagination(page, limit);
+
+    const qb = this.conversationRepository
+      .createQueryBuilder('conversation')
+      .leftJoinAndSelect('conversation.userOne', 'userOne')
+      .leftJoinAndSelect('conversation.userTwo', 'userTwo')
+      .where(
+        '(conversation.user_one_id = :userId AND conversation.user_one_hidden = false) OR (conversation.user_two_id = :userId AND conversation.user_two_hidden = false)',
+        { userId },
+      )
+      .orderBy('conversation.lastMessageAt', 'DESC')
+      .addOrderBy('conversation.updatedAt', 'DESC');
+
+    const total = await qb.getCount();
+    const conversations = await qb.skip(skip).take(normalizedLimit).getMany();
+    const items = conversations.map((conversation) =>
+      this.toConversationItem(conversation, userId),
+    );
+    return createPaginatedResult(
+      items,
+      total,
+      normalizedPage,
+      normalizedLimit,
+    );
+  }
+
   async findConversations(userId: number) {
     await this.roleAuthzService.assertRole(userId, UserRole.CONSUMER);
     const conversations = await this.conversationRepository.find({
@@ -46,18 +79,46 @@ export class ConsumerChatService {
       order: { lastMessageAt: 'DESC', updatedAt: 'DESC' },
     });
 
-    return conversations.map((conversation) => this.toConversationItem(conversation, userId));
+    return conversations
+      .filter((conversation) => !this.isHiddenForUser(conversation, userId))
+      .map((conversation) => this.toConversationItem(conversation, userId));
+  }
+
+  async removeConversation(userId: number, conversationId: number) {
+    const conversation = await this.getConversationForUser(userId, conversationId);
+    if (conversation.userOneId === userId) {
+      conversation.userOneHidden = true;
+      conversation.userOneUnreadCount = 0;
+    } else {
+      conversation.userTwoHidden = true;
+      conversation.userTwoUnreadCount = 0;
+    }
+    await this.conversationRepository.save(conversation);
+    return { message: '删除成功' };
   }
 
   async getUnreadCount(userId: number) {
     await this.roleAuthzService.assertRole(userId, UserRole.CONSUMER);
     const conversations = await this.conversationRepository.find({
       where: [{ userOneId: userId }, { userTwoId: userId }],
-      select: ['id', 'userOneId', 'userTwoId', 'userOneUnreadCount', 'userTwoUnreadCount'],
+      select: [
+        'id',
+        'userOneId',
+        'userTwoId',
+        'userOneUnreadCount',
+        'userTwoUnreadCount',
+        'userOneHidden',
+        'userTwoHidden',
+      ],
     });
 
     const count = conversations.reduce(
-      (sum, conversation) => sum + this.getUnreadCountForUser(conversation, userId),
+      (sum, conversation) => {
+        if (this.isHiddenForUser(conversation, userId)) {
+          return sum;
+        }
+        return sum + this.getUnreadCountForUser(conversation, userId);
+      },
       0,
     );
     return { count };
@@ -97,6 +158,13 @@ export class ConsumerChatService {
         where: { id: conversation.id },
         relations: ['userOne', 'userTwo'],
       });
+    } else {
+      if (conversation.userOneId === userId) {
+        conversation.userOneHidden = false;
+      } else {
+        conversation.userTwoHidden = false;
+      }
+      await this.conversationRepository.save(conversation);
     }
 
     return this.toConversationItem(conversation!, userId);
@@ -180,8 +248,10 @@ export class ConsumerChatService {
     const peerUserId = this.getPeerUserId(conversation, userId);
     if (conversation.userOneId === peerUserId) {
       conversation.userOneUnreadCount += 1;
+      conversation.userOneHidden = false;
     } else {
       conversation.userTwoUnreadCount += 1;
+      conversation.userTwoHidden = false;
     }
 
     await this.conversationRepository.save(conversation);
@@ -221,6 +291,12 @@ export class ConsumerChatService {
     return conversation.userOneId === userId
       ? conversation.userOneUnreadCount
       : conversation.userTwoUnreadCount;
+  }
+
+  private isHiddenForUser(conversation: ConversationEntity, userId: number) {
+    return conversation.userOneId === userId
+      ? conversation.userOneHidden
+      : conversation.userTwoHidden;
   }
 
   private toConversationItem(conversation: ConversationEntity, userId: number) {

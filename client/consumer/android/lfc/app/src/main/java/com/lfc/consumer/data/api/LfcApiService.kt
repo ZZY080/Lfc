@@ -421,7 +421,10 @@ interface LfcApiService {
     suspend fun onShelfPostProduct(@Path("id") id: Int)
 
     @GET("consumer/notification")
-    suspend fun getNotifications(): List<NotificationDto>
+    suspend fun getNotifications(
+        @Query("page") page: Int,
+        @Query("limit") limit: Int,
+    ): PaginatedResponse<NotificationDto>
 
     @GET("consumer/notification/unread-count")
     suspend fun getNotificationUnreadCount(): UnreadCountDto
@@ -436,13 +439,19 @@ interface LfcApiService {
     suspend fun deleteNotification(@Path("id") id: Int)
 
     @GET("consumer/conversation")
-    suspend fun getConversations(): List<ConversationDto>
+    suspend fun getConversations(
+        @Query("page") page: Int,
+        @Query("limit") limit: Int,
+    ): PaginatedResponse<ConversationDto>
 
     @GET("consumer/conversation/unread-count")
     suspend fun getConversationUnreadCount(): UnreadCountDto
 
     @POST("consumer/conversation")
     suspend fun createConversation(@Body request: CreateConversationRequest): ConversationDto
+
+    @DELETE("consumer/conversation/{id}")
+    suspend fun deleteConversation(@Path("id") id: Int)
 
     @GET("consumer/conversation/{id}/messages")
     suspend fun getChatMessages(@Path("id") id: Int): List<ChatMessageDto>

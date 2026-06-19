@@ -125,7 +125,7 @@ fun HomeScreen(
 
     LaunchedEffect(selectedTab) {
         if (selectedTab == 2) {
-            viewModel.refreshMessages()
+            viewModel.loadMessages(refresh = true)
         }
     }
 
@@ -199,7 +199,6 @@ fun HomeScreen(
                         1 -> ActivityFeedScreen(
                             feedState = uiState.activityFeed,
                             onRefresh = {
-                                viewModel.refreshUserLocation()
                                 viewModel.loadActivityFeed(refresh = true)
                             },
                             onLoadMore = viewModel::loadMoreActivityFeed,
@@ -215,16 +214,26 @@ fun HomeScreen(
                                 .padding(bottom = padding.calculateBottomPadding()),
                         )
                         2 -> ConversationListScreen(
-                            conversations = uiState.conversations,
-                            notifications = uiState.notifications,
+                            messagesState = uiState.messages,
                             unreadCount = uiState.unreadCount,
+                            onRefresh = { viewModel.loadMessages(refresh = true) },
+                            onLoadMore = viewModel::loadMoreMessages,
                             onConversationClick = { conversation ->
                                 navController.navigate("chat/${conversation.id}")
                             },
                             onNotificationClick = { notification ->
                                 navController.navigate("notification_detail/${notification.id}")
                             },
+                            onViewAllNotifications = {
+                                navController.navigate("notifications")
+                            },
                             onMarkAllNotificationsRead = viewModel::markAllNotificationsRead,
+                            onDeleteNotification = { notification ->
+                                viewModel.deleteNotification(notification.id)
+                            },
+                            onDeleteConversation = { conversation ->
+                                viewModel.deleteConversation(conversation.id)
+                            },
                             modifier = Modifier
                                 .fillMaxSize()
                                 .padding(bottom = padding.calculateBottomPadding()),
@@ -344,6 +353,26 @@ fun HomeScreen(
                     onBack = {
                         viewModel.clearSearch()
                         navController.popBackStack()
+                    },
+                )
+            }
+
+            composable("notifications") {
+                LaunchedEffect(Unit) {
+                    viewModel.loadNotificationFeed(refresh = true)
+                }
+                NotificationListScreen(
+                    feedState = uiState.notificationFeed,
+                    notificationUnreadCount = uiState.messages.notificationUnreadCount,
+                    onBack = { navController.popBackStack() },
+                    onRefresh = { viewModel.loadNotificationFeed(refresh = true) },
+                    onLoadMore = viewModel::loadMoreNotifications,
+                    onNotificationClick = { notification ->
+                        navController.navigate("notification_detail/${notification.id}")
+                    },
+                    onMarkAllNotificationsRead = viewModel::markAllNotificationsRead,
+                    onDeleteNotification = { notification ->
+                        viewModel.deleteNotification(notification.id)
                     },
                 )
             }
@@ -823,7 +852,7 @@ fun HomeScreen(
                     alipayLoginIdMasked = uiState.myProfile?.alipayLoginIdMasked,
                     onBack = { navController.popBackStack() },
                     onBindAlipay = { navController.navigate("settings") },
-                    onSubmit = { title, content, imageUris, category, product, latitude, longitude, location ->
+                    onSubmit = { title, content, imageUris, keptExistingImageUrls, category, product, latitude, longitude, location ->
                         isSubmitting = true
                         viewModel.createPost(
                             title = title,
@@ -851,7 +880,7 @@ fun HomeScreen(
                     alipayBound = uiState.myProfile?.alipayBound == true,
                     onBack = { navController.popBackStack() },
                     onBindAlipay = { navController.navigate("settings") },
-                    onSubmit = { title, description, location, latitude, longitude, startTime, endTime, maxParticipants, fee, imageUris ->
+                    onSubmit = { title, description, location, latitude, longitude, startTime, endTime, maxParticipants, fee, imageUris, _ ->
                         isSubmitting = true
                         viewModel.createActivity(
                             title = title,
@@ -883,7 +912,7 @@ fun HomeScreen(
                     alipayLoginIdMasked = uiState.myProfile?.alipayLoginIdMasked,
                     onBack = { navController.popBackStack() },
                     onBindAlipay = { navController.navigate("settings") },
-                    onSubmit = { title, content, imageUris, category, _, latitude, longitude, location ->
+                    onSubmit = { title, content, imageUris, keptExistingImageUrls, category, _, latitude, longitude, location ->
                         editingPost?.let { post ->
                             isSubmitting = true
                             viewModel.updatePost(
@@ -891,7 +920,7 @@ fun HomeScreen(
                                 title = title,
                                 content = content,
                                 imageUris = imageUris,
-                                existingImages = post.images.orEmpty(),
+                                existingImages = keptExistingImageUrls,
                                 category = category,
                                 latitude = latitude,
                                 longitude = longitude,
@@ -912,7 +941,7 @@ fun HomeScreen(
                     alipayBound = uiState.myProfile?.alipayBound == true,
                     onBack = { navController.popBackStack() },
                     onBindAlipay = { navController.navigate("settings") },
-                    onSubmit = { title, description, location, latitude, longitude, startTime, endTime, maxParticipants, _, imageUris ->
+                    onSubmit = { title, description, location, latitude, longitude, startTime, endTime, maxParticipants, _, imageUris, keptExistingImageUrls ->
                         editingActivity?.let { activity ->
                             isSubmitting = true
                             viewModel.updateActivity(
@@ -926,7 +955,7 @@ fun HomeScreen(
                                 endTime = endTime,
                                 maxParticipants = maxParticipants,
                                 imageUris = imageUris,
-                                existingImages = activity.images.orEmpty(),
+                                existingImages = keptExistingImageUrls,
                                 onSuccess = { navController.popBackStack() },
                                 onComplete = { isSubmitting = false },
                             )

@@ -478,7 +478,10 @@ fun XhsProfileScreen(
                     if (!pinStickyTabsAfterSwitch || showTabPlaceholder) return@LaunchedEffect
                     snapshotFlow { gridState.layoutInfo.totalItemsCount }
                         .first { it > 1 }
-                    gridState.scrollToItem(1)
+                    val targetIndex = minOf(1, gridState.layoutInfo.totalItemsCount - 1)
+                    if (targetIndex >= 0) {
+                        gridState.scrollToItem(targetIndex)
+                    }
                     pinStickyTabsAfterSwitch = false
                 }
 

@@ -35,7 +35,7 @@ function buildQuery(params: object) {
 
 export function fetchPendingPosts(token: string, params: PostListParams = {}) {
   return request<PaginatedResult<Post>>(
-    `/api/admin/post/pending${buildQuery(params)}`,
+    `/admin/post/pending${buildQuery(params)}`,
     {},
     token,
   )
@@ -50,7 +50,7 @@ export function reviewPost(
   },
 ) {
   return request<Post>(
-    `/api/admin/post/${postId}/review`,
+    `/admin/post/${postId}/review`,
     { method: 'PATCH', body: JSON.stringify(data) },
     token,
   )
@@ -58,18 +58,18 @@ export function reviewPost(
 
 export function fetchPosts(token: string, params: PostListParams = {}) {
   return request<PaginatedResult<Post>>(
-    `/api/admin/post${buildQuery(params)}`,
+    `/admin/post${buildQuery(params)}`,
     {},
     token,
   )
 }
 
 export function fetchPost(token: string, postId: number) {
-  return request<Post>(`/api/admin/post/${postId}`, {}, token)
+  return request<Post>(`/admin/post/${postId}`, {}, token)
 }
 
 export function fetchPostDetail(token: string, postId: number) {
-  return request<PostDetail>(`/api/admin/post/${postId}/detail`, {}, token)
+  return request<PostDetail>(`/admin/post/${postId}/detail`, {}, token)
 }
 
 export function fetchPostComments(
@@ -78,7 +78,7 @@ export function fetchPostComments(
   params: { page?: number; limit?: number } = {},
 ) {
   return request<PaginatedResult<Comment>>(
-    `/api/admin/post/${postId}/comments${buildQuery(params)}`,
+    `/admin/post/${postId}/comments${buildQuery(params)}`,
     {},
     token,
   )
@@ -90,7 +90,7 @@ export function fetchPostLikes(
   params: { page?: number; limit?: number } = {},
 ) {
   return request<PaginatedResult<PostLikeRecord>>(
-    `/api/admin/post/${postId}/likes${buildQuery(params)}`,
+    `/admin/post/${postId}/likes${buildQuery(params)}`,
     {},
     token,
   )
@@ -102,7 +102,7 @@ export function fetchPostFavorites(
   params: { page?: number; limit?: number } = {},
 ) {
   return request<PaginatedResult<PostFavoriteRecord>>(
-    `/api/admin/post/${postId}/favorites${buildQuery(params)}`,
+    `/admin/post/${postId}/favorites${buildQuery(params)}`,
     {},
     token,
   )
@@ -110,7 +110,7 @@ export function fetchPostFavorites(
 
 export function removePostLike(token: string, postId: number, likeId: number) {
   return request<{ message: string }>(
-    `/api/admin/post/${postId}/likes/${likeId}`,
+    `/admin/post/${postId}/likes/${likeId}`,
     { method: 'DELETE' },
     token,
   )
@@ -122,7 +122,7 @@ export function removePostFavorite(
   favoriteId: number,
 ) {
   return request<{ message: string }>(
-    `/api/admin/post/${postId}/favorites/${favoriteId}`,
+    `/admin/post/${postId}/favorites/${favoriteId}`,
     { method: 'DELETE' },
     token,
   )
@@ -141,7 +141,7 @@ export function updatePostProduct(
   },
 ) {
   return request<PostProduct>(
-    `/api/admin/post/${postId}/product`,
+    `/admin/post/${postId}/product`,
     { method: 'PATCH', body: JSON.stringify(data) },
     token,
   )
@@ -149,7 +149,7 @@ export function updatePostProduct(
 
 export function deletePostProduct(token: string, postId: number) {
   return request<{ message: string }>(
-    `/api/admin/post/${postId}/product`,
+    `/admin/post/${postId}/product`,
     { method: 'DELETE' },
     token,
   )
@@ -172,7 +172,7 @@ export function updatePost(
   },
 ) {
   return request<Post>(
-    `/api/admin/post/${postId}`,
+    `/admin/post/${postId}`,
     { method: 'PATCH', body: JSON.stringify(data) },
     token,
   )
@@ -188,7 +188,7 @@ export function updatePostVisibility(
 
 export function deletePost(token: string, postId: number) {
   return request<{ message: string }>(
-    `/api/admin/post/${postId}`,
+    `/admin/post/${postId}`,
     { method: 'DELETE' },
     token,
   )

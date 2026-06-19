@@ -17,22 +17,22 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.pullrefresh.PullRefreshIndicator
+import androidx.compose.material.pullrefresh.pullRefresh
+import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
-import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
-import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -89,12 +89,14 @@ fun ActivityFeedScreen(
             currentUserId = currentUserId,
             isPaymentProcessing = isPaymentProcessing,
             payingActivityId = payingActivityId,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth(),
         )
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterialApi::class)
 @Composable
 private fun ActivityFeedContent(
     feedState: ActivityFeedUiState,
@@ -108,24 +110,39 @@ private fun ActivityFeedContent(
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
-    val pullRefreshState = rememberPullToRefreshState()
-    val activityCount = feedState.activities.size
     val latestFeedState by rememberUpdatedState(feedState)
+    val pullRefreshState = rememberPullRefreshState(
+        refreshing = feedState.isRefreshing,
+        onRefresh = onRefresh,
+    )
 
-    LaunchedEffect(listState, activityCount) {
+    LaunchedEffect(feedState.listResetNonce) {
+        if (feedState.listResetNonce > 0 && listState.layoutInfo.totalItemsCount > 0) {
+            listState.scrollToItem(0)
+        }
+    }
+
+    LaunchedEffect(feedState.activities.size, feedState.isRefreshing) {
+        if (!feedState.isRefreshing && feedState.activities.isNotEmpty()) {
+            val maxIndex = listState.layoutInfo.totalItemsCount - 1
+            if (maxIndex >= 0 && listState.firstVisibleItemIndex > maxIndex) {
+                listState.scrollToItem(0)
+            }
+        }
+    }
+
+    LaunchedEffect(listState, feedState.hasMore, feedState.isLoadingMore, feedState.isRefreshing) {
         snapshotFlow {
             val info = listState.layoutInfo
             val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: -1
-            lastVisible
+            lastVisible to info.totalItemsCount
         }
             .distinctUntilChanged()
-            .collect { lastVisible ->
+            .collect { (lastVisible, total) ->
                 val state = latestFeedState
-                val count = state.activities.size
                 if (
-                    count > 0 &&
-                    lastVisible >= count - 1 &&
-                    lastVisible < count &&
+                    total > 0 &&
+                    lastVisible >= total - 3 &&
                     state.hasMore &&
                     !state.isLoadingMore &&
                     !state.isRefreshing &&
@@ -136,19 +153,10 @@ private fun ActivityFeedContent(
             }
     }
 
-    PullToRefreshBox(
-        state = pullRefreshState,
-        isRefreshing = feedState.isRefreshing,
-        onRefresh = onRefresh,
-        modifier = modifier.fillMaxSize(),
-        indicator = {
-            PullToRefreshDefaults.Indicator(
-                isRefreshing = feedState.isRefreshing,
-                state = pullRefreshState,
-                modifier = Modifier.align(Alignment.TopCenter),
-                color = XhsRed,
-            )
-        },
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .pullRefresh(pullRefreshState),
     ) {
         LazyColumn(
             state = listState,
@@ -206,6 +214,14 @@ private fun ActivityFeedContent(
                 }
             }
         }
+
+        PullRefreshIndicator(
+            refreshing = feedState.isRefreshing,
+            state = pullRefreshState,
+            modifier = Modifier.align(Alignment.TopCenter),
+            backgroundColor = Color.White,
+            contentColor = XhsRed,
+        )
     }
 }
 
@@ -307,10 +323,10 @@ private fun ActivityCard(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-                if (activity.description.isNotBlank()) {
+                if (!activity.description.isNullOrBlank()) {
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        text = activity.description,
+                        text = activity.description.orEmpty(),
                         fontSize = 14.sp,
                         lineHeight = 21.sp,
                         color = XhsTextPrimary,

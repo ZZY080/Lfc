@@ -4,6 +4,10 @@ import { Repository } from 'typeorm';
 import { NotificationEntity } from '@module/message/entity/notification.entity';
 import { RoleAuthzService } from '@shared/auth/role-authz.service';
 import { UserRole } from '@shared/enum/user-role.enum';
+import {
+  createPaginatedResult,
+  normalizePagination,
+} from '@shared/dto/paginated-result.dto';
 
 @Injectable()
 export class ConsumerNotificationService {
@@ -13,12 +17,22 @@ export class ConsumerNotificationService {
     private readonly roleAuthzService: RoleAuthzService,
   ) {}
 
-  async findAll(userId: number) {
+  async findPaginated(userId: number, page?: number, limit?: number) {
     await this.roleAuthzService.assertRole(userId, UserRole.CONSUMER);
-    return this.notificationRepository.find({
+    const { page: normalizedPage, limit: normalizedLimit, skip } =
+      normalizePagination(page, limit);
+    const [items, total] = await this.notificationRepository.findAndCount({
       where: { userId },
       order: { createdAt: 'DESC' },
+      skip,
+      take: normalizedLimit,
     });
+    return createPaginatedResult(
+      items,
+      total,
+      normalizedPage,
+      normalizedLimit,
+    );
   }
 
   async getUnreadCount(userId: number) {

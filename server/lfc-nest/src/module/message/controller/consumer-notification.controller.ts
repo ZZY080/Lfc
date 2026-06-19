@@ -5,11 +5,13 @@ import {
   Param,
   ParseIntPipe,
   Patch,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { ConsumerNotificationService } from '@module/message/service/consumer-notification.service';
 import { JwtAuthGuard } from '@shared/guard/jwt-auth.guard';
 import { CurrentUser } from '@shared/decorator/user.decorator';
+import { PaginationQuerySchema } from '@shared/schema/pagination.schema';
 
 @Controller('consumer/notification')
 @UseGuards(JwtAuthGuard)
@@ -24,8 +26,15 @@ export class ConsumerNotificationController {
   }
 
   @Get()
-  findAll(@CurrentUser('userId') userId: number) {
-    return this.consumerNotificationService.findAll(userId);
+  findAll(
+    @CurrentUser('userId') userId: number,
+    @Query() query: PaginationQuerySchema,
+  ) {
+    return this.consumerNotificationService.findPaginated(
+      userId,
+      query.page,
+      query.limit,
+    );
   }
 
   @Patch('read-all')

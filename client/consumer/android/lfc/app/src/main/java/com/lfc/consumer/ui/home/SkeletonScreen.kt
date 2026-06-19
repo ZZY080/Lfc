@@ -267,13 +267,11 @@ fun ActivityFeedSkeleton(
     modifier: Modifier = Modifier,
     itemCount: Int = 3,
 ) {
-    LazyColumn(
-        modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+    Column(
+        modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(14.dp),
-        userScrollEnabled = false,
     ) {
-        items(itemCount) {
+        repeat(itemCount) {
             ActivityCardSkeleton()
         }
     }

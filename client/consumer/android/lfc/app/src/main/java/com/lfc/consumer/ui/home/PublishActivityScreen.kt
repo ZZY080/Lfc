@@ -59,6 +59,7 @@ fun PublishActivityScreen(
         maxParticipants: Int,
         fee: Double,
         imageUris: List<Uri>,
+        keptExistingImageUrls: List<String>,
     ) -> Unit,
 ) {
     val context = LocalContext.current
@@ -77,7 +78,7 @@ fun PublishActivityScreen(
     var isLocating by remember { mutableStateOf(false) }
     var locationHint by remember { mutableStateOf<String?>(null) }
     val selectedImages = rememberPublishImageSelection()
-    val existingImages = initial?.images.orEmpty()
+    val keptExistingImages = rememberPublishExistingImages(initial?.images.orEmpty(), initial?.id)
 
     fun hasLocationPermission(): Boolean = locationPermissions.all { permission ->
         ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
@@ -117,7 +118,7 @@ fun PublishActivityScreen(
     }
 
     val isValid = location.isNotBlank() && startTime.isNotBlank() && endTime.isNotBlank() &&
-        (description.isNotBlank() || selectedImages.isNotEmpty() || existingImages.isNotEmpty())
+        (description.isNotBlank() || selectedImages.isNotEmpty() || keptExistingImages.isNotEmpty())
     val activityFee = fee.toDoubleOrNull() ?: 0.0
     val needsAlipay = activityFee > 0 && !alipayBound
 
@@ -139,6 +140,7 @@ fun PublishActivityScreen(
                         maxParticipants.toIntOrNull() ?: 0,
                         fee.toDoubleOrNull() ?: 0.0,
                         selectedImages.toList(),
+                        keptExistingImages.toList(),
                     )
                 },
                 actionEnabled = isValid && !needsAlipay,
@@ -163,7 +165,7 @@ fun PublishActivityScreen(
                     .padding(horizontal = 16.dp, vertical = 16.dp),
             ) {
                 PublishImagePicker(
-                    existingImageUrls = existingImages,
+                    existingImageUrls = keptExistingImages,
                     selectedImages = selectedImages,
                 )
 

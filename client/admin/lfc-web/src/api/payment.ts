@@ -40,7 +40,7 @@ export function fetchPaymentOrders(
   params: PaymentListParams = {},
 ) {
   return request<PaginatedResult<PaymentOrder>>(
-    `/api/admin/payment/order${buildQuery(params)}`,
+    `/admin/payment/order${buildQuery(params)}`,
     {},
     token,
   )
@@ -48,7 +48,7 @@ export function fetchPaymentOrders(
 
 export function fetchPaymentOrder(token: string, orderId: number) {
   return request<PaymentOrderDetail>(
-    `/api/admin/payment/order/${orderId}`,
+    `/admin/payment/order/${orderId}`,
     {},
     token,
   )
@@ -59,7 +59,7 @@ export function fetchAfterSales(
   params: AfterSalesListParams = {},
 ) {
   return request<PaginatedResult<PaymentAfterSales>>(
-    `/api/admin/payment/after-sales${buildQuery(params)}`,
+    `/admin/payment/after-sales${buildQuery(params)}`,
     {},
     token,
   )
@@ -71,7 +71,7 @@ export function reviewAfterSales(
   data: { action: 'approve' | 'reject'; rejectReason?: string },
 ) {
   return request<PaymentAfterSales>(
-    `/api/admin/payment/after-sales/${afterSalesId}/review`,
+    `/admin/payment/after-sales/${afterSalesId}/review`,
     { method: 'PATCH', body: JSON.stringify(data) },
     token,
   )

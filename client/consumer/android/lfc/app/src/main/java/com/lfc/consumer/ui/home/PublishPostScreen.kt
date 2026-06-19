@@ -67,6 +67,7 @@ fun PublishPostScreen(
         title: String,
         content: String,
         imageUris: List<Uri>,
+        keptExistingImageUrls: List<String>,
         category: String,
         product: PostProductRequest?,
         latitude: Double?,
@@ -93,9 +94,9 @@ fun PublishPostScreen(
     var condition by remember { mutableStateOf(initial?.product?.condition ?: "GOOD") }
     var deliveryMethod by remember { mutableStateOf(initial?.product?.deliveryMethod ?: "PICKUP") }
     val selectedImages = rememberPublishImageSelection()
-    val existingImages = initial?.images.orEmpty()
+    val keptExistingImages = rememberPublishExistingImages(initial?.images.orEmpty(), initial?.id)
     val hasLocation = hasValidCoordinate(latitude, longitude)
-    val canSubmit = (content.isNotBlank() || selectedImages.isNotEmpty() || existingImages.isNotEmpty()) &&
+    val canSubmit = (content.isNotBlank() || selectedImages.isNotEmpty() || keptExistingImages.isNotEmpty()) &&
         hasLocation
     val productPrice = price.toDoubleOrNull() ?: 0.0
     val needsAlipay = attachProduct && productPrice > 0 && !alipayBound
@@ -165,6 +166,7 @@ fun PublishPostScreen(
                         title.trim(),
                         content.trim(),
                         selectedImages.toList(),
+                        keptExistingImages.toList(),
                         noteCategory,
                         product,
                         latitude,
@@ -196,7 +198,7 @@ fun PublishPostScreen(
                     .padding(horizontal = 16.dp, vertical = 16.dp),
             ) {
                 PublishImagePicker(
-                    existingImageUrls = existingImages,
+                    existingImageUrls = keptExistingImages,
                     selectedImages = selectedImages,
                 )
 

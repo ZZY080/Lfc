@@ -44,6 +44,12 @@ export class ConversationEntity {
   @Column({ name: 'user_two_unread_count', type: 'int', default: 0 })
   userTwoUnreadCount: number;
 
+  @Column({ name: 'user_one_hidden', type: 'boolean', default: false })
+  userOneHidden: boolean;
+
+  @Column({ name: 'user_two_hidden', type: 'boolean', default: false })
+  userTwoHidden: boolean;
+
   @OneToMany(() => MessageEntity, (message) => message.conversation)
   messages: MessageEntity[];
 

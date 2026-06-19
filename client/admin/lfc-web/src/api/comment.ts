@@ -22,7 +22,7 @@ function buildQuery(params: object) {
 
 export function fetchComments(token: string, params: CommentListParams = {}) {
   return request<PaginatedResult<Comment>>(
-    `/api/admin/comment${buildQuery(params)}`,
+    `/admin/comment${buildQuery(params)}`,
     {},
     token,
   )
@@ -34,7 +34,7 @@ export function updateComment(
   data: { content?: string; isVisible?: boolean },
 ) {
   return request<Comment>(
-    `/api/admin/comment/${commentId}`,
+    `/admin/comment/${commentId}`,
     { method: 'PATCH', body: JSON.stringify(data) },
     token,
   )
@@ -42,7 +42,7 @@ export function updateComment(
 
 export function deleteComment(token: string, commentId: number) {
   return request<{ message: string }>(
-    `/api/admin/comment/${commentId}`,
+    `/admin/comment/${commentId}`,
     { method: 'DELETE' },
     token,
   )

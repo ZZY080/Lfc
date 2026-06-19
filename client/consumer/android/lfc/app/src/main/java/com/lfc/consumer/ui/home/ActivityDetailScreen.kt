@@ -253,7 +253,7 @@ fun ActivityDetailScreen(
                             Spacer(modifier = Modifier.height(18.dp))
 
                             ActivityDetailDescriptionSection(
-                                description = activity.description,
+                                description = activity.description.orEmpty(),
                                 createdAt = activity.createdAt,
                                 modifier = Modifier.padding(horizontal = 16.dp),
                             )

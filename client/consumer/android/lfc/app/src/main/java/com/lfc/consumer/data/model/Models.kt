@@ -180,6 +180,34 @@ data class ActivityFeedUiState(
     val isRefreshing: Boolean = false,
     val isLoadingMore: Boolean = false,
     val isInitialLoading: Boolean = false,
+    val hasLoadedOnce: Boolean = false,
+    /** 刷新时递增，用于重置列表滚动位置，避免索引越界崩溃 */
+    val listResetNonce: Int = 0,
+)
+
+data class MessagesUiState(
+    val conversations: List<ConversationDto> = emptyList(),
+    val notificationPreview: List<NotificationDto> = emptyList(),
+    val notificationTotal: Int = 0,
+    val notificationUnreadCount: Int = 0,
+    val page: Int = 1,
+    val hasMore: Boolean = true,
+    val isRefreshing: Boolean = false,
+    val isLoadingMore: Boolean = false,
+    val isInitialLoading: Boolean = false,
+    val hasLoadedOnce: Boolean = false,
+    val listResetNonce: Int = 0,
+)
+
+data class NotificationFeedUiState(
+    val notifications: List<NotificationDto> = emptyList(),
+    val page: Int = 1,
+    val hasMore: Boolean = true,
+    val isRefreshing: Boolean = false,
+    val isLoadingMore: Boolean = false,
+    val isInitialLoading: Boolean = false,
+    val hasLoadedOnce: Boolean = false,
+    val listResetNonce: Int = 0,
 )
 
 data class SearchUiState(
@@ -274,7 +302,7 @@ data class PromotionPaymentResponseDto(
 data class ActivityDto(
     val id: Int,
     val title: String,
-    val description: String,
+    val description: String? = null,
     val images: List<String>? = null,
     val location: String,
     val latitude: Double? = null,

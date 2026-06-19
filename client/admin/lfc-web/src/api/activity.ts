@@ -24,7 +24,7 @@ export function fetchPendingActivities(
   params: ActivityListParams = {},
 ) {
   return request<PaginatedResult<Activity>>(
-    `/api/admin/activity/pending${buildQuery(params)}`,
+    `/admin/activity/pending${buildQuery(params)}`,
     {},
     token,
   )
@@ -35,14 +35,14 @@ export function fetchAllActivities(
   params: ActivityListParams = {},
 ) {
   return request<PaginatedResult<Activity>>(
-    `/api/admin/activity${buildQuery(params)}`,
+    `/admin/activity${buildQuery(params)}`,
     {},
     token,
   )
 }
 
 export function fetchActivity(token: string, id: number) {
-  return request<Activity>(`/api/admin/activity/${id}`, {}, token)
+  return request<Activity>(`/admin/activity/${id}`, {}, token)
 }
 
 export function updateActivity(
@@ -59,7 +59,7 @@ export function updateActivity(
   },
 ) {
   return request<Activity>(
-    `/api/admin/activity/${id}`,
+    `/admin/activity/${id}`,
     { method: 'PATCH', body: JSON.stringify(data) },
     token,
   )
@@ -74,7 +74,7 @@ export function reviewActivity(
   },
 ) {
   return request<Activity>(
-    `/api/admin/activity/${id}/review`,
+    `/admin/activity/${id}/review`,
     { method: 'PATCH', body: JSON.stringify(data) },
     token,
   )
@@ -82,7 +82,7 @@ export function reviewActivity(
 
 export function deleteActivity(token: string, id: number) {
   return request<{ message: string }>(
-    `/api/admin/activity/${id}`,
+    `/admin/activity/${id}`,
     { method: 'DELETE' },
     token,
   )

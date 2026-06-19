@@ -22,7 +22,7 @@ fun normalizeApiBaseUrl(url: String): String =
 fun resolveDeviceApiBaseUrl(): String {
     val fromLocal = loadLocalProperty("API_BASE_URL")
     val fromGradle = (project.findProperty("DEV_API_BASE_URL") as String?)?.trim()
-    return normalizeApiBaseUrl(fromLocal ?: fromGradle ?: "https://www.dev.lfc.neptia.cn/api/")
+    return normalizeApiBaseUrl(fromLocal ?: fromGradle ?: "http://192.168.0.102:8088/")
 }
 
 android {
@@ -104,6 +104,7 @@ dependencies {
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.material:material")
     implementation("androidx.compose.material:material-icons-extended")
 
     // Network

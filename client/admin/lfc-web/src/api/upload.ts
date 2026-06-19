@@ -9,7 +9,7 @@ export async function uploadPostImage(
   formData.append('file', file)
 
   const response = await fetch(
-    `${getApiBaseUrl()}/api/consumer/upload/image?scope=post`,
+    `${getApiBaseUrl()}/consumer/upload/image?scope=post`,
     {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },

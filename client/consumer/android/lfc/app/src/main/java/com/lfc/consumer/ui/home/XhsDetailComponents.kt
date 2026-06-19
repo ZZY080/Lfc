@@ -33,7 +33,15 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.activity.compose.BackHandler
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -120,10 +128,12 @@ fun XhsDetailImageCarousel(
     aspectRatio: Float = 1f,
     indicatorStyle: CarouselIndicatorStyle = CarouselIndicatorStyle.Dots,
     indicatorBottomPadding: Dp = 14.dp,
+    enablePreview: Boolean = true,
 ) {
     if (images.isEmpty()) return
 
     val pagerState = rememberPagerState(pageCount = { images.size })
+    var previewStartIndex by remember { mutableStateOf<Int?>(null) }
 
     Box(
         modifier = modifier
@@ -138,7 +148,15 @@ fun XhsDetailImageCarousel(
                 model = images[page],
                 contentDescription = contentDescription,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .then(
+                        if (enablePreview) {
+                            Modifier.clickable { previewStartIndex = page }
+                        } else {
+                            Modifier
+                        },
+                    ),
             )
         }
 
@@ -193,6 +211,82 @@ fun XhsDetailImageCarousel(
                         }
                     }
                 }
+            }
+        }
+    }
+
+    previewStartIndex?.let { startIndex ->
+        XhsImagePreviewDialog(
+            imageUrls = images,
+            startIndex = startIndex,
+            onDismiss = { previewStartIndex = null },
+        )
+    }
+}
+
+@Composable
+fun XhsImagePreviewDialog(
+    imageUrls: List<String>,
+    startIndex: Int,
+    onDismiss: () -> Unit,
+) {
+    if (imageUrls.isEmpty()) return
+
+    BackHandler(onBack = onDismiss)
+
+    val pagerState = rememberPagerState(
+        initialPage = startIndex.coerceIn(0, imageUrls.lastIndex),
+        pageCount = { imageUrls.size },
+    )
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black),
+        ) {
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize(),
+            ) { page ->
+                AsyncImage(
+                    model = imageUrls[page],
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+
+            IconButton(
+                onClick = onDismiss,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .statusBarsPadding()
+                    .padding(8.dp),
+            ) {
+                Icon(
+                    Icons.Default.Close,
+                    contentDescription = "关闭",
+                    tint = Color.White,
+                    modifier = Modifier.size(24.dp),
+                )
+            }
+
+            if (imageUrls.size > 1) {
+                Text(
+                    text = "${pagerState.currentPage + 1}/${imageUrls.size}",
+                    color = Color.White,
+                    fontSize = 14.sp,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 32.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color.Black.copy(alpha = 0.45f))
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                )
             }
         }
     }
