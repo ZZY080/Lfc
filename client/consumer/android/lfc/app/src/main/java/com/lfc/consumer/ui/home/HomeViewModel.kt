@@ -8,6 +8,7 @@ import android.net.Uri
 import android.os.SystemClock
 import com.lfc.consumer.data.ApiClient
 import com.lfc.consumer.data.MediaUploadHelper
+import com.lfc.consumer.data.local.FeedChannelCatalog
 import com.lfc.consumer.data.local.FeedChannelStore
 import com.lfc.consumer.data.local.FeedChannels
 import com.lfc.consumer.data.local.SearchHistoryStore
@@ -65,6 +66,7 @@ import com.lfc.consumer.data.model.ApplyAfterSalesRequest
 import com.lfc.consumer.data.model.BindAlipayAccountRequest
 import com.lfc.consumer.data.model.BindAlipayOAuthRequest
 import com.lfc.consumer.data.model.SendChatMessageRequest
+import com.lfc.consumer.data.model.UpdateFeedChannelsRequest
 import com.lfc.consumer.data.model.UserProfileDto
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -195,6 +197,10 @@ class HomeViewModel(
                 )
             }
         }
+        viewModelScope.launch {
+            syncFeedChannelCatalog()
+            syncFeedChannelsFromServer()
+        }
         loadPaymentConfig()
         loadPromotionConfig()
         refreshUserLocation()
@@ -276,6 +282,10 @@ class HomeViewModel(
         loadPaymentConfig()
         loadPromotionConfig()
         refreshUserLocation()
+        viewModelScope.launch {
+            syncFeedChannelCatalog()
+            syncFeedChannelsFromServer()
+        }
         loadFeed(refresh = true)
         loadActivityFeed(refresh = true)
         refreshProfileData()
@@ -472,6 +482,7 @@ class HomeViewModel(
                 )
                 loadProfileTab(tab = 0, userId = myId)
                 preloadProfileTabTotals(myId, useSelfBucket = true)
+                syncFeedChannelsFromServer()
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
@@ -658,6 +669,16 @@ class HomeViewModel(
         )
     }
 
+    fun enterFeedChannelEditMode() {
+        val feed = _uiState.value.feed
+        _uiState.value = _uiState.value.copy(
+            feed = feed.copy(
+                isChannelPanelExpanded = true,
+                isChannelEditMode = true,
+            ),
+        )
+    }
+
     fun toggleFeedChannelEditMode() {
         val feed = _uiState.value.feed
         _uiState.value = _uiState.value.copy(
@@ -666,28 +687,120 @@ class HomeViewModel(
     }
 
     fun addFeedChannel(channel: String) {
-        val feed = _uiState.value.feed
-        if (channel in feed.myChannels) return
-        val updated = feed.myChannels + channel
-        viewModelScope.launch {
-            feedChannelStore.saveMyChannels(updated)
-        }
+        val current = effectiveMyChannels()
+        if (channel in current) return
+        persistMyChannels(current + channel)
     }
 
     fun removeFeedChannel(channel: String) {
         if (channel == FeedChannels.RECOMMEND) return
         val feed = _uiState.value.feed
-        val updated = feed.myChannels.filter { it != channel }
-        viewModelScope.launch {
-            feedChannelStore.saveMyChannels(updated)
+        val updated = effectiveMyChannels().filter { it != channel }
+        persistMyChannels(updated) {
             if (feed.selectedTab == channel) {
                 selectFeedTab(FeedChannels.RECOMMEND)
             }
         }
     }
 
-    fun recommendedFeedChannels(): List<String> =
-        FeedChannels.recommendedFor(_uiState.value.feed.myChannels)
+    fun recommendedFeedChannels(): List<String> = _uiState.value.feed.recommendedChannels
+
+    private fun effectiveMyChannels(): List<String> {
+        val feed = _uiState.value.feed
+        return when {
+            feed.myChannels.isNotEmpty() -> feed.myChannels
+            feed.defaultMyChannels.isNotEmpty() -> feed.defaultMyChannels
+            else -> listOf(FeedChannels.RECOMMEND)
+        }
+    }
+
+    private fun applyFeedChannelConfig(
+        myChannels: List<String>? = null,
+        allChannels: List<String>? = null,
+        recommendedChannels: List<String>? = null,
+        defaultMyChannels: List<String>? = null,
+        publishCategories: List<String>? = null,
+    ) {
+        val feed = _uiState.value.feed
+        _uiState.value = _uiState.value.copy(
+            feed = feed.copy(
+                myChannels = myChannels ?: feed.myChannels,
+                allChannels = allChannels ?: feed.allChannels,
+                recommendedChannels = recommendedChannels ?: feed.recommendedChannels,
+                defaultMyChannels = defaultMyChannels ?: feed.defaultMyChannels,
+                publishCategories = publishCategories ?: feed.publishCategories,
+            ),
+        )
+    }
+
+    private suspend fun syncFeedChannelCatalog() {
+        runCatching {
+            api.getFeedChannelCatalog()
+        }.onSuccess { catalog ->
+            feedChannelStore.saveCatalog(
+                FeedChannelCatalog(
+                    allChannels = catalog.allChannels,
+                    defaultMyChannels = catalog.defaultMyChannels,
+                    publishCategories = catalog.publishCategories,
+                ),
+            )
+            applyFeedChannelConfig(
+                allChannels = catalog.allChannels,
+                defaultMyChannels = catalog.defaultMyChannels,
+                publishCategories = catalog.publishCategories,
+            )
+        }
+    }
+
+    private suspend fun syncFeedChannelsFromServer() {
+        runCatching {
+            api.getMyFeedChannels()
+        }.onSuccess { response ->
+            feedChannelStore.saveCatalog(
+                FeedChannelCatalog(
+                    allChannels = response.allChannels,
+                    defaultMyChannels = _uiState.value.feed.defaultMyChannels,
+                    publishCategories = response.publishCategories,
+                ),
+            )
+            if (response.myChannels.isNotEmpty()) {
+                feedChannelStore.saveMyChannels(response.myChannels)
+            }
+            applyFeedChannelConfig(
+                myChannels = response.myChannels,
+                allChannels = response.allChannels,
+                recommendedChannels = response.recommendedChannels,
+                publishCategories = response.publishCategories,
+            )
+        }
+    }
+
+    private fun persistMyChannels(
+        channels: List<String>,
+        onLocalSaved: () -> Unit = {},
+    ) {
+        viewModelScope.launch {
+            val previous = effectiveMyChannels()
+            feedChannelStore.saveMyChannels(channels)
+            onLocalSaved()
+            runCatching {
+                api.updateMyFeedChannels(UpdateFeedChannelsRequest(channels))
+            }.onSuccess { response ->
+                feedChannelStore.saveMyChannels(response.myChannels)
+                applyFeedChannelConfig(
+                    myChannels = response.myChannels,
+                    recommendedChannels = response.recommendedChannels,
+                    allChannels = response.allChannels,
+                    publishCategories = response.publishCategories,
+                )
+            }.onFailure { e ->
+                feedChannelStore.saveMyChannels(previous)
+                _uiState.value = _uiState.value.copy(
+                    error = parseError(e, "频道同步失败"),
+                )
+            }
+        }
+    }
 
     fun selectFeedPrimaryTab(tab: String) {
         val feed = _uiState.value.feed
@@ -756,7 +869,10 @@ class HomeViewModel(
             searchHistoryStore.add(trimmed)
             _uiState.value = _uiState.value.copy(
                 searchInput = trimmed,
-                search = SearchUiState(keyword = trimmed, isLoading = true),
+                search = SearchUiState(
+                    keyword = trimmed,
+                    isInitialLoading = true,
+                ),
             )
             onNavigate()
             loadSearchResults(refresh = true)
@@ -764,31 +880,45 @@ class HomeViewModel(
     }
 
     fun loadSearchResults(refresh: Boolean = false) {
+        when (_uiState.value.search.selectedTab) {
+            "笔记" -> loadSearchPosts(refresh)
+            "活动" -> loadSearchActivities(refresh)
+            else -> loadSearchMixed(refresh)
+        }
+    }
+
+    private fun loadSearchMixed(refresh: Boolean) {
+        viewModelScope.launch {
+            loadSearchPosts(refresh)
+        }
+        viewModelScope.launch {
+            loadSearchActivities(refresh)
+        }
+    }
+
+    private fun loadSearchPosts(refresh: Boolean) {
         viewModelScope.launch {
             val search = _uiState.value.search
             if (search.keyword.isBlank()) return@launch
-            val page = if (refresh) 1 else search.page
+            val page = if (refresh) 1 else search.postsPage
+            val refreshStartedAt = if (refresh) SystemClock.elapsedRealtime() else 0L
             _uiState.value = _uiState.value.copy(
                 search = search.copy(
-                    isLoading = refresh && search.posts.isEmpty() && search.activities.isEmpty(),
-                    isRefreshing = refresh,
-                    isLoadingMore = !refresh && search.hasMore,
-                    page = page,
+                    isInitialLoading = refresh && !search.postsLoaded,
+                    isTabLoading = refresh && search.isTabLoading,
+                    isRefreshing = refresh && search.postsLoaded,
+                    isLoadingMore = !refresh && search.postsHasMore,
+                    postsPage = page,
                 ),
             )
             try {
-                if (_uiState.value.activities.isEmpty()) {
-                    val activities = api.getApprovedActivities()
-                    _uiState.value = _uiState.value.copy(activities = activities)
-                }
                 val response = api.getPostFeed(
                     page = page,
-                    limit = 10,
+                    limit = SEARCH_PAGE_SIZE,
                     sort = "recommend",
                     keyword = search.keyword,
                     tab = null,
                 )
-                val filteredActivities = filterActivities(_uiState.value.activities, search.keyword)
                 val mergedPosts = if (refresh) {
                     response.items
                 } else {
@@ -796,13 +926,19 @@ class HomeViewModel(
                         search.posts.none { it.id == new.id }
                     }
                 }
+                if (refresh) {
+                    awaitMinPullRefreshDuration(refreshStartedAt)
+                }
+                val latest = _uiState.value.search
+                val stillWaitingActivities = latest.selectedTab == "综合" && !latest.activitiesLoaded
                 _uiState.value = _uiState.value.copy(
-                    search = search.copy(
+                    search = latest.copy(
                         posts = mergedPosts,
-                        activities = filteredActivities,
-                        page = page + 1,
-                        hasMore = response.hasMore,
-                        isLoading = false,
+                        postsPage = page + 1,
+                        postsHasMore = response.hasMore,
+                        postsLoaded = true,
+                        isInitialLoading = stillWaitingActivities,
+                        isTabLoading = stillWaitingActivities,
                         isRefreshing = false,
                         isLoadingMore = false,
                     ),
@@ -810,7 +946,67 @@ class HomeViewModel(
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     search = _uiState.value.search.copy(
-                        isLoading = false,
+                        isInitialLoading = false,
+                        isTabLoading = false,
+                        isRefreshing = false,
+                        isLoadingMore = false,
+                    ),
+                    error = parseError(e, "搜索失败"),
+                )
+            }
+        }
+    }
+
+    private fun loadSearchActivities(refresh: Boolean) {
+        viewModelScope.launch {
+            val search = _uiState.value.search
+            if (search.keyword.isBlank()) return@launch
+            val page = if (refresh) 1 else search.activitiesPage
+            val refreshStartedAt = if (refresh) SystemClock.elapsedRealtime() else 0L
+            _uiState.value = _uiState.value.copy(
+                search = search.copy(
+                    isInitialLoading = refresh && !search.activitiesLoaded,
+                    isTabLoading = refresh && search.isTabLoading,
+                    isRefreshing = refresh && search.activitiesLoaded,
+                    isLoadingMore = !refresh && search.activitiesHasMore,
+                    activitiesPage = page,
+                ),
+            )
+            try {
+                val response = api.getActivityFeed(
+                    page = page,
+                    limit = SEARCH_PAGE_SIZE,
+                    keyword = search.keyword,
+                )
+                val mergedActivities = if (refresh) {
+                    response.items
+                } else {
+                    search.activities + response.items.filter { new ->
+                        search.activities.none { it.id == new.id }
+                    }
+                }
+                if (refresh) {
+                    awaitMinPullRefreshDuration(refreshStartedAt)
+                }
+                val latest = _uiState.value.search
+                val stillWaitingPosts = latest.selectedTab == "综合" && !latest.postsLoaded
+                _uiState.value = _uiState.value.copy(
+                    search = latest.copy(
+                        activities = mergedActivities,
+                        activitiesPage = page + 1,
+                        activitiesHasMore = response.hasMore,
+                        activitiesLoaded = true,
+                        isInitialLoading = stillWaitingPosts,
+                        isTabLoading = stillWaitingPosts,
+                        isRefreshing = false,
+                        isLoadingMore = false,
+                    ),
+                )
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    search = _uiState.value.search.copy(
+                        isInitialLoading = false,
+                        isTabLoading = false,
                         isRefreshing = false,
                         isLoadingMore = false,
                     ),
@@ -822,15 +1018,45 @@ class HomeViewModel(
 
     fun loadMoreSearchResults() {
         val search = _uiState.value.search
-        if (!search.hasMore || search.isLoadingMore || search.isRefreshing || search.selectedTab == "活动") return
-        loadSearchResults(refresh = false)
+        if (search.isLoadingMore || search.isRefreshing || search.isInitialLoading || search.isTabLoading) {
+            return
+        }
+        when (search.selectedTab) {
+            "笔记" -> {
+                if (search.postsHasMore) loadSearchPosts(refresh = false)
+            }
+            "活动" -> {
+                if (search.activitiesHasMore) loadSearchActivities(refresh = false)
+            }
+            else -> {
+                when {
+                    search.postsHasMore -> loadSearchPosts(refresh = false)
+                    search.activitiesHasMore -> loadSearchActivities(refresh = false)
+                }
+            }
+        }
     }
 
     fun selectSearchTab(tab: String) {
-        if (_uiState.value.search.selectedTab == tab) return
+        val search = _uiState.value.search
+        if (search.selectedTab == tab) return
+        val needsPosts = tab != "活动" && !search.postsLoaded
+        val needsActivities = tab != "笔记" && !search.activitiesLoaded
         _uiState.value = _uiState.value.copy(
-            search = _uiState.value.search.copy(selectedTab = tab),
+            search = search.copy(
+                selectedTab = tab,
+                isTabLoading = needsPosts || needsActivities,
+                listResetNonce = search.listResetNonce + 1,
+            ),
         )
+        when (tab) {
+            "笔记" -> if (needsPosts) loadSearchPosts(refresh = true)
+            "活动" -> if (needsActivities) loadSearchActivities(refresh = true)
+            else -> {
+                if (needsPosts) loadSearchPosts(refresh = true)
+                if (needsActivities) loadSearchActivities(refresh = true)
+            }
+        }
     }
 
     fun clearSearch() {
@@ -838,15 +1064,6 @@ class HomeViewModel(
             search = SearchUiState(),
             searchInput = "",
         )
-    }
-
-    private fun filterActivities(activities: List<ActivityDto>, keyword: String): List<ActivityDto> {
-        val lower = keyword.lowercase()
-        return activities.filter { activity ->
-            activity.title.lowercase().contains(lower) ||
-                activity.description.orEmpty().lowercase().contains(lower) ||
-                activity.location.lowercase().contains(lower)
-        }
     }
 
     fun createPost(
@@ -3488,6 +3705,7 @@ class HomeViewModel(
         private const val PROFILE_FAVORITES_TAB = 3
         private const val PROFILE_LIKES_TAB = 4
         private const val ACTIVITY_FEED_PAGE_SIZE = 10
+        private const val SEARCH_PAGE_SIZE = 10
         private const val MESSAGES_CONVERSATION_PAGE_SIZE = 20
         private const val NOTIFICATION_PREVIEW_LIMIT = 4
         private const val NOTIFICATION_FEED_PAGE_SIZE = 20
@@ -3747,7 +3965,7 @@ class HomeViewModel(
         _uiState.value = _uiState.value.copy(message = null, error = null)
     }
 
-    private fun parseError(e: Exception, fallback: String): String {
+    private fun parseError(e: Throwable, fallback: String): String {
         if (e is HttpException) {
             val body = e.response()?.errorBody()?.string()
             if (!body.isNullOrBlank()) {

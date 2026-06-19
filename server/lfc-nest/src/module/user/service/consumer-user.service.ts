@@ -26,6 +26,8 @@ import {
 } from '@module/user/util/user-lfc-no.util';
 import { UserAlipayService } from '@module/user/service/user-alipay.service';
 import { BindAlipayAccountBodyDto } from '@module/user/dto/alipay-account.dto';
+import { FeedChannelService } from '@module/feed-channel/service/feed-channel.service';
+import { UpdateFeedChannelsBodyDto } from '@module/feed-channel/dto/feed-channel.dto';
 
 @Injectable()
 export class ConsumerUserService {
@@ -43,6 +45,7 @@ export class ConsumerUserService {
     private readonly consumerActivityService: ConsumerActivityService,
     private readonly consumerActivitySocialService: ConsumerActivitySocialService,
     private readonly userAlipayService: UserAlipayService,
+    private readonly feedChannelService: FeedChannelService,
   ) {}
 
   async getMe(userId: number) {
@@ -74,6 +77,19 @@ export class ConsumerUserService {
     }
     await this.userRepository.save(user);
     return this.buildProfileDetail(userId, userId);
+  }
+
+  async getFeedChannels(userId: number) {
+    const user = await this.findUser(userId);
+    return this.feedChannelService.buildUserFeedChannels(user.feedChannels);
+  }
+
+  async updateFeedChannels(userId: number, body: UpdateFeedChannelsBodyDto) {
+    const user = await this.findUser(userId);
+    const channels = await this.feedChannelService.normalizeMyChannels(body.channels);
+    user.feedChannels = channels;
+    await this.userRepository.save(user);
+    return this.feedChannelService.buildUserFeedChannels(channels);
   }
 
   async getProfile(userId: number, viewerId?: number): Promise<UserProfileDetailDto> {

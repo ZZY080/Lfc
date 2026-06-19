@@ -164,6 +164,10 @@ data class FeedUiState(
     val primaryTab: String = "发现",
     val selectedTab: String = "推荐",
     val myChannels: List<String> = emptyList(),
+    val allChannels: List<String> = emptyList(),
+    val recommendedChannels: List<String> = emptyList(),
+    val defaultMyChannels: List<String> = emptyList(),
+    val publishCategories: List<String> = emptyList(),
     val isChannelPanelExpanded: Boolean = false,
     val isChannelEditMode: Boolean = false,
     val page: Int = 1,
@@ -215,11 +219,18 @@ data class SearchUiState(
     val selectedTab: String = "综合",
     val posts: List<PostDto> = emptyList(),
     val activities: List<ActivityDto> = emptyList(),
-    val page: Int = 1,
-    val hasMore: Boolean = true,
-    val isLoading: Boolean = false,
+    val postsPage: Int = 1,
+    val activitiesPage: Int = 1,
+    val postsHasMore: Boolean = true,
+    val activitiesHasMore: Boolean = true,
+    val postsLoaded: Boolean = false,
+    val activitiesLoaded: Boolean = false,
     val isRefreshing: Boolean = false,
     val isLoadingMore: Boolean = false,
+    val isInitialLoading: Boolean = false,
+    val isTabLoading: Boolean = false,
+    /** Tab 切换或刷新时递增，用于重置列表滚动位置 */
+    val listResetNonce: Int = 0,
 )
 
 data class CreatePostRequest(
@@ -578,6 +589,23 @@ data class UpdateProfileRequest(
 
 data class FollowStateDto(
     val isFollowing: Boolean,
+)
+
+data class FeedChannelCatalogDto(
+    val allChannels: List<String> = emptyList(),
+    val defaultMyChannels: List<String> = emptyList(),
+    val publishCategories: List<String> = emptyList(),
+)
+
+data class UserFeedChannelsDto(
+    val myChannels: List<String> = emptyList(),
+    val allChannels: List<String> = emptyList(),
+    val recommendedChannels: List<String> = emptyList(),
+    val publishCategories: List<String> = emptyList(),
+)
+
+data class UpdateFeedChannelsRequest(
+    val channels: List<String>,
 )
 
 data class ProfileCommentDto(

@@ -1,8 +1,10 @@
 package com.lfc.consumer.ui.home
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -11,9 +13,13 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -32,13 +38,14 @@ import com.lfc.consumer.data.local.FeedChannels
 import com.lfc.consumer.ui.theme.XhsTextPrimary
 import com.lfc.consumer.ui.theme.XhsTextSecondary
 
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @Composable
 fun XhsFeedChannelPanel(
     myChannels: List<String>,
     recommendedChannels: List<String>,
     isEditMode: Boolean,
     onToggleEditMode: () -> Unit,
+    onEnterEditMode: () -> Unit,
     onCollapse: () -> Unit,
     onChannelClick: (String) -> Unit,
     onAddChannel: (String) -> Unit,
@@ -65,7 +72,10 @@ fun XhsFeedChannelPanel(
                     color = XhsTextPrimary,
                 )
                 Text(
-                    text = if (isEditMode) "点击删除频道" else "点击进入频道",
+                    text = when {
+                        isEditMode -> "点击 × 移除频道"
+                        else -> "长按进入编辑，点击进入频道"
+                    },
                     fontSize = 12.sp,
                     color = XhsTextSecondary,
                     modifier = Modifier.padding(top = 2.dp),
@@ -76,10 +86,11 @@ fun XhsFeedChannelPanel(
                 fontSize = 13.sp,
                 color = XhsTextSecondary,
                 modifier = Modifier
-                    .clickable(
+                    .combinedClickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
                         onClick = onToggleEditMode,
+                        onLongClick = onEnterEditMode,
                     )
                     .padding(horizontal = 8.dp, vertical = 4.dp),
             )
@@ -101,16 +112,25 @@ fun XhsFeedChannelPanel(
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             myChannels.forEach { channel ->
+                val removable = isEditMode && channel != FeedChannels.RECOMMEND
                 FeedChannelChip(
                     label = channel,
                     selected = true,
-                    showRemove = isEditMode && channel != FeedChannels.RECOMMEND,
+                    showRemoveBadge = removable,
                     onClick = {
-                        if (isEditMode && channel != FeedChannels.RECOMMEND) {
-                            onRemoveChannel(channel)
-                        } else if (!isEditMode) {
+                        if (!isEditMode) {
                             onChannelClick(channel)
                         }
+                    },
+                    onLongClick = if (!isEditMode) {
+                        { onEnterEditMode() }
+                    } else {
+                        null
+                    },
+                    onRemove = if (removable) {
+                        { onRemoveChannel(channel) }
+                    } else {
+                        null
                     },
                 )
             }
@@ -148,71 +168,87 @@ fun XhsFeedChannelPanel(
                 FeedChannelChip(
                     label = "+$channel",
                     selected = false,
-                    showRemove = false,
-                    enabled = isEditMode,
-                    onClick = {
-                        if (isEditMode) {
-                            onAddChannel(channel)
-                        }
-                    },
+                    showRemoveBadge = false,
+                    onClick = { onAddChannel(channel) },
                 )
             }
         }
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun FeedChannelChip(
     label: String,
     selected: Boolean,
-    showRemove: Boolean,
-    enabled: Boolean = true,
+    showRemoveBadge: Boolean,
     onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
+    onRemove: (() -> Unit)? = null,
 ) {
     val shape = RoundedCornerShape(8.dp)
-    val textColor = if (enabled) XhsTextPrimary else XhsTextSecondary.copy(alpha = 0.55f)
     Box(
-        modifier = Modifier
-            .clip(shape)
-            .then(
-                if (selected) {
-                    Modifier.background(Color(0xFFF5F5F5))
-                } else {
-                    Modifier
-                        .background(Color.White)
-                        .border(0.5.dp, Color(0xFFE8E8E8), shape)
-                },
-            )
-            .then(
-                if (enabled) {
-                    Modifier.clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = onClick,
-                    )
-                } else {
-                    Modifier
-                },
-            )
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        contentAlignment = Alignment.Center,
+        modifier = Modifier.padding(top = if (showRemoveBadge) 4.dp else 0.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            if (showRemove) {
-                Text(
-                    text = "− ",
-                    color = XhsTextSecondary,
-                    fontSize = 14.sp,
+        Box(
+            modifier = Modifier
+                .clip(shape)
+                .then(
+                    if (selected) {
+                        Modifier.background(Color(0xFFF5F5F5))
+                    } else {
+                        Modifier
+                            .background(Color.White)
+                            .border(0.5.dp, Color(0xFFE8E8E8), shape)
+                    },
                 )
-            }
+                .then(
+                    if (onLongClick != null) {
+                        Modifier.combinedClickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = onClick,
+                            onLongClick = onLongClick,
+                        )
+                    } else {
+                        Modifier.clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = onClick,
+                        )
+                    },
+                )
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            contentAlignment = Alignment.Center,
+        ) {
             Text(
                 text = label,
                 fontSize = 14.sp,
-                color = textColor,
+                color = XhsTextPrimary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 textAlign = TextAlign.Center,
             )
+        }
+
+        if (showRemoveBadge && onRemove != null) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .offset(x = 4.dp, y = (-2).dp)
+                    .size(18.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFBDBDBD))
+                    .clickable(onClick = onRemove),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Default.Close,
+                    contentDescription = "移除频道",
+                    tint = Color.White,
+                    modifier = Modifier.size(12.dp),
+                )
+            }
         }
     }
 }

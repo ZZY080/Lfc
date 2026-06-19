@@ -24,6 +24,7 @@ import { WechatPayModule } from '@integration/wechat-pay/wechat-pay.module';
 import { PaymentModule } from '@module/payment/payment.module';
 import { PromotionModule } from '@module/promotion/promotion.module';
 import { AdminModule } from '@module/admin/admin.module';
+import { FeedChannelModule } from '@module/feed-channel/feed-channel.module';
 
 @Module({
   imports: [
@@ -63,6 +64,7 @@ import { AdminModule } from '@module/admin/admin.module';
     PaymentModule,
     PromotionModule,
     AdminModule,
+    FeedChannelModule,
   ],
 })
 export class AppModule {}

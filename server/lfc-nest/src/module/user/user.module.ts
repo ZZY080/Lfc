@@ -13,6 +13,7 @@ import { ActivityModule } from '@module/activity/activity.module';
 import { RoleAuthzService } from '@shared/auth/role-authz.service';
 
 import { UserAlipayModule } from '@module/user/user-alipay.module';
+import { FeedChannelModule } from '@module/feed-channel/feed-channel.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { UserAlipayModule } from '@module/user/user-alipay.module';
       ActivityParticipantEntity,
     ]),
     UserAlipayModule,
+    FeedChannelModule,
     PostModule,
     ActivityModule,
   ],

@@ -11,88 +11,52 @@ import kotlinx.coroutines.flow.map
 
 private val Context.feedChannelDataStore: DataStore<Preferences> by preferencesDataStore(name = "lfc_feed_channels")
 
-/** 笔记频道（不含视频/直播/短剧） */
+data class FeedChannelCatalog(
+    val allChannels: List<String> = emptyList(),
+    val defaultMyChannels: List<String> = emptyList(),
+    val publishCategories: List<String> = emptyList(),
+)
+
+/** 发现页频道常量（名称以服务端 feed_channel 表为准） */
 object FeedChannels {
     const val RECOMMEND = "推荐"
-
-    val defaultMyChannels: List<String> = listOf(
-        RECOMMEND,
-        "旅行",
-        "职场",
-        "情感",
-        "读书",
-        "文化",
-        "社科",
-        "学习",
-        "科学科普",
-        "心理",
-        "体育",
-        "穿搭",
-        "美食",
-        "摄影",
-        "户外",
-        "校园生活",
-        "护肤",
-        "家居",
-        "舞蹈",
-        "手工",
-    )
-
-    val allChannels: List<String> = listOf(
-        RECOMMEND,
-        "旅行",
-        "职场",
-        "情感",
-        "读书",
-        "文化",
-        "社科",
-        "学习",
-        "科学科普",
-        "心理",
-        "体育",
-        "穿搭",
-        "汽车",
-        "美食",
-        "摄影",
-        "影视",
-        "户外",
-        "校园生活",
-        "护肤",
-        "家居",
-        "舞蹈",
-        "机车",
-        "手工",
-        "游戏",
-        "科技数码",
-        "壁纸",
-        "婚礼",
-        "竞技体育",
-        "动漫",
-        "艺术",
-        "健身塑型",
-        "露营",
-        "好物",
-        "活动",
-        "生活",
-    )
-
-    fun recommendedFor(myChannels: List<String>): List<String> =
-        allChannels.filter { channel -> channel !in myChannels }
-
-    /** 发布笔记可选类型 */
-    val publishCategories: List<String> =
-        allChannels.filter { channel -> channel != RECOMMEND }
 }
 
 class FeedChannelStore(private val context: Context) {
     private val channelsKey = stringPreferencesKey("my_channels")
+    private val allChannelsKey = stringPreferencesKey("all_channels")
+    private val defaultMyKey = stringPreferencesKey("default_my_channels")
+    private val publishCategoriesKey = stringPreferencesKey("publish_categories")
+
+    val catalogFlow: Flow<FeedChannelCatalog> = context.feedChannelDataStore.data.map { prefs ->
+        FeedChannelCatalog(
+            allChannels = prefs[allChannelsKey]?.split(CHANNEL_DELIMITER)?.filter { it.isNotBlank() }
+                ?: emptyList(),
+            defaultMyChannels = prefs[defaultMyKey]?.split(CHANNEL_DELIMITER)?.filter { it.isNotBlank() }
+                ?: emptyList(),
+            publishCategories = prefs[publishCategoriesKey]?.split(CHANNEL_DELIMITER)?.filter { it.isNotBlank() }
+                ?: emptyList(),
+        )
+    }
 
     val myChannelsFlow: Flow<List<String>> = context.feedChannelDataStore.data.map { prefs ->
+        val catalog = FeedChannelCatalog(
+            defaultMyChannels = prefs[defaultMyKey]?.split(CHANNEL_DELIMITER)?.filter { it.isNotBlank() }
+                ?: emptyList(),
+        )
         prefs[channelsKey]
             ?.split(CHANNEL_DELIMITER)
             ?.filter { it.isNotBlank() }
             ?.takeIf { it.isNotEmpty() }
-            ?: FeedChannels.defaultMyChannels
+            ?: catalog.defaultMyChannels.ifEmpty { listOf(FeedChannels.RECOMMEND) }
+    }
+
+    suspend fun saveCatalog(catalog: FeedChannelCatalog) {
+        context.feedChannelDataStore.edit { prefs ->
+            prefs[allChannelsKey] = catalog.allChannels.joinToString(CHANNEL_DELIMITER)
+            prefs[defaultMyKey] = catalog.defaultMyChannels.joinToString(CHANNEL_DELIMITER)
+            prefs[publishCategoriesKey] = catalog.publishCategories.joinToString(CHANNEL_DELIMITER)
+        }
     }
 
     suspend fun saveMyChannels(channels: List<String>) {
@@ -113,7 +77,18 @@ class FeedChannelStore(private val context: Context) {
     }
 
     suspend fun resetToDefault() {
-        saveMyChannels(FeedChannels.defaultMyChannels)
+        context.feedChannelDataStore.edit { prefs ->
+            val defaults = prefs[defaultMyKey]?.split(CHANNEL_DELIMITER)?.filter { it.isNotBlank() }
+                ?: emptyList()
+            val normalized = if (defaults.isEmpty()) {
+                listOf(FeedChannels.RECOMMEND)
+            } else if (FeedChannels.RECOMMEND in defaults) {
+                listOf(FeedChannels.RECOMMEND) + defaults.filter { it != FeedChannels.RECOMMEND }
+            } else {
+                listOf(FeedChannels.RECOMMEND) + defaults
+            }
+            prefs[channelsKey] = normalized.joinToString(CHANNEL_DELIMITER)
+        }
     }
 
     companion object {

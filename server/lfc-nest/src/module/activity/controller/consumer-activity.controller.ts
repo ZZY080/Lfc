@@ -15,11 +15,11 @@ import { ConsumerActivitySocialService } from '@module/activity/service/consumer
 import {
   CreateActivityBodySchema,
   UpdateActivityBodySchema,
+  ActivityFeedQuerySchema,
 } from '@module/activity/schema/activity.schema';
 import { OptionalJwtAuthGuard } from '@shared/guard/optional-jwt-auth.guard';
 import { JwtAuthGuard } from '@shared/guard/jwt-auth.guard';
 import { CurrentUser } from '@shared/decorator/user.decorator';
-import { PaginationQuerySchema } from '@shared/schema/pagination.schema';
 
 @Controller('consumer/activity')
 export class ConsumerActivityController {
@@ -45,13 +45,14 @@ export class ConsumerActivityController {
   @Get('feed')
   @UseGuards(OptionalJwtAuthGuard)
   findApprovedFeed(
-    @Query() query: PaginationQuerySchema,
+    @Query() query: ActivityFeedQuerySchema,
     @CurrentUser('userId') userId?: number,
   ) {
     return this.consumerActivityService.findApprovedPaginated(
       query.page,
       query.limit,
       userId,
+      query.keyword,
     );
   }
 

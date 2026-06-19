@@ -40,7 +40,6 @@ import com.lfc.consumer.data.model.DEFAULT_POST_CATEGORY
 import com.lfc.consumer.data.model.DEFAULT_POST_PRODUCT_CATEGORY
 import com.lfc.consumer.data.model.PostDto
 import com.lfc.consumer.data.model.PostProductRequest
-import com.lfc.consumer.data.local.FeedChannels
 import com.lfc.consumer.location.AmapLocationHelper
 import com.lfc.consumer.location.hasValidCoordinate
 import com.lfc.consumer.ui.theme.XhsRed
@@ -57,6 +56,7 @@ private val postLocationPermissions = arrayOf(
 @Composable
 fun PublishPostScreen(
     initial: PostDto? = null,
+    publishCategories: List<String> = emptyList(),
     isSubmitting: Boolean = false,
     platformFeeRateLabel: String? = null,
     alipayBound: Boolean = false,
@@ -235,7 +235,7 @@ fun PublishPostScreen(
                     )
                     Spacer(modifier = Modifier.height(10.dp))
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FeedChannels.publishCategories.forEach { option ->
+                        publishCategories.forEach { option ->
                             FilterChip(
                                 selected = noteCategory == option,
                                 onClick = { noteCategory = option },

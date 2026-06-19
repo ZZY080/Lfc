@@ -31,6 +31,9 @@ import com.lfc.consumer.data.model.AlipayAuthInfoDto
 import com.lfc.consumer.data.model.BindAlipayAccountRequest
 import com.lfc.consumer.data.model.BindAlipayOAuthRequest
 import com.lfc.consumer.data.model.UpdateProfileRequest
+import com.lfc.consumer.data.model.FeedChannelCatalogDto
+import com.lfc.consumer.data.model.UserFeedChannelsDto
+import com.lfc.consumer.data.model.UpdateFeedChannelsRequest
 import com.lfc.consumer.data.model.FollowStateDto
 import com.lfc.consumer.data.model.ProfileCommentDto
 import com.lfc.consumer.data.model.UserProfileDto
@@ -94,6 +97,15 @@ interface LfcApiService {
 
     @PATCH("consumer/user/me")
     suspend fun updateMyProfile(@Body request: UpdateProfileRequest): UserProfileDto
+
+    @GET("consumer/feed-channels")
+    suspend fun getFeedChannelCatalog(): FeedChannelCatalogDto
+
+    @GET("consumer/user/me/feed-channels")
+    suspend fun getMyFeedChannels(): UserFeedChannelsDto
+
+    @PATCH("consumer/user/me/feed-channels")
+    suspend fun updateMyFeedChannels(@Body request: UpdateFeedChannelsRequest): UserFeedChannelsDto
 
     @GET("consumer/user/me/alipay")
     suspend fun getMyAlipayAccount(): AlipayAccountBindingDto
@@ -271,6 +283,7 @@ interface LfcApiService {
     suspend fun getActivityFeed(
         @Query("page") page: Int,
         @Query("limit") limit: Int,
+        @Query("keyword") keyword: String? = null,
     ): PaginatedResponse<ActivityDto>
 
     @GET("consumer/activity")

@@ -33,8 +33,8 @@ import {
 import { AmapGeocodeService } from '@integration/amap/amap-geocode.service';
 import {
   DEFAULT_POST_CATEGORY,
-  POST_CATEGORY_SET,
 } from '@shared/enum/post-category.enum';
+import { FeedChannelService } from '@module/feed-channel/service/feed-channel.service';
 
 @Injectable()
 export class ConsumerPostService {
@@ -54,6 +54,7 @@ export class ConsumerPostService {
     private readonly consumerPromotionService: ConsumerPromotionService,
     private readonly amapGeocodeService: AmapGeocodeService,
     private readonly notificationService: NotificationService,
+    private readonly feedChannelService: FeedChannelService,
   ) {}
 
   async create(userId: number, body: CreatePostBodyDto) {
@@ -582,7 +583,7 @@ export class ConsumerPostService {
     if (!trimmed) {
       return DEFAULT_POST_CATEGORY;
     }
-    if (!POST_CATEGORY_SET.has(trimmed)) {
+    if (!this.feedChannelService.isValidPublishCategory(trimmed)) {
       throw new BadRequestException('笔记类型不正确');
     }
     return trimmed;

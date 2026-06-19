@@ -23,6 +23,13 @@ import { AdminActivityListQueryDto } from '@module/admin/dto/admin-query.dto';
 import { ActivityStatus } from '@shared/enum/user-role.enum';
 import { PaginationQuerySchema } from '@shared/schema/pagination.schema';
 
+export class ActivityFeedQuerySchema extends PaginationQuerySchema {
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  keyword?: string;
+}
+
 export class CreateActivityBodySchema implements CreateActivityBodyDto {
   @IsOptional()
   @IsString()

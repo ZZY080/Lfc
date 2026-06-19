@@ -37,11 +37,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRowDefaults
-import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
@@ -210,19 +206,39 @@ fun SearchResultScreen(
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyStaggeredGridState()
-    val selectedIndex = XHS_SEARCH_TABS.indexOf(searchState.selectedTab).coerceAtLeast(0)
-    val isEmpty = when (searchState.selectedTab) {
+    val selectedTab = searchState.selectedTab
+    val isEmpty = when (selectedTab) {
         "笔记" -> searchState.posts.isEmpty()
         "活动" -> searchState.activities.isEmpty()
         else -> searchState.posts.isEmpty() && searchState.activities.isEmpty()
     }
+    val showSkeleton = when (selectedTab) {
+        "笔记" -> searchState.isInitialLoading || searchState.isTabLoading
+        "活动" -> searchState.isInitialLoading || searchState.isTabLoading
+        else -> searchState.isInitialLoading || searchState.isTabLoading
+    }
+    val hasMore = when (selectedTab) {
+        "笔记" -> searchState.postsHasMore
+        "活动" -> searchState.activitiesHasMore
+        else -> searchState.postsHasMore || searchState.activitiesHasMore
+    }
     val mixedFeedItems = remember(searchState.posts, searchState.activities) {
         buildMixedSearchFeed(searchState.posts, searchState.activities)
     }
-    val supportsLoadMore = searchState.selectedTab != "活动"
 
-    LaunchedEffect(listState, searchState.hasMore, searchState.isLoadingMore, searchState.selectedTab) {
-        if (!supportsLoadMore) return@LaunchedEffect
+    LaunchedEffect(searchState.listResetNonce) {
+        listState.scrollToItem(0)
+    }
+
+    LaunchedEffect(
+        listState,
+        hasMore,
+        searchState.isLoadingMore,
+        searchState.isRefreshing,
+        searchState.isInitialLoading,
+        searchState.isTabLoading,
+        selectedTab,
+    ) {
         snapshotFlow {
             val info = listState.layoutInfo
             val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: -1
@@ -230,7 +246,15 @@ fun SearchResultScreen(
         }
             .distinctUntilChanged()
             .collect { (lastVisible, total) ->
-                if (total > 0 && lastVisible >= total - 3 && searchState.hasMore && !searchState.isLoadingMore) {
+                if (
+                    total > 0 &&
+                    lastVisible >= total - 3 &&
+                    hasMore &&
+                    !searchState.isLoadingMore &&
+                    !searchState.isRefreshing &&
+                    !searchState.isInitialLoading &&
+                    !searchState.isTabLoading
+                ) {
                     onLoadMore()
                 }
             }
@@ -251,39 +275,11 @@ fun SearchResultScreen(
                 showClear = searchInput.isNotEmpty(),
                 onClear = { onSearchInputChange("") },
             )
-            ScrollableTabRow(
-                selectedTabIndex = selectedIndex,
-                containerColor = Color.White,
-                contentColor = XhsRed,
-                edgePadding = 16.dp,
-                divider = {},
-                indicator = { tabPositions ->
-                    if (selectedIndex < tabPositions.size) {
-                        TabRowDefaults.SecondaryIndicator(
-                            modifier = Modifier
-                                .tabIndicatorOffset(tabPositions[selectedIndex])
-                                .height(3.dp)
-                                .clip(RoundedCornerShape(topStart = 2.dp, topEnd = 2.dp)),
-                            color = XhsRed,
-                        )
-                    }
-                },
-            ) {
-                XHS_SEARCH_TABS.forEachIndexed { index, title ->
-                    Tab(
-                        selected = selectedIndex == index,
-                        onClick = { onTabSelected(title) },
-                        text = {
-                            Text(
-                                title,
-                                fontSize = 15.sp,
-                                fontWeight = if (selectedIndex == index) FontWeight.Bold else FontWeight.Normal,
-                                color = if (selectedIndex == index) XhsTextPrimary else XhsTextSecondary,
-                            )
-                        },
-                    )
-                }
-            }
+            XhsTextTabRow(
+                tabs = XHS_SEARCH_TABS,
+                selectedTab = searchState.selectedTab,
+                onTabSelected = onTabSelected,
+            )
         }
 
         PullToRefreshBox(
@@ -292,8 +288,17 @@ fun SearchResultScreen(
             modifier = Modifier.fillMaxSize(),
         ) {
             when {
-                searchState.isLoading -> {
-                    FeedGridSkeleton()
+                showSkeleton -> {
+                    if (selectedTab == "活动") {
+                        ActivityFeedSkeleton(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            itemCount = 3,
+                        )
+                    } else {
+                        FeedGridSkeleton()
+                    }
                 }
                 isEmpty -> {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -312,7 +317,7 @@ fun SearchResultScreen(
                         verticalItemSpacing = 8.dp,
                         modifier = Modifier.fillMaxSize(),
                     ) {
-                        when (searchState.selectedTab) {
+                        when (selectedTab) {
                             "笔记" -> {
                                 items(searchState.posts, key = { it.id }) { post ->
                                     SearchProfilePostCard(
@@ -356,11 +361,11 @@ fun SearchResultScreen(
                                 }
                             }
                         }
-                        if (supportsLoadMore && searchState.isLoadingMore) {
+                        if (searchState.isLoadingMore) {
                             item(span = StaggeredGridItemSpan.FullLine) {
                                 SearchLoadingFooter()
                             }
-                        } else if ((!supportsLoadMore || !searchState.hasMore) && !isEmpty) {
+                        } else if (!hasMore && !isEmpty) {
                             item(span = StaggeredGridItemSpan.FullLine) {
                                 SearchEndFooter()
                             }

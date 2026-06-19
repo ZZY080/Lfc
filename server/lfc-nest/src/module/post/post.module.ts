@@ -20,6 +20,7 @@ import { AdminCommentService } from '@module/post/service/admin-comment.service'
 import { UserAlipayModule } from '@module/user/user-alipay.module';
 import { PromotionModule } from '@module/promotion/promotion.module';
 import { MessageModule } from '@module/message/message.module';
+import { FeedChannelModule } from '@module/feed-channel/feed-channel.module';
 import { RoleAuthzService } from '@shared/auth/role-authz.service';
 
 @Module({
@@ -37,6 +38,7 @@ import { RoleAuthzService } from '@shared/auth/role-authz.service';
     forwardRef(() => UserAlipayModule),
     forwardRef(() => PromotionModule),
     MessageModule,
+    FeedChannelModule,
   ],
   controllers: [
     ConsumerPostController,

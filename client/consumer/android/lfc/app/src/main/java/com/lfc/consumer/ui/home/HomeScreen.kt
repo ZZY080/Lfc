@@ -172,9 +172,7 @@ fun HomeScreen(
                         0 -> DiscoverFeedScreen(
                             feedState = uiState.feed,
                             cityLabel = extractFeedCityLabel(uiState.userLocation?.address),
-                            recommendedChannels = FeedChannels.recommendedFor(
-                                uiState.feed.myChannels.ifEmpty { FeedChannels.defaultMyChannels },
-                            ),
+                            recommendedChannels = uiState.feed.recommendedChannels,
                             onRefresh = {
                                 viewModel.refreshUserLocation()
                                 viewModel.loadFeed(refresh = true)
@@ -187,6 +185,7 @@ fun HomeScreen(
                             onToggleChannelPanel = viewModel::toggleFeedChannelPanel,
                             onCollapseChannelPanel = viewModel::collapseFeedChannelPanel,
                             onToggleChannelEditMode = viewModel::toggleFeedChannelEditMode,
+                            onEnterChannelEditMode = viewModel::enterFeedChannelEditMode,
                             onAddChannel = viewModel::addFeedChannel,
                             onRemoveChannel = viewModel::removeFeedChannel,
                             onPostClick = { postId ->
@@ -323,9 +322,7 @@ fun HomeScreen(
                     searchHistory = searchHistory,
                     onSearch = { keyword ->
                         viewModel.submitSearch(keyword) {
-                            navController.navigate("search_result") {
-                                popUpTo("search") { inclusive = true }
-                            }
+                            navController.navigate("search_result")
                         }
                     },
                     onClearHistory = viewModel::clearSearchHistory,
@@ -339,7 +336,9 @@ fun HomeScreen(
                     searchInput = uiState.searchInput,
                     onSearchInputChange = viewModel::updateSearchInput,
                     onSearch = { keyword ->
-                        viewModel.submitSearch(keyword) { }
+                        viewModel.submitSearch(keyword) {
+                            // 已在搜索结果页，仅刷新数据
+                        }
                     },
                     onTabSelected = viewModel::selectSearchTab,
                     onRefresh = { viewModel.loadSearchResults(refresh = true) },
@@ -846,6 +845,7 @@ fun HomeScreen(
 
             composable("publish_post") {
                 PublishPostScreen(
+                    publishCategories = uiState.feed.publishCategories,
                     isSubmitting = isSubmitting,
                     platformFeeRateLabel = uiState.paymentConfig?.platformFeeRateLabel,
                     alipayBound = uiState.myProfile?.alipayBound == true,
@@ -906,6 +906,7 @@ fun HomeScreen(
             composable("edit_post") {
                 PublishPostScreen(
                     initial = editingPost,
+                    publishCategories = uiState.feed.publishCategories,
                     isSubmitting = isSubmitting,
                     platformFeeRateLabel = uiState.paymentConfig?.platformFeeRateLabel,
                     alipayBound = uiState.myProfile?.alipayBound == true,

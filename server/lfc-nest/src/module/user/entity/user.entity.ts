@@ -55,6 +55,10 @@ export class UserEntity {
   @Column({ name: 'show_likes_public', type: 'boolean', default: false })
   showLikesPublic: boolean;
 
+  /** 发现页「我的频道」Tab 配置 */
+  @Column({ name: 'feed_channels', type: 'json', nullable: true })
+  feedChannels: string[] | null;
+
   /** 支付宝登录号（手机号或邮箱），用于 C2C 收款 */
   @Column({ name: 'alipay_login_id', type: 'varchar', length: 64, nullable: true })
   alipayLoginId: string | null;

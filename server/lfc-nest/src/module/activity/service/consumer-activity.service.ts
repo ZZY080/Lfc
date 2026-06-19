@@ -82,7 +82,22 @@ export class ConsumerActivityService {
     return this.consumerPromotionService.attachActivitiesPromotion(enriched);
   }
 
-  async findApprovedPaginated(page?: number, limit?: number, userId?: number) {
+  async findApprovedPaginated(
+    page?: number,
+    limit?: number,
+    userId?: number,
+    keyword?: string,
+  ) {
+    const trimmedKeyword = keyword?.trim();
+    if (trimmedKeyword) {
+      return this.findApprovedSearchPaginated(
+        trimmedKeyword,
+        page,
+        limit,
+        userId,
+      );
+    }
+
     const { page: normalizedPage, limit: normalizedLimit } = normalizePagination(
       page,
       limit,
@@ -139,6 +154,49 @@ export class ConsumerActivityService {
 
     const items = await this.consumerActivitySocialService.enrichActivities(
       pageActivities.map((activity) => ({
+        ...activity,
+        isJoined: userId
+          ? activity.participants.some((item) => item.userId === userId)
+          : false,
+      })),
+      userId,
+    );
+
+    return createPaginatedResult(
+      this.consumerPromotionService.attachActivitiesPromotion(items, userId),
+      total,
+      normalizedPage,
+      normalizedLimit,
+    );
+  }
+
+  private async findApprovedSearchPaginated(
+    keyword: string,
+    page?: number,
+    limit?: number,
+    userId?: number,
+  ) {
+    const { page: normalizedPage, limit: normalizedLimit, skip } =
+      normalizePagination(page, limit);
+    const searchKeyword = `%${keyword}%`;
+
+    const qb = this.activityRepository
+      .createQueryBuilder('activity')
+      .leftJoinAndSelect('activity.author', 'author')
+      .leftJoinAndSelect('activity.participants', 'participants')
+      .leftJoinAndSelect('participants.user', 'participantUser')
+      .where('activity.status = :status', { status: ActivityStatus.APPROVED })
+      .andWhere(
+        '(activity.title LIKE :keyword OR activity.description LIKE :keyword OR activity.location LIKE :keyword)',
+        { keyword: searchKeyword },
+      )
+      .orderBy('activity.createdAt', 'DESC')
+      .skip(skip)
+      .take(normalizedLimit);
+
+    const [activities, total] = await qb.getManyAndCount();
+    const items = await this.consumerActivitySocialService.enrichActivities(
+      activities.map((activity) => ({
         ...activity,
         isJoined: userId
           ? activity.participants.some((item) => item.userId === userId)

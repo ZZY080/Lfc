@@ -49,6 +49,7 @@ fun DiscoverFeedScreen(
     onToggleChannelPanel: () -> Unit,
     onCollapseChannelPanel: () -> Unit,
     onToggleChannelEditMode: () -> Unit,
+    onEnterChannelEditMode: () -> Unit,
     onAddChannel: (String) -> Unit,
     onRemoveChannel: (String) -> Unit,
     onPostClick: (Int) -> Unit,
@@ -56,7 +57,9 @@ fun DiscoverFeedScreen(
 ) {
     val listState = rememberLazyStaggeredGridState()
     val isFollowingTab = feedState.primaryTab == "关注"
-    val myChannels = feedState.myChannels.ifEmpty { FeedChannels.defaultMyChannels }
+    val myChannels = feedState.myChannels.ifEmpty {
+        feedState.defaultMyChannels.ifEmpty { listOf(FeedChannels.RECOMMEND) }
+    }
     val showChannelPanel = feedState.isChannelPanelExpanded && !isFollowingTab
 
     LaunchedEffect(feedState.selectedTab, feedState.primaryTab, showChannelPanel) {
@@ -107,6 +110,7 @@ fun DiscoverFeedScreen(
                     isPanelExpanded = feedState.isChannelPanelExpanded,
                     onTabSelected = onTabSelected,
                     onExpandPanel = onToggleChannelPanel,
+                    onChannelLongPress = onEnterChannelEditMode,
                 )
             }
 
@@ -116,6 +120,7 @@ fun DiscoverFeedScreen(
                     recommendedChannels = recommendedChannels,
                     isEditMode = feedState.isChannelEditMode,
                     onToggleEditMode = onToggleChannelEditMode,
+                    onEnterEditMode = onEnterChannelEditMode,
                     onCollapse = onCollapseChannelPanel,
                     onChannelClick = onTabSelected,
                     onAddChannel = onAddChannel,

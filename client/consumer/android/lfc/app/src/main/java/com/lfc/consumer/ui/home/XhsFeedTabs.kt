@@ -1,10 +1,14 @@
 package com.lfc.consumer.ui.home
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -35,6 +39,38 @@ import com.lfc.consumer.ui.theme.XhsTextPrimary
 import com.lfc.consumer.ui.theme.XhsTextSecondary
 
 val XHS_FEED_PRIMARY_TABS = listOf("关注", "发现")
+
+@Composable
+fun XhsTextTabRow(
+    tabs: List<String>,
+    selectedTab: String,
+    onTabSelected: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    contentPadding: PaddingValues = PaddingValues(horizontal = 14.dp),
+) {
+    LazyRow(
+        modifier = modifier.fillMaxWidth(),
+        contentPadding = contentPadding,
+        horizontalArrangement = Arrangement.spacedBy(18.dp),
+    ) {
+        items(tabs, key = { it }) { title ->
+            val selected = selectedTab == title
+            Text(
+                text = title,
+                fontSize = 14.sp,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                color = if (selected) XhsRed else XhsTextSecondary,
+                modifier = Modifier
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = { onTabSelected(title) },
+                    )
+                    .padding(vertical = 8.dp),
+            )
+        }
+    }
+}
 
 @Composable
 fun XhsFeedPrimaryTabRow(
@@ -116,6 +152,7 @@ fun XhsFeedPrimaryTabRow(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun XhsFeedCategoryTabRow(
     myChannels: List<String>,
@@ -123,6 +160,7 @@ fun XhsFeedCategoryTabRow(
     isPanelExpanded: Boolean,
     onTabSelected: (String) -> Unit,
     onExpandPanel: () -> Unit,
+    onChannelLongPress: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -145,10 +183,17 @@ fun XhsFeedCategoryTabRow(
                     fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
                     color = if (selected) XhsRed else XhsTextSecondary,
                     modifier = Modifier
-                        .clickable(
+                        .combinedClickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
-                        ) { onTabSelected(title) }
+                            onClick = { onTabSelected(title) },
+                            onLongClick = {
+                                if (!isPanelExpanded) {
+                                    onExpandPanel()
+                                }
+                                onChannelLongPress()
+                            },
+                        )
                         .padding(vertical = 8.dp),
                 )
             }

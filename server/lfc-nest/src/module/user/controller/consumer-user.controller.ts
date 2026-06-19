@@ -16,6 +16,7 @@ import { OptionalJwtAuthGuard } from '@shared/guard/optional-jwt-auth.guard';
 import { JwtAuthGuard } from '@shared/guard/jwt-auth.guard';
 import { CurrentUser } from '@shared/decorator/user.decorator';
 import { UpdateUserProfileBodySchema } from '@module/user/schema/update-user.schema';
+import { UpdateFeedChannelsBodySchema } from '@module/feed-channel/schema/feed-channels.schema';
 import { BindAlipayAccountBodySchema } from '@module/user/schema/alipay-account.schema';
 import { BindAlipayOAuthBodySchema } from '@module/user/schema/alipay-oauth.schema';
 import { PaginationQuerySchema } from '@shared/schema/pagination.schema';
@@ -37,6 +38,21 @@ export class ConsumerUserController {
     @Body() body: UpdateUserProfileBodySchema,
   ) {
     return this.consumerUserService.updateMe(userId, body);
+  }
+
+  @Get('me/feed-channels')
+  @UseGuards(JwtAuthGuard)
+  getMyFeedChannels(@CurrentUser('userId') userId: number) {
+    return this.consumerUserService.getFeedChannels(userId);
+  }
+
+  @Patch('me/feed-channels')
+  @UseGuards(JwtAuthGuard)
+  updateMyFeedChannels(
+    @CurrentUser('userId') userId: number,
+    @Body() body: UpdateFeedChannelsBodySchema,
+  ) {
+    return this.consumerUserService.updateFeedChannels(userId, body);
   }
 
   @Get('me/alipay')
