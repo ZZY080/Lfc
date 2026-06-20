@@ -27,6 +27,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -38,6 +39,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.lfc.consumer.data.model.DEFAULT_POST_CATEGORY
 import com.lfc.consumer.data.model.DEFAULT_POST_PRODUCT_CATEGORY
+import com.lfc.consumer.data.model.LocationPick
 import com.lfc.consumer.data.model.PostDto
 import com.lfc.consumer.data.model.PostProductRequest
 import com.lfc.consumer.location.AmapLocationHelper
@@ -45,6 +47,7 @@ import com.lfc.consumer.location.hasValidCoordinate
 import com.lfc.consumer.ui.theme.XhsRed
 import com.lfc.consumer.ui.theme.XhsTextPrimary
 import com.lfc.consumer.ui.theme.XhsTextSecondary
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 private val postLocationPermissions = arrayOf(
@@ -63,6 +66,12 @@ fun PublishPostScreen(
     alipayLoginIdMasked: String? = null,
     onBack: () -> Unit,
     onBindAlipay: () -> Unit = {},
+    pendingLocationPick: LocationPick? = null,
+    onConsumeLocationPick: () -> Unit = {},
+    onOpenLocationSearch: (
+        latitude: Double?,
+        longitude: Double?,
+    ) -> Unit = { _, _ -> },
     onSubmit: (
         title: String,
         content: String,
@@ -80,13 +89,17 @@ fun PublishPostScreen(
     var title by remember { mutableStateOf(initial?.title ?: "") }
     var content by remember { mutableStateOf(initial?.content ?: "") }
     var noteCategory by remember { mutableStateOf(initial?.category ?: DEFAULT_POST_CATEGORY) }
-    var locationLabel by remember {
+    var locationLabel by rememberSaveable {
         mutableStateOf(initial?.location.orEmpty())
     }
-    var latitude by remember { mutableStateOf(initial?.latitude) }
-    var longitude by remember { mutableStateOf(initial?.longitude) }
+    var latitude by rememberSaveable { mutableStateOf(initial?.latitude) }
+    var longitude by rememberSaveable { mutableStateOf(initial?.longitude) }
     var isLocating by remember { mutableStateOf(false) }
     var locationHint by remember { mutableStateOf<String?>(null) }
+    var locateJob by remember { mutableStateOf<Job?>(null) }
+    var autoLocateConsumed by rememberSaveable {
+        mutableStateOf(hasValidCoordinate(initial?.latitude, initial?.longitude))
+    }
     var attachProduct by remember { mutableStateOf(initial?.product != null) }
     var price by remember { mutableStateOf(initial?.product?.price ?: "") }
     var originalPrice by remember { mutableStateOf(initial?.product?.originalPrice ?: "") }
@@ -106,17 +119,21 @@ fun PublishPostScreen(
     }
 
     fun startLocate() {
+        locateJob?.cancel()
         locationHint = null
-        scope.launch {
+        locateJob = scope.launch {
             isLocating = true
-            AmapLocationHelper.getCurrentLocation(context)
-                .onSuccess {
-                    locationLabel = it.address
-                    latitude = it.latitude
-                    longitude = it.longitude
-                }
-                .onFailure { locationHint = it.message ?: "定位失败，请检查定位权限或高德 Key" }
-            isLocating = false
+            try {
+                AmapLocationHelper.getCurrentLocation(context)
+                    .onSuccess {
+                        locationLabel = it.address
+                        latitude = it.latitude
+                        longitude = it.longitude
+                    }
+                    .onFailure { locationHint = it.message ?: "定位失败，请检查定位权限或高德 Key" }
+            } finally {
+                isLocating = false
+            }
         }
     }
 
@@ -138,10 +155,25 @@ fun PublishPostScreen(
         }
     }
 
-    LaunchedEffect(Unit) {
-        if (!hasLocation) {
-            requestLocate()
+    LaunchedEffect(pendingLocationPick) {
+        pendingLocationPick?.let { pick ->
+            locateJob?.cancel()
+            locateJob = null
+            isLocating = false
+            locationLabel = pick.label
+            latitude = pick.latitude
+            longitude = pick.longitude
+            locationHint = null
+            autoLocateConsumed = true
+            onConsumeLocationPick()
         }
+    }
+
+    LaunchedEffect(Unit) {
+        if (pendingLocationPick != null) return@LaunchedEffect
+        if (autoLocateConsumed || hasValidCoordinate(latitude, longitude)) return@LaunchedEffect
+        autoLocateConsumed = true
+        requestLocate()
     }
 
     XhsPublishScreenContainer(modifier = Modifier.fillMaxSize()) {
@@ -250,20 +282,18 @@ fun PublishPostScreen(
                 XhsPublishFieldCard {
                     XhsPublishSectionTitle("发布位置")
                     Text(
-                        text = "用于展示笔记与你的距离，进入页面会自动定位",
+                        text = "用于展示笔记与你的距离，可搜索楼栋（如3号楼）或定位当前位置",
                         fontSize = 12.sp,
                         color = XhsTextSecondary,
                     )
                     Spacer(modifier = Modifier.height(10.dp))
-                    XhsPublishLocationField(
+                    XhsPublishLocationPicker(
                         value = locationLabel,
-                        onValueChange = { newValue ->
-                            locationLabel = newValue
-                            latitude = null
-                            longitude = null
-                        },
-                        placeholder = if (isLocating) "正在获取当前位置…" else "点击右侧按钮获取当前位置",
+                        placeholder = if (isLocating) "正在获取当前位置…" else "点击搜索楼栋或地点",
                         isLoading = isLocating,
+                        onOpenSearch = {
+                            onOpenLocationSearch(latitude, longitude)
+                        },
                         onLocate = ::requestLocate,
                     )
                     locationHint?.let { hint ->

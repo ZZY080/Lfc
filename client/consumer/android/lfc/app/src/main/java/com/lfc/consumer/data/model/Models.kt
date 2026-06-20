@@ -259,6 +259,26 @@ data class UploadImageResponse(
     val url: String,
 )
 
+data class PlaceSuggestionDto(
+    val id: String,
+    val name: String,
+    val address: String,
+    val latitude: Double,
+    val longitude: Double,
+    val district: String = "",
+)
+
+data class PlaceSearchResponse(
+    val items: List<PlaceSuggestionDto> = emptyList(),
+    val hasMore: Boolean = false,
+)
+
+data class LocationPick(
+    val label: String,
+    val latitude: Double,
+    val longitude: Double,
+)
+
 data class PromotionMetaDto(
     val isActive: Boolean = false,
     val label: String? = null,

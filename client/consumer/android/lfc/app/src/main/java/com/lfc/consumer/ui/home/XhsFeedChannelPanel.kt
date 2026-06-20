@@ -12,7 +12,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -116,6 +118,7 @@ fun XhsFeedChannelPanel(
                 FeedChannelChip(
                     label = channel,
                     selected = true,
+                    isEditMode = isEditMode,
                     showRemoveBadge = removable,
                     onClick = {
                         if (!isEditMode) {
@@ -168,6 +171,7 @@ fun XhsFeedChannelPanel(
                 FeedChannelChip(
                     label = "+$channel",
                     selected = false,
+                    isEditMode = false,
                     showRemoveBadge = false,
                     onClick = { onAddChannel(channel) },
                 )
@@ -181,6 +185,7 @@ fun XhsFeedChannelPanel(
 private fun FeedChannelChip(
     label: String,
     selected: Boolean,
+    isEditMode: Boolean,
     showRemoveBadge: Boolean,
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,
@@ -188,10 +193,12 @@ private fun FeedChannelChip(
 ) {
     val shape = RoundedCornerShape(8.dp)
     Box(
-        modifier = Modifier.padding(top = if (showRemoveBadge) 4.dp else 0.dp),
+        modifier = Modifier.padding(top = if (isEditMode) 8.dp else 0.dp),
     ) {
         Box(
             modifier = Modifier
+                .defaultMinSize(minWidth = 56.dp)
+                .heightIn(min = 36.dp)
                 .clip(shape)
                 .then(
                     if (selected) {
@@ -235,7 +242,7 @@ private fun FeedChannelChip(
             Box(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .offset(x = 4.dp, y = (-2).dp)
+                    .offset(x = 4.dp, y = (-6).dp)
                     .size(18.dp)
                     .clip(CircleShape)
                     .background(Color(0xFFBDBDBD))

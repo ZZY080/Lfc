@@ -43,6 +43,7 @@ import com.lfc.consumer.ui.navigation.weChatExitTransition
 import com.lfc.consumer.ui.navigation.weChatPopEnterTransition
 import com.lfc.consumer.ui.navigation.weChatPopExitTransition
 import com.lfc.consumer.data.model.ActivityDto
+import com.lfc.consumer.data.model.LocationPick
 import com.lfc.consumer.data.model.PostDto
 import com.lfc.consumer.data.model.ProfileTabUiState
 import com.lfc.consumer.data.model.activityPromoteBidHint
@@ -55,6 +56,7 @@ import com.lfc.consumer.ui.legal.LegalDocumentId
 import com.lfc.consumer.ui.legal.LegalDocumentScreen
 import com.lfc.consumer.data.local.FeedChannels
 import com.lfc.consumer.location.extractFeedCityLabel
+import com.lfc.consumer.location.hasValidCoordinate
 import com.lfc.consumer.ui.theme.XhsRed
 import androidx.compose.ui.unit.sp
 
@@ -70,6 +72,9 @@ fun HomeScreen(
     var selectedTab by remember { mutableIntStateOf(0) }
     var editingPost by remember { mutableStateOf<PostDto?>(null) }
     var editingActivity by remember { mutableStateOf<ActivityDto?>(null) }
+    var pendingLocationPick by remember { mutableStateOf<LocationPick?>(null) }
+    var locationSearchBiasLatitude by remember { mutableStateOf<Double?>(null) }
+    var locationSearchBiasLongitude by remember { mutableStateOf<Double?>(null) }
     var isSubmitting by remember { mutableStateOf(false) }
     var showPublishHub by remember { mutableStateOf(false) }
     var showProfileSideMenu by remember { mutableStateOf(false) }
@@ -82,6 +87,24 @@ fun HomeScreen(
     val searchHistory by viewModel.searchHistory.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
+
+    val locationSearchBiasCity = extractFeedCityLabel(uiState.userLocation?.address)
+        .takeIf { it.isNotBlank() && it != "同城" }
+
+    fun openLocationSearch(latitude: Double?, longitude: Double?) {
+        val userLocation = uiState.userLocation
+        locationSearchBiasLatitude = when {
+            hasValidCoordinate(latitude, longitude) -> latitude
+            hasValidCoordinate(userLocation?.latitude, userLocation?.longitude) -> userLocation?.latitude
+            else -> null
+        }
+        locationSearchBiasLongitude = when {
+            hasValidCoordinate(latitude, longitude) -> longitude
+            hasValidCoordinate(userLocation?.latitude, userLocation?.longitude) -> userLocation?.longitude
+            else -> null
+        }
+        navController.navigate("location_search")
+    }
 
     fun openProfileQrScan() {
         showProfileSideMenu = false
@@ -843,6 +866,19 @@ fun HomeScreen(
                 )
             }
 
+            composable("location_search") {
+                PublishLocationSearchScreen(
+                    onBack = { navController.popBackStack() },
+                    onSelect = { pick ->
+                        pendingLocationPick = pick
+                        navController.popBackStack()
+                    },
+                    biasLatitude = locationSearchBiasLatitude,
+                    biasLongitude = locationSearchBiasLongitude,
+                    biasCity = locationSearchBiasCity,
+                )
+            }
+
             composable("publish_post") {
                 PublishPostScreen(
                     publishCategories = uiState.feed.publishCategories,
@@ -852,6 +888,9 @@ fun HomeScreen(
                     alipayLoginIdMasked = uiState.myProfile?.alipayLoginIdMasked,
                     onBack = { navController.popBackStack() },
                     onBindAlipay = { navController.navigate("settings") },
+                    pendingLocationPick = pendingLocationPick,
+                    onConsumeLocationPick = { pendingLocationPick = null },
+                    onOpenLocationSearch = ::openLocationSearch,
                     onSubmit = { title, content, imageUris, keptExistingImageUrls, category, product, latitude, longitude, location ->
                         isSubmitting = true
                         viewModel.createPost(
@@ -913,6 +952,9 @@ fun HomeScreen(
                     alipayLoginIdMasked = uiState.myProfile?.alipayLoginIdMasked,
                     onBack = { navController.popBackStack() },
                     onBindAlipay = { navController.navigate("settings") },
+                    pendingLocationPick = pendingLocationPick,
+                    onConsumeLocationPick = { pendingLocationPick = null },
+                    onOpenLocationSearch = ::openLocationSearch,
                     onSubmit = { title, content, imageUris, keptExistingImageUrls, category, _, latitude, longitude, location ->
                         editingPost?.let { post ->
                             isSubmitting = true

@@ -35,6 +35,8 @@ object AmapLocationHelper {
         }
     }
 
+    fun isPrivacyAgreed(): Boolean = privacyAgreed
+
     suspend fun getCurrentLocation(context: Context): Result<ActivityLocation> {
         if (BuildConfig.AMAP_API_KEY.isBlank()) {
             return Result.failure(IllegalStateException("请先在 gradle.properties 配置 AMAP_API_KEY"))
@@ -75,7 +77,26 @@ object AmapLocationHelper {
                 client.onDestroy()
             }
             client.startLocation()
+        }.mapCatching { baseLocation ->
+            refineLocationWithReverseGeocode(baseLocation)
         }
+    }
+
+    private suspend fun refineLocationWithReverseGeocode(
+        baseLocation: ActivityLocation,
+    ): ActivityLocation {
+        val refined = GeocodeAddressHelper.reverseGeocodeDetail(
+            baseLocation.latitude,
+            baseLocation.longitude,
+        )
+        if (refined == null) {
+            return baseLocation
+        }
+        return ActivityLocation(
+            address = refined.address,
+            latitude = refined.latitude,
+            longitude = refined.longitude,
+        )
     }
 
     suspend fun reverseGeocode(

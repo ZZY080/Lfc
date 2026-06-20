@@ -123,7 +123,7 @@ dependencies {
     // Alipay App Pay
     implementation("com.alipay.sdk:alipaysdk-android:15.8.17")
 
-    // Amap location
+    // Amap location（POI 搜索走后端 Web 服务 Key，避免与 search SDK 重复类冲突）
     implementation("com.amap.api:location:6.4.9")
 
     // Test
