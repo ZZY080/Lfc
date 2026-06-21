@@ -28,7 +28,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
-import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -121,11 +120,10 @@ fun PaymentTransactionLedgerScreen(
             onRefresh = onRefresh,
             modifier = Modifier.fillMaxSize(),
             indicator = {
-                PullToRefreshDefaults.Indicator(
+                LfcPullToRefreshIndicator(
                     isRefreshing = state.isRefreshing,
                     state = pullRefreshState,
                     modifier = Modifier.align(Alignment.TopCenter),
-                    color = XhsRed,
                 )
             },
         ) {

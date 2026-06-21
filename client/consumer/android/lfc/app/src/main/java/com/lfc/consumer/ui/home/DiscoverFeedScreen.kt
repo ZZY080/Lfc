@@ -17,7 +17,6 @@ import androidx.compose.foundation.lazy.staggeredgrid.items
 import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Text
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.snapshotFlow
@@ -133,7 +132,7 @@ fun DiscoverFeedScreen(
             return@Column
         }
 
-        PullToRefreshBox(
+        LfcPullToRefreshBox(
             isRefreshing = feedState.isRefreshing,
             onRefresh = onRefresh,
             modifier = Modifier.fillMaxSize(),

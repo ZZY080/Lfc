@@ -65,7 +65,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
-import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridItemScope
 import androidx.compose.ui.platform.LocalConfiguration
@@ -523,11 +522,10 @@ fun XhsProfileScreen(
                     onRefresh = onRefresh,
                     modifier = scrollModifier,
                     indicator = {
-                        PullToRefreshDefaults.Indicator(
+                        LfcPullToRefreshIndicator(
                             isRefreshing = tabUiState.isRefreshing,
                             state = pullRefreshState,
                             modifier = Modifier.align(Alignment.TopCenter),
-                            color = XhsRed,
                         )
                     },
                 ) {
