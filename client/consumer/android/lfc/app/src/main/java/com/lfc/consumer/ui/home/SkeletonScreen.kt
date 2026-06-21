@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.foundation.shape.CircleShape
@@ -600,9 +601,273 @@ fun MessageDetailSkeleton(modifier: Modifier = Modifier) {
     }
 }
 
+@Composable
+fun NotificationListSkeleton(
+    modifier: Modifier = Modifier,
+    itemCount: Int = 8,
+) {
+    LazyColumn(
+        modifier = modifier.fillMaxSize(),
+        contentPadding = PaddingValues(bottom = 16.dp),
+    ) {
+        items(itemCount) {
+            NotificationListItemSkeleton()
+        }
+    }
+}
+
+@Composable
+private fun NotificationListItemSkeleton() {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        SkeletonCircle(size = 40.dp)
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            SkeletonLine(height = 14.dp, widthFraction = 0.55f)
+            Spacer(modifier = Modifier.height(8.dp))
+            SkeletonLine(height = 12.dp, widthFraction = 0.85f)
+        }
+    }
+}
+
+@Composable
+fun ConversationListSkeleton(modifier: Modifier = Modifier) {
+    LazyColumn(modifier = modifier.fillMaxSize()) {
+        item(key = "notification-title") {
+            SkeletonLine(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                height = 12.dp,
+                widthFraction = 0.22f,
+            )
+        }
+        items(3, key = { "notification-skeleton-$it" }) {
+            NotificationListItemSkeleton()
+        }
+        item(key = "divider") {
+            Spacer(modifier = Modifier.height(8.dp))
+            SkeletonBox(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(6.dp),
+                shape = RoundedCornerShape(0.dp),
+            )
+        }
+        item(key = "conversation-title") {
+            SkeletonLine(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                height = 12.dp,
+                widthFraction = 0.18f,
+            )
+        }
+        items(5, key = { "conversation-skeleton-$it" }) {
+            ConversationListItemSkeleton()
+        }
+    }
+}
+
+@Composable
+private fun ConversationListItemSkeleton() {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        SkeletonCircle(size = 48.dp)
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                SkeletonLine(
+                    modifier = Modifier.weight(1f),
+                    height = 14.dp,
+                    widthFraction = 0.5f,
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                SkeletonLine(
+                    modifier = Modifier.width(36.dp),
+                    height = 10.dp,
+                    widthFraction = 1f,
+                )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            SkeletonLine(height = 12.dp, widthFraction = 0.75f)
+        }
+    }
+}
+
+@Composable
+fun ProductDetailSkeleton(modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(Color(0xFFF4F4F5)),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color.White)
+                .padding(horizontal = 8.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            SkeletonBox(modifier = Modifier.size(36.dp), shape = CircleShape)
+            SkeletonBox(
+                modifier = Modifier.size(width = 88.dp, height = 32.dp),
+                shape = RoundedCornerShape(18.dp),
+            )
+        }
+        SkeletonBox(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(1f),
+            shape = RoundedCornerShape(0.dp),
+        )
+        Column(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            SkeletonBox(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(148.dp),
+                shape = RoundedCornerShape(16.dp),
+            )
+            SkeletonBox(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(108.dp),
+                shape = RoundedCornerShape(16.dp),
+            )
+            SkeletonBox(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(72.dp),
+                shape = RoundedCornerShape(16.dp),
+            )
+        }
+    }
+}
+
+@Composable
+fun EditProfileSkeleton(modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(XhsBackground),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color.White)
+                .padding(horizontal = 8.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            SkeletonBox(modifier = Modifier.size(36.dp), shape = CircleShape)
+            SkeletonLine(
+                modifier = Modifier.width(88.dp),
+                height = 16.dp,
+                widthFraction = 1f,
+            )
+            SkeletonLine(
+                modifier = Modifier.width(44.dp),
+                height = 16.dp,
+                widthFraction = 1f,
+            )
+        }
+        SkeletonBox(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(160.dp),
+            shape = RoundedCornerShape(0.dp),
+        )
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 20.dp)) {
+            SkeletonCircle(size = 80.dp)
+            Spacer(modifier = Modifier.height(28.dp))
+            repeat(4) {
+                SkeletonBox(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp)
+                        .padding(vertical = 4.dp),
+                    shape = RoundedCornerShape(8.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun ListRowSkeleton(
+    modifier: Modifier = Modifier,
+    itemCount: Int = 6,
+) {
+    LazyColumn(
+        modifier = modifier.fillMaxSize(),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        items(itemCount) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                SkeletonCircle(size = 36.dp)
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    SkeletonLine(height = 14.dp, widthFraction = 0.7f)
+                    Spacer(modifier = Modifier.height(6.dp))
+                    SkeletonLine(height = 11.dp, widthFraction = 0.45f)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun SettingsSkeleton(modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(16.dp),
+    ) {
+        repeat(3) {
+            SkeletonBox(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp)
+                    .padding(bottom = 12.dp),
+                shape = RoundedCornerShape(12.dp),
+            )
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        SkeletonLine(height = 14.dp, widthFraction = 0.25f)
+        Spacer(modifier = Modifier.height(12.dp))
+        repeat(3) {
+            SkeletonBox(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .padding(bottom = 8.dp),
+                shape = RoundedCornerShape(8.dp),
+            )
+        }
+    }
+}
+
 enum class DetailSkeletonStyle {
     Post,
     Activity,
+    Product,
 }
 
 @Composable
@@ -613,5 +878,6 @@ fun XhsDetailSkeleton(
     when (style) {
         DetailSkeletonStyle.Post -> PostDetailSkeleton(modifier)
         DetailSkeletonStyle.Activity -> ActivityDetailSkeleton(modifier)
+        DetailSkeletonStyle.Product -> ProductDetailSkeleton(modifier)
     }
 }

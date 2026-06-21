@@ -108,6 +108,9 @@ fun SettingsScreen(
                     .verticalScroll(rememberScrollState())
                     .padding(16.dp),
             ) {
+                if (profile == null) {
+                    SettingsSkeleton()
+                } else {
                 Surface(
                     shape = RoundedCornerShape(12.dp),
                     color = Color.White,
@@ -332,6 +335,7 @@ fun SettingsScreen(
                             }
                         }
                     }
+                }
                 }
             }
         }

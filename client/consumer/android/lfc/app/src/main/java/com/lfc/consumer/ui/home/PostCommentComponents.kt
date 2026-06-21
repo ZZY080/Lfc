@@ -301,11 +301,7 @@ internal fun PostCommentsLoadMoreFooter(isLoading: Boolean) {
         contentAlignment = Alignment.Center,
     ) {
         if (isLoading) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(22.dp),
-                strokeWidth = 2.dp,
-                color = XhsRed,
-            )
+            SkeletonLoadMoreFooter()
         }
     }
 }

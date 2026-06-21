@@ -176,9 +176,7 @@ private fun NotificationFeedContent(
     ) {
         when {
             feedState.isInitialLoading && feedState.notifications.isEmpty() -> {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = XhsRed, modifier = Modifier.size(28.dp))
-                }
+                NotificationListSkeleton(Modifier.fillMaxSize())
             }
             feedState.notifications.isEmpty() && !feedState.isRefreshing -> {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -212,17 +210,7 @@ private fun NotificationFeedContent(
                     }
                     if (feedState.isLoadingMore) {
                         item(key = "loading-more") {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(16.dp),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                CircularProgressIndicator(
-                                    color = XhsRed,
-                                    modifier = Modifier.size(24.dp),
-                                )
-                            }
+                            SkeletonLoadMoreFooter()
                         }
                     } else if (!feedState.hasMore && feedState.notifications.isNotEmpty()) {
                         item(key = "no-more") {

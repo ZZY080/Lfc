@@ -132,6 +132,9 @@ fun EditProfileScreen(
                     .imePadding()
                     .navigationBarsPadding(),
             ) {
+                if (profile == null) {
+                    EditProfileSkeleton(modifier = Modifier.fillMaxWidth())
+                } else {
                 EditProfileCoverHeader(
                     coverUrl = previewCoverUrl,
                     avatarUrl = previewAvatarUrl,
@@ -175,6 +178,7 @@ fun EditProfileScreen(
                 )
 
                 Spacer(modifier = Modifier.height(24.dp))
+                }
             }
         }
 

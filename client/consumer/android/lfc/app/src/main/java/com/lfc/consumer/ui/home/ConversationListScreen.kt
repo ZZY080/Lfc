@@ -224,9 +224,7 @@ private fun MessagesListContent(
             messagesState.isInitialLoading &&
                 conversations.isEmpty() &&
                 notifications.isEmpty() -> {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = XhsRed, modifier = Modifier.size(28.dp))
-                }
+                ConversationListSkeleton(Modifier.fillMaxSize())
             }
             conversations.isEmpty() && notifications.isEmpty() && !messagesState.isRefreshing -> {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -315,17 +313,7 @@ private fun MessagesListContent(
 
                     if (messagesState.isLoadingMore) {
                         item(key = "loading-more") {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(16.dp),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                CircularProgressIndicator(
-                                    color = XhsRed,
-                                    modifier = Modifier.size(24.dp),
-                                )
-                            }
+                            SkeletonLoadMoreFooter()
                         }
                     } else if (!messagesState.hasMore && conversations.isNotEmpty()) {
                         item(key = "no-more") {

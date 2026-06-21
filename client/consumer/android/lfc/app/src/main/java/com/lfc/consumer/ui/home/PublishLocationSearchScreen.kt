@@ -260,12 +260,7 @@ fun PublishLocationSearchScreen(
 
         when {
             isSearching && items.isEmpty() -> {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CircularProgressIndicator(color = XhsRed, strokeWidth = 2.dp)
-                }
+                ListRowSkeleton(modifier = Modifier.fillMaxSize())
             }
             keyword.trim().isEmpty() -> {
                 LazyColumn(
@@ -359,18 +354,7 @@ fun PublishLocationSearchScreen(
                     }
                     if (isLoadingMore) {
                         item(key = "loading-more") {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 16.dp),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                CircularProgressIndicator(
-                                    color = XhsRed,
-                                    modifier = Modifier.size(22.dp),
-                                    strokeWidth = 2.dp,
-                                )
-                            }
+                            SkeletonLoadMoreFooter()
                         }
                     }
                 }

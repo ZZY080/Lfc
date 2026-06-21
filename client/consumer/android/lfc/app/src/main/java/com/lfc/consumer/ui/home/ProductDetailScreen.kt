@@ -166,7 +166,7 @@ fun ProductDetailScreen(
             .background(pageBg),
     ) {
         when {
-            isLoading -> XhsDetailLoading(Modifier.fillMaxSize())
+            isLoading -> XhsDetailLoading(Modifier.fillMaxSize(), style = DetailSkeletonStyle.Product)
             post == null || post.product == null ->
                 XhsDetailEmpty("商品不存在或已下架", Modifier.fillMaxSize())
             else -> {
