@@ -1,5 +1,6 @@
 import SwiftUI
 
+/// Self profile on the「我的」tab — separate from visitor profile pushed from detail.
 struct ProfileTabView: View {
     @Bindable var store: HomeStore
     let onOpenSideMenu: () -> Void

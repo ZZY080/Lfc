@@ -1,8 +1,8 @@
 import SwiftUI
 
+private let profileCommentsTab = 2
 private let profileFavoritesTab = 3
 private let profileLikesTab = 4
-private let profileSheetTopGap: CGFloat = 12
 
 struct XhsVisitorProfileView: View {
     let userId: Int
@@ -17,13 +17,43 @@ struct XhsVisitorProfileView: View {
     @State private var pullDownOffset: CGFloat = 0
     @State private var suppressContentTapsUntil = Date.distantPast
     @State private var pendingScrollToY: CGFloat?
+    @State private var tabBarMinY: CGFloat = .greatestFiniteMagnitude
 
     private var collapseProgress: CGFloat {
-        XhsProfileLayout.visitorCollapseProgress(for: scrollOffset, gap: profileSheetTopGap)
+        let pinOffset = tabPinScrollOffset
+        let fadeStart: CGFloat = 24
+        guard pinOffset > fadeStart else { return scrollOffset > 0 ? 1 : 0 }
+        return min(1, max(0, (scrollOffset - fadeStart) / (pinOffset - fadeStart)))
+    }
+
+    private var activeCoverHeight: CGFloat {
+        guard let profile else { return XhsProfileLayout.coverHeight }
+        return coverHeight(for: profile)
+    }
+
+    private func coverHeight(for profile: UserProfileDto) -> CGFloat {
+        showsVisitorActions(for: profile)
+            ? XhsProfileLayout.visitorCoverHeight
+            : XhsProfileLayout.coverHeight
+    }
+
+    private var tabPinScrollOffset: CGFloat {
+        XhsProfileLayout.tabPinScrollOffset(coverHeight: activeCoverHeight)
+    }
+
+    private var sectionHeaderStickOffset: CGFloat {
+        XhsProfileLayout.sectionHeaderStickOffset(coverHeight: activeCoverHeight)
+    }
+
+    private var sectionHeaderIsStuck: Bool {
+        if tabBarMinY.isFinite, tabBarMinY < 10_000 {
+            return tabBarMinY <= XhsProfileLayout.topNavTotalHeight + 8
+        }
+        return scrollOffset >= sectionHeaderStickOffset - 2
     }
 
     private var tabsArePinned: Bool {
-        scrollOffset >= XhsProfileLayout.visitorTabPinScrollOffset(gap: profileSheetTopGap) - 2
+        sectionHeaderIsStuck
     }
 
     private var navCollapseProgress: CGFloat {
@@ -45,6 +75,10 @@ struct XhsVisitorProfileView: View {
 
     private var isSelf: Bool {
         (store.profileState.myProfile?.id ?? currentUserId) == userId
+    }
+
+    private func showsVisitorActions(for profile: UserProfileDto) -> Bool {
+        !isSelf && !profile.isSelf
     }
 
     private var isLoading: Bool {
@@ -80,29 +114,35 @@ struct XhsVisitorProfileView: View {
         }
         .background(Color(red: 0.96, green: 0.96, blue: 0.96).ignoresSafeArea())
         .navigationBarHidden(true)
-        .ignoresSafeArea(edges: .top)
         .appStatusBarStyle(.lightContent)
     }
 
     @ViewBuilder
     private func profileScroll(profile: UserProfileDto) -> some View {
         let coverUrl = profile.coverUrl ?? profile.posts.first?.images?.first
+        let blockHeight = coverHeight(for: profile)
         ZStack(alignment: .top) {
             ScrollView {
                 LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
-                    profileCoverBlock(profile: profile, coverUrl: coverUrl)
-
-                    Color(red: 0.96, green: 0.96, blue: 0.96)
-                        .frame(height: profileSheetTopGap)
+                    profileCoverBlock(
+                        profile: profile,
+                        coverUrl: coverUrl,
+                        coverHeight: blockHeight
+                    )
+                    .padding(.bottom, -XhsProfileLayout.sheetOverlap)
 
                     Section {
-                        tabContent(profile: profile, pinned: tabsArePinned)
+                        tabContent(profile: profile)
                             .allowsHitTesting(!shouldSuppressContentTaps)
                     } header: {
                         pinnedTabBarHeader(profile: profile)
                     }
                 }
                 .trackProfileScrollOffset($scrollOffset, pullDownOffset: $pullDownOffset, scrollToY: pendingScrollToY)
+                .onPreferenceChange(ProfileTabBarMinYKey.self) { minY in
+                    guard minY.isFinite else { return }
+                    tabBarMinY = minY
+                }
             }
             .scrollContentBackground(.hidden)
             .background {
@@ -111,7 +151,7 @@ struct XhsVisitorProfileView: View {
             .background(alignment: .top) {
                 XhsProfileLayout.coverDark
                     .frame(
-                        height: XhsProfileLayout.coverHeight
+                        height: blockHeight
                             + XhsProfileLayout.statusBarTopInset
                             + (scrollOffset <= 1 ? pullDownOffset : 0)
                     )
@@ -126,10 +166,23 @@ struct XhsVisitorProfileView: View {
                 scrollOffset = 0
                 pullDownOffset = 0
                 pendingScrollToY = nil
+                tabBarMinY = .greatestFiniteMagnitude
+            }
+            .onAppear {
+                scrollOffset = 0
+                pullDownOffset = 0
+                pendingScrollToY = 0
+                tabBarMinY = .greatestFiniteMagnitude
+            }
+            .onChange(of: profile.id) { _, _ in
+                scrollOffset = 0
+                pullDownOffset = 0
+                pendingScrollToY = 0
+                tabBarMinY = .greatestFiniteMagnitude
             }
             .onChange(of: selectedTab) { _, _ in
                 suppressContentTapsUntil = Date().addingTimeInterval(0.35)
-                let pinOffset = XhsProfileLayout.visitorTabPinScrollOffset(gap: profileSheetTopGap)
+                let pinOffset = sectionHeaderStickOffset
                 guard scrollOffset >= pinOffset - 2 else { return }
                 pendingScrollToY = pinOffset
                 Task { @MainActor in
@@ -139,7 +192,16 @@ struct XhsVisitorProfileView: View {
             }
             .onChange(of: tabUiState.isInitialLoading) { wasLoading, isLoading in
                 guard wasLoading, !isLoading else { return }
-                let pinOffset = XhsProfileLayout.visitorTabPinScrollOffset(gap: profileSheetTopGap)
+                if scrollOffset > sectionHeaderStickOffset + 40 {
+                    pendingScrollToY = 0
+                    Task { @MainActor in
+                        try? await Task.sleep(nanoseconds: 80_000_000)
+                        pendingScrollToY = nil
+                    }
+                    return
+                }
+                guard scrollOffset > 24 else { return }
+                let pinOffset = sectionHeaderStickOffset
                 guard scrollOffset >= pinOffset - 2 else { return }
                 pendingScrollToY = pinOffset
                 Task { @MainActor in
@@ -164,57 +226,108 @@ struct XhsVisitorProfileView: View {
                 onBack: onBack,
                 onEditProfile: nil,
                 onScanProfile: nil,
-                onShare: nil
+                onShare: { ProfileShareHelper.presentShareSheet(for: profile) },
+                isFollowing: profile.isFollowing,
+                onFollowToggle: isSelf ? nil : { Task { await store.toggleFollow(userId: profile.id) } }
             )
             .zIndex(10)
         }
+        .ignoresSafeArea(edges: .top)
     }
 
-    private func profileCoverBlock(profile: UserProfileDto, coverUrl: String?) -> some View {
+    private func profileCoverBlock(
+        profile: UserProfileDto,
+        coverUrl: String?,
+        coverHeight: CGFloat
+    ) -> some View {
         let stretch = scrollOffset <= 1 ? max(0, pullDownOffset) : 0
+        let showActions = showsVisitorActions(for: profile)
         let topInset = XhsProfileLayout.statusBarTopInset
-        let imageBase = XhsProfileLayout.coverHeight + topInset
+        let imageBase = coverHeight + topInset
         let scaleY = (imageBase + stretch) / imageBase
+        let blockHeight = coverHeight + stretch
 
-        return ZStack(alignment: .bottom) {
-            XhsProfileCoverImage(coverUrl: coverUrl)
-                .frame(height: imageBase)
-                .scaleEffect(x: 1, y: scaleY, anchor: .top)
-                .frame(height: imageBase + stretch, alignment: .top)
+        // Rectangle keeps a stable height in LazyVStack. Foreground uses overlay + fixedSize
+        // so profile info stays at the bottom and is never clipped (do not wrap both in .clipped()).
+        return Rectangle()
+            .fill(.clear)
+            .frame(height: blockHeight)
+            .background {
+                ZStack(alignment: .top) {
+                    XhsProfileCoverImage(coverUrl: coverUrl)
+                        .frame(height: imageBase)
+                        .scaleEffect(x: 1, y: scaleY, anchor: .top)
+                        .frame(height: imageBase + stretch, alignment: .top)
 
-            XhsProfileCoverGradient()
-                .frame(height: imageBase)
-                .scaleEffect(x: 1, y: scaleY, anchor: .top)
-                .frame(height: imageBase + stretch, alignment: .top)
+                    XhsProfileCoverGradient()
+                        .frame(height: imageBase)
+                        .scaleEffect(x: 1, y: scaleY, anchor: .top)
+                        .frame(height: imageBase + stretch, alignment: .top)
 
-            VStack(alignment: .leading, spacing: 0) {
-                Spacer(minLength: XhsProfileLayout.topNavTotalHeight + 24)
-                identityBlock(profile: profile)
-                statsRow(profile: profile)
-                    .padding(.top, 14)
-                Text(displayBio(for: profile))
-                    .font(.system(size: 13))
-                    .foregroundStyle(.white.opacity(0.88))
-                    .lineLimit(2)
-                    .padding(.top, 10)
-                if !isSelf {
-                    actionRow(profile: profile)
-                        .padding(.top, 14)
+                    if showActions {
+                        XhsProfileCoverBottomScrim(coverHeight: coverHeight)
+                            .frame(height: blockHeight, alignment: .bottom)
+                    }
                 }
+                .frame(height: blockHeight, alignment: .top)
+                .clipped()
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 16)
-            .padding(.bottom, 16)
+            .overlay(alignment: .bottom) {
+                profileCoverForeground(profile: profile, showActions: showActions)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .offset(y: stretch > 0 ? -stretch : 0)
+            .padding(.bottom, stretch > 0 ? -stretch : 0)
+    }
+
+    private func profileCoverForeground(profile: UserProfileDto, showActions: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            identityBlock(profile: profile)
+            statsRow(profile: profile)
+                .padding(.top, 14)
+            Text(displayBio(for: profile))
+                .font(.system(size: 13))
+                .foregroundStyle(.white.opacity(0.88))
+                .lineLimit(2)
+                .padding(.top, 10)
+
+            if showActions {
+                XhsVisitorProfileCoverActionRow(
+                    isFollowing: profile.isFollowing,
+                    onFollow: { Task { await store.toggleFollow(userId: profile.id) } },
+                    onMessage: {
+                        Task {
+                            if let conversationId = await store.startConversation(peerUserId: profile.id) {
+                                onOpenChat(conversationId)
+                            }
+                        }
+                    }
+                )
+                .padding(.top, 10)
+            }
         }
-        .frame(height: XhsProfileLayout.coverHeight + stretch)
-        .clipped()
-        .offset(y: stretch > 0 ? -stretch : 0)
+        .padding(.horizontal, 16)
+        .padding(
+            .bottom,
+            showActions ? XhsProfileLayout.visitorCoverBottomPadding : XhsProfileLayout.sheetOverlap + 58
+        )
     }
 
     private func pinnedTabBarHeader(profile: UserProfileDto) -> some View {
-        profileTabBar(profile: profile, roundedTop: !tabsArePinned)
-            .background(Color.white)
-            .padding(.top, tabsArePinned ? XhsProfileLayout.topNavTotalHeight : 0)
+        VStack(spacing: 0) {
+            if sectionHeaderIsStuck {
+                Color.white
+                    .frame(height: XhsProfileLayout.topNavTotalHeight)
+            }
+            profileTabBar(
+                profile: profile,
+                roundedTop: !sectionHeaderIsStuck
+            )
+        }
+        .background(Color.white)
+        .reportProfileTabBarMinY()
+        .zIndex(1)
     }
 
     private func profileTabBar(profile: UserProfileDto, roundedTop: Bool) -> some View {
@@ -222,7 +335,6 @@ struct XhsVisitorProfileView: View {
             tabs: buildVisitorProfileTabItems(profile: profile),
             selectedTab: selectedTab,
             roundedTop: roundedTop,
-            topCornerRadius: 18,
             onSelect: { tab in
                 guard tab != selectedTab else { return }
                 suppressContentTapsUntil = Date().addingTimeInterval(0.35)
@@ -235,14 +347,14 @@ struct XhsVisitorProfileView: View {
         HStack(alignment: .center, spacing: 14) {
             XhsProfileAvatar(
                 label: profile.displayName,
-                size: 72,
+                size: 68,
                 avatarUrl: profile.avatarUrl
             )
             .overlay(Circle().stroke(Color.white, lineWidth: 2))
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(profile.displayName)
-                    .font(.system(size: 22, weight: .bold))
+                    .font(.system(size: 20, weight: .bold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
                 HStack(spacing: 4) {
@@ -279,58 +391,9 @@ struct XhsVisitorProfileView: View {
         }
     }
 
-    private func actionRow(profile: UserProfileDto) -> some View {
-        HStack(spacing: 10) {
-            Button {
-                Task { await store.toggleFollow(userId: profile.id) }
-            } label: {
-                Text(profile.isFollowing ? "已关注" : "关注")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 38)
-                    .background(profile.isFollowing ? Color.white.opacity(0.2) : XhsTheme.red)
-                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-            }
-            .buttonStyle(.plain)
-
-            Button {
-                Task {
-                    if let conversationId = await store.startConversation(peerUserId: profile.id) {
-                        onOpenChat(conversationId)
-                    }
-                }
-            } label: {
-                Text("发私信")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 38)
-                    .background(Color.white.opacity(0.18))
-                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-            }
-            .buttonStyle(.plain)
-
-            Button {
-                ProfileShareHelper.presentShareSheet(for: profile)
-            } label: {
-                Image(systemName: "square.and.arrow.up")
-                    .font(.system(size: 16))
-                    .foregroundStyle(.white)
-                    .frame(width: 38, height: 38)
-                    .background(Color.white.opacity(0.18))
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            }
-            .buttonStyle(.plain)
-        }
-    }
-
     @ViewBuilder
-    private func tabContent(profile: UserProfileDto, pinned: Bool) -> some View {
-        let locked = isTabLocked(profile: profile, tabIndex: selectedTab)
-        let accessible = isTabAccessible(profile: profile, tabIndex: selectedTab)
-
-        if locked || (!accessible && selectedTab >= profileFavoritesTab) {
+    private func tabContent(profile: UserProfileDto) -> some View {
+        if isTabLocked(profile: profile, tabIndex: selectedTab) {
             lockedHint
                 .frame(minHeight: 280)
                 .frame(maxWidth: .infinity)
@@ -338,7 +401,7 @@ struct XhsVisitorProfileView: View {
         } else if tabUiState.isInitialLoading {
             FeedGridSkeletonStatic(itemCount: 4)
                 .background(Color.white)
-                .padding(.top, pinned ? 0 : 8)
+                .padding(.top, 8)
         } else if isTabContentEmpty(tabIndex: selectedTab) {
             emptyHint(profileTabEmptyMessage(selectedTab))
                 .frame(minHeight: 280)
@@ -347,17 +410,18 @@ struct XhsVisitorProfileView: View {
         } else {
             switch selectedTab {
             case 0:
-                notesGrid(profile: profile, pinned: pinned)
+                notesGrid(profile: profile)
             case 1:
-                activitiesGrid(profile: profile, pinned: pinned)
+                activitiesGrid(profile: profile)
+            case profileCommentsTab:
+                commentsList()
             case profileFavoritesTab:
                 libraryGrid(
                     items: buildProfileLibraryFeed(
                         posts: store.profileState.visitorProfileFavoritePosts,
                         activities: store.profileState.visitorProfileFavoriteActivities
                     ),
-                    profile: profile,
-                    pinned: pinned
+                    profile: profile
                 )
             case profileLikesTab:
                 libraryGrid(
@@ -365,8 +429,7 @@ struct XhsVisitorProfileView: View {
                         posts: store.profileState.visitorProfileLikedPosts,
                         activities: store.profileState.visitorProfileLikedActivities
                     ),
-                    profile: profile,
-                    pinned: pinned
+                    profile: profile
                 )
             default:
                 EmptyView()
@@ -382,24 +445,30 @@ struct XhsVisitorProfileView: View {
         }
     }
 
-    private func notesGrid(profile: UserProfileDto, pinned: Bool) -> some View {
-        WaterfallFeedGrid(
-            posts: store.profileState.visitorProfileNotes,
+    private func notesGrid(profile: UserProfileDto) -> some View {
+        let posts = store.profileState.visitorProfileNotes
+        return WaterfallFeedGrid(
+            posts: posts,
             spacing: 8
         ) { post in
-            XhsProfileFeedCard(post: post, onTap: { onPostTap(post.id) })
-                .onAppear {
-                    triggerLoadMoreIfNeeded(
-                        itemId: post.id,
-                        ids: store.profileState.visitorProfileNotes.map(\.id)
-                    )
-                }
+            XhsProfileFeedCard(
+                post: post,
+                userLat: store.userLatitude,
+                userLng: store.userLongitude,
+                onTap: { onPostTap(post.id) }
+            )
+            .onAppear {
+                triggerLoadMoreIfNeeded(
+                    itemId: post.id,
+                    ids: posts.map(\.id)
+                )
+            }
         }
-        .padding(.init(top: pinned ? 0 : 8, leading: 8, bottom: 8, trailing: 8))
+        .padding(8)
         .background(Color.white)
     }
 
-    private func activitiesGrid(profile: UserProfileDto, pinned: Bool) -> some View {
+    private func activitiesGrid(profile: UserProfileDto) -> some View {
         let activities = store.profileState.visitorProfileActivities
         return HStack(alignment: .top, spacing: 8) {
             LazyVStack(spacing: 8) {
@@ -416,7 +485,7 @@ struct XhsVisitorProfileView: View {
             }
             .frame(maxWidth: .infinity, alignment: .top)
         }
-        .padding(.init(top: pinned ? 0 : 8, leading: 8, bottom: 8, trailing: 8))
+        .padding(8)
         .background(Color.white)
     }
 
@@ -435,7 +504,7 @@ struct XhsVisitorProfileView: View {
         }
     }
 
-    private func libraryGrid(items: [ProfileLibraryFeedItem], profile: UserProfileDto, pinned: Bool) -> some View {
+    private func libraryGrid(items: [ProfileLibraryFeedItem], profile: UserProfileDto) -> some View {
         let left = items.enumerated().compactMap { index, item in index.isMultiple(of: 2) ? item : nil }
         let right = items.enumerated().compactMap { index, item in index.isMultiple(of: 2) ? nil : item }
 
@@ -454,15 +523,62 @@ struct XhsVisitorProfileView: View {
             }
             .frame(maxWidth: .infinity, alignment: .top)
         }
-        .padding(.init(top: pinned ? 0 : 8, leading: 8, bottom: 8, trailing: 8))
+        .padding(8)
         .background(Color.white)
+    }
+
+    private func commentsList() -> some View {
+        let comments = store.profileState.visitorProfileComments
+        return LazyVStack(spacing: 8) {
+            ForEach(comments) { comment in
+                Button {
+                    onPostTap(comment.postId)
+                } label: {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(comment.content)
+                            .font(.system(size: 14))
+                            .foregroundStyle(XhsTheme.textPrimary)
+                            .lineLimit(3)
+                            .multilineTextAlignment(.leading)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Text(comment.post?.title ?? "查看原笔记")
+                            .font(.system(size: 12))
+                            .foregroundStyle(XhsTheme.textSecondary)
+                            .lineLimit(1)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Text(formatVisitorProfileDate(comment.createdAt))
+                            .font(.system(size: 11))
+                            .foregroundStyle(XhsTheme.textSecondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .padding(12)
+                    .background(Color.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .onAppear {
+                    triggerLoadMoreIfNeeded(
+                        itemId: comment.id,
+                        ids: comments.map(\.id)
+                    )
+                }
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.top, 8)
+        .background(Color(red: 0.96, green: 0.96, blue: 0.96))
     }
 
     @ViewBuilder
     private func libraryItemView(item: ProfileLibraryFeedItem, profile: UserProfileDto) -> some View {
         switch item {
         case .post(let post):
-            XhsProfileFeedCard(post: post, onTap: { onPostTap(post.id) })
+            XhsProfileFeedCard(
+                post: post,
+                userLat: store.userLatitude,
+                userLng: store.userLongitude,
+                onTap: { onPostTap(post.id) }
+            )
                 .frame(maxWidth: .infinity)
                 .onAppear { triggerLibraryLoadMoreIfNeeded(item: item, items: libraryItemsForCurrentTab) }
         case .activity(let activity):
@@ -558,6 +674,12 @@ struct XhsVisitorProfileView: View {
             XhsProfileTabBarItem(label: "笔记", contentIndex: 0, count: counts.notes),
             XhsProfileTabBarItem(label: "活动", contentIndex: 1, count: counts.activities),
             XhsProfileTabBarItem(
+                label: "评论",
+                contentIndex: profileCommentsTab,
+                count: counts.comments,
+                locked: isTabLocked(profile: profile, tabIndex: profileCommentsTab)
+            ),
+            XhsProfileTabBarItem(
                 label: "收藏",
                 contentIndex: profileFavoritesTab,
                 count: counts.favorites,
@@ -573,7 +695,7 @@ struct XhsVisitorProfileView: View {
     }
 
     private func resolveProfileTabCounts(profile: UserProfileDto) -> (
-        notes: Int, activities: Int, favorites: Int, likes: Int
+        notes: Int, activities: Int, comments: Int, favorites: Int, likes: Int
     ) {
         func tabTotal(_ index: Int, listSize: Int, profileFallback: Int = 0) -> Int {
             if let fromTab = profileTabs.tabs[safe: index]?.totalCount { return fromTab }
@@ -609,6 +731,7 @@ struct XhsVisitorProfileView: View {
                 listSize: store.profileState.visitorProfileActivities.count,
                 profileFallback: profile.activities.count
             ),
+            comments: tabTotal(2, listSize: store.profileState.visitorProfileComments.count),
             favorites: favoritesTotal,
             likes: likesTotal
         )
@@ -616,18 +739,10 @@ struct XhsVisitorProfileView: View {
 
     private func isTabLocked(profile: UserProfileDto, tabIndex: Int) -> Bool {
         switch tabIndex {
+        case profileCommentsTab: !profile.showCommentsPublic
         case profileFavoritesTab: !profile.showFavoritesPublic
         case profileLikesTab: !profile.showLikesPublic
         default: false
-        }
-    }
-
-    private func isTabAccessible(profile: UserProfileDto, tabIndex: Int) -> Bool {
-        if tabIndex < profileFavoritesTab { return true }
-        return switch tabIndex {
-        case profileFavoritesTab: profile.showFavoritesPublic
-        case profileLikesTab: profile.showLikesPublic
-        default: true
         }
     }
 
@@ -635,6 +750,7 @@ struct XhsVisitorProfileView: View {
         switch tabIndex {
         case 0: store.profileState.visitorProfileNotes.isEmpty
         case 1: store.profileState.visitorProfileActivities.isEmpty
+        case profileCommentsTab: store.profileState.visitorProfileComments.isEmpty
         case profileFavoritesTab:
             store.profileState.visitorProfileFavoritePosts.isEmpty
                 && store.profileState.visitorProfileFavoriteActivities.isEmpty
@@ -649,6 +765,7 @@ struct XhsVisitorProfileView: View {
         switch tabIndex {
         case 0: "还没有发布笔记"
         case 1: "还没有发布活动"
+        case profileCommentsTab: "还没有发表评论"
         case profileFavoritesTab: "还没有收藏内容"
         case profileLikesTab: "还没有赞过内容"
         default: ""
@@ -675,4 +792,9 @@ private func profileStatWhite(count: Int, label: String) -> some View {
             .foregroundStyle(.white.opacity(0.82))
             .shadow(color: Color.black.opacity(0.35), radius: 2, y: 1)
     }
+}
+
+private func formatVisitorProfileDate(_ iso: String) -> String {
+    let normalized = iso.replacingOccurrences(of: "T", with: " ").prefix(10)
+    return normalized.count >= 10 ? String(normalized) : iso
 }

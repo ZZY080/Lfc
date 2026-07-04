@@ -192,6 +192,7 @@ struct XhsSelfProfileView: View {
         .frame(height: XhsProfileLayout.coverHeight + stretch)
         .clipped()
         .offset(y: stretch > 0 ? -stretch : 0)
+        .padding(.bottom, stretch > 0 ? -stretch : 0)
     }
 
     private func pinnedTabBarHeader(profile: UserProfileDto, userId: Int) -> some View {

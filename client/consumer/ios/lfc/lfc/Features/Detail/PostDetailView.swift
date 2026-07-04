@@ -16,8 +16,8 @@ struct PostDetailView: View {
     @State private var showComposer = false
 
     private var post: PostDto? {
-        guard store.selectedPost?.id == postId else { return nil }
-        return store.selectedPost
+        if store.selectedPost?.id == postId { return store.selectedPost }
+        return store.cachedPostForDetail(id: postId)
     }
 
     private var commentsUi: PostCommentsUiState { store.postCommentsUi }
@@ -69,6 +69,7 @@ struct PostDetailView: View {
             }
         }
         .background(Color.white)
+        .lfcHideSystemNavigationBar()
         .task(id: postId) {
             await store.loadPostDetail(postId)
         }

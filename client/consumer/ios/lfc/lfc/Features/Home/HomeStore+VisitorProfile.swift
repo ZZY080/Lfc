@@ -1,5 +1,6 @@
 import Foundation
 
+private let profileCommentsTab = 2
 private let profileFavoritesTab = 3
 private let profileLikesTab = 4
 private let profileTabPageSize = 10
@@ -13,7 +14,7 @@ extension HomeStore {
 
         profileState.visitorProfileContentTab = 0
         profileState.isUserProfileLoading = true
-        profileState.selectedUserProfile = nil
+        profileState.selectedUserProfile = seedVisitorProfileFromDetail(userId: userId)
         profileState.visitorProfileNotes = []
         profileState.visitorProfileActivities = []
         profileState.visitorProfileComments = []
@@ -130,6 +131,10 @@ extension HomeStore {
             return
         }
 
+        if tab == profileCommentsTab {
+            guard profileState.selectedUserProfile?.showCommentsPublic == true else { return }
+        }
+
         var tabsState = profileState.visitorProfileTabs
         if tabsState.targetUserId != userId {
             tabsState = ProfileTabsUiState(targetUserId: userId)
@@ -142,6 +147,7 @@ extension HomeStore {
             let hasData: Bool = switch tab {
             case 0: !profileState.visitorProfileNotes.isEmpty
             case 1: !profileState.visitorProfileActivities.isEmpty
+            case profileCommentsTab: !profileState.visitorProfileComments.isEmpty
             default: false
             }
             if hasData || tabState.isInitialLoading || tabState.isRefreshing { return }
@@ -186,6 +192,21 @@ extension HomeStore {
                 ) {
                     profileState.visitorProfileActivities = mergeActivities(
                         profileState.visitorProfileActivities,
+                        response.items,
+                        replace: replace
+                    )
+                }
+            case profileCommentsTab:
+                let response = try await api.getUserProfileComments(id: userId, page: page, limit: profileTabPageSize)
+                applyVisitorProfileTabResult(
+                    tab: tab,
+                    page: page,
+                    hasMore: response.hasMore,
+                    total: response.total,
+                    replace: replace
+                ) {
+                    profileState.visitorProfileComments = mergeVisitorComments(
+                        profileState.visitorProfileComments,
                         response.items,
                         replace: replace
                     )
@@ -405,13 +426,14 @@ extension HomeStore {
     private func preloadVisitorProfileTabTotals(userId: Int) async {
         guard profileState.visitorProfileTabs.targetUserId == userId else { return }
 
+        async let comments = try? await api.getUserProfileComments(id: userId, page: 1, limit: 1)
         async let favoritePosts = try? await api.getUserFavoritePosts(id: userId, page: 1, limit: 1)
         async let favoriteActivities = try? await api.getUserFavoriteActivities(id: userId, page: 1, limit: 1)
         async let likedPosts = try? await api.getUserLikedPosts(id: userId, page: 1, limit: 1)
         async let likedActivities = try? await api.getUserLikedActivities(id: userId, page: 1, limit: 1)
 
-        let (favPosts, favActivities, likePosts, likeActivities) = await (
-            favoritePosts, favoriteActivities, likedPosts, likedActivities
+        let (commentPage, favPosts, favActivities, likePosts, likeActivities) = await (
+            comments, favoritePosts, favoriteActivities, likedPosts, likedActivities
         )
 
         guard profileState.visitorProfileTabs.targetUserId == userId else { return }
@@ -427,6 +449,11 @@ extension HomeStore {
             favoritesActivitiesTotal: favActivities?.total ?? tabsState.favoritesActivitiesTotal,
             likedPostsTotal: likePosts?.total ?? tabsState.likedPostsTotal,
             likedActivitiesTotal: likeActivities?.total ?? tabsState.likedActivitiesTotal
+        )
+        tabsState = tabsState.withTab(
+            profileCommentsTab,
+            (tabsState.tabs[safe: profileCommentsTab] ?? ProfileTabUiState())
+                .copy(totalCount: commentPage?.total ?? tabsState.tabs[safe: profileCommentsTab]?.totalCount)
         )
         tabsState = tabsState.withTab(
             profileFavoritesTab,
@@ -609,6 +636,73 @@ extension HomeStore {
 
     private func isVisitorDetailAuthor(_ userId: Int) -> Bool {
         selectedPost?.authorId == userId || selectedActivity?.authorId == userId
+    }
+
+    /// Prefill header from the note/activity the user just viewed to avoid skeleton → broken relayout.
+    private func seedVisitorProfileFromDetail(userId: Int) -> UserProfileDto? {
+        let myId = profileState.myProfile?.id
+        let isFollowing = detailAuthorFollowing ?? false
+
+        if let post = selectedPost, post.authorId == userId {
+            let author = post.author
+            let coverImage = post.images?.first
+            return UserProfileDto(
+                id: userId,
+                lfcNo: author?.studentId ?? "",
+                studentId: author?.studentId ?? "",
+                nickname: author?.nickname,
+                bio: nil,
+                avatarUrl: author?.avatarUrl,
+                coverUrl: coverImage,
+                postCount: 0,
+                followingCount: 0,
+                followerCount: 0,
+                likeAndFavoriteCount: 0,
+                isFollowing: isFollowing,
+                isSelf: myId == userId,
+                showCommentsPublic: true,
+                showFavoritesPublic: false,
+                showLikesPublic: false,
+                posts: coverImage != nil ? [post] : [],
+                activities: []
+            )
+        }
+
+        if let activity = selectedActivity, activity.authorId == userId {
+            let author = activity.author
+            let coverImage = activity.images?.first
+            return UserProfileDto(
+                id: userId,
+                lfcNo: author?.studentId ?? "",
+                studentId: author?.studentId ?? "",
+                nickname: author?.nickname,
+                bio: nil,
+                avatarUrl: author?.avatarUrl,
+                coverUrl: coverImage,
+                postCount: 0,
+                followingCount: 0,
+                followerCount: 0,
+                likeAndFavoriteCount: 0,
+                isFollowing: isFollowing,
+                isSelf: myId == userId,
+                showCommentsPublic: true,
+                showFavoritesPublic: false,
+                showLikesPublic: false,
+                posts: [],
+                activities: coverImage != nil ? [activity] : []
+            )
+        }
+
+        return nil
+    }
+
+    private func mergeVisitorComments(
+        _ existing: [ProfileCommentDto],
+        _ incoming: [ProfileCommentDto],
+        replace: Bool
+    ) -> [ProfileCommentDto] {
+        if replace { return incoming }
+        return existing + incoming.filter { new in existing.allSatisfy { $0.id != new.id } }
     }
 }
 

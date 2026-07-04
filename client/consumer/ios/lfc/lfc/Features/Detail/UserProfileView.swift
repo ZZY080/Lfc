@@ -1,5 +1,7 @@
 import SwiftUI
 
+/// Standalone visitor profile pushed from note/activity detail (always `XhsVisitorProfileView`).
+/// Separate from the self profile on the「我的」tab (`XhsSelfProfileView` / `ProfileTabView`).
 struct UserProfileView: View {
     let userId: Int
     @Bindable var store: HomeStore

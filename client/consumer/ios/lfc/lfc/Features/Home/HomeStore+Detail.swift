@@ -153,7 +153,7 @@ extension HomeStore {
         async let profileTask: Void = ensureMyProfileLoaded()
 
         if selectedPost?.id != id {
-            selectedPost = cachedPost(id: id)
+            selectedPost = cachedPostForDetail(id: id)
         }
         isPostLoading = true
         postCommentsUi = PostCommentsUiState(isInitialLoading: true)
@@ -171,16 +171,35 @@ extension HomeStore {
             )
             await loadPostComments(postId: id, refresh: true)
         } catch is CancellationError {
+            guard requestID == postDetailRequestID else { return }
+            isPostLoading = false
             return
         } catch {
             guard requestID == postDetailRequestID else { return }
             isPostLoading = false
             postCommentsUi = PostCommentsUiState()
-            postDetailLoadFailed = true
-            toastError = parseError(error, fallback: "加载笔记失败")
+            if selectedPost?.id == id {
+                toastError = parseError(error, fallback: "刷新笔记失败")
+            } else {
+                postDetailLoadFailed = true
+                toastError = parseError(error, fallback: "加载笔记失败")
+            }
         }
 
         _ = await profileTask
+    }
+
+    /// Call synchronously before navigation so the detail page never flashes empty.
+    func preparePostDetail(id: Int) {
+        postDetailTargetId = id
+        postDetailLoadFailed = false
+        if selectedPost?.id != id {
+            selectedPost = cachedPostForDetail(id: id)
+        }
+    }
+
+    func cachedPostForDetail(id: Int) -> PostDto? {
+        cachedPost(id: id)
     }
 
     func clearSelectedPost() {
@@ -197,6 +216,13 @@ extension HomeStore {
         if let post = feedState.posts.first(where: { $0.id == id }) { return post }
         if let post = searchState.posts.first(where: { $0.id == id }) { return post }
         if let post = profileState.profileNotes.first(where: { $0.id == id }) { return post }
+        if let post = profileState.visitorProfileNotes.first(where: { $0.id == id }) { return post }
+        if let post = profileState.profileFavoritePosts.first(where: { $0.id == id }) { return post }
+        if let post = profileState.profileLikedPosts.first(where: { $0.id == id }) { return post }
+        if let post = profileState.visitorProfileFavoritePosts.first(where: { $0.id == id }) { return post }
+        if let post = profileState.visitorProfileLikedPosts.first(where: { $0.id == id }) { return post }
+        if let post = profileState.myProfile?.posts.first(where: { $0.id == id }) { return post }
+        if let post = profileState.selectedUserProfile?.posts.first(where: { $0.id == id }) { return post }
         return nil
     }
 

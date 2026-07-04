@@ -2,6 +2,14 @@ import SwiftUI
 
 enum XhsProfileLayout {
     static let coverHeight: CGFloat = 300
+    /// Slightly taller when follow/message buttons overlay the cover image.
+    static let visitorCoverHeight: CGFloat = 360
+    static let visitorCoverBottomPadding: CGFloat = 58
+    static let visitorActionBarHeight: CGFloat = 56
+    static let visitorActionBarVerticalPadding: CGFloat = 12
+    static var visitorActionBarTotalHeight: CGFloat {
+        visitorActionBarHeight + visitorActionBarVerticalPadding * 2
+    }
     static let sheetOverlap: CGFloat = 14
     static let sheetTopRadius: CGFloat = 14
     static let tabBarHeight: CGFloat = 44
@@ -27,12 +35,20 @@ enum XhsProfileLayout {
         max(0, coverHeight - sheetOverlap - topNavTotalHeight)
     }
 
-    static func visitorTabPinScrollOffset(gap: CGFloat = 12) -> CGFloat {
-        max(0, coverHeight + gap - topNavTotalHeight)
+    /// Scroll offset when the section tab header sticks under the top nav.
+    static func sectionHeaderStickOffset(coverHeight: CGFloat = coverHeight) -> CGFloat {
+        max(0, coverHeight - sheetOverlap - tabBarHeight)
     }
 
-    static func visitorCollapseProgress(for scrollOffset: CGFloat, gap: CGFloat = 12) -> CGFloat {
-        let pinOffset = visitorTabPinScrollOffset(gap: gap)
+    static func visitorWithActionBarTabPinOffset(coverHeight: CGFloat = coverHeight) -> CGFloat {
+        max(0, coverHeight + visitorActionBarTotalHeight - topNavTotalHeight)
+    }
+
+    static func visitorCollapseProgress(
+        for scrollOffset: CGFloat,
+        coverHeight: CGFloat = XhsProfileLayout.coverHeight
+    ) -> CGFloat {
+        let pinOffset = visitorWithActionBarTabPinOffset(coverHeight: coverHeight)
         let fadeStart: CGFloat = 24
         guard pinOffset > fadeStart else { return scrollOffset > 0 ? 1 : 0 }
         return min(1, max(0, (scrollOffset - fadeStart) / (pinOffset - fadeStart)))
@@ -114,12 +130,33 @@ struct XhsProfileCoverGradient: View {
         LinearGradient(
             colors: [
                 Color.black.opacity(0.08),
-                Color.black.opacity(0.28),
-                Color.black.opacity(0.72)
+                Color.black.opacity(0.32),
+                Color.black.opacity(0.78)
             ],
             startPoint: .top,
             endPoint: .bottom
         )
+    }
+}
+
+/// Extra scrim at the bottom of visitor covers so text/buttons stay readable on bright photos.
+struct XhsProfileCoverBottomScrim: View {
+    var coverHeight: CGFloat = XhsProfileLayout.coverHeight
+    var heightRatio: CGFloat = 0.68
+
+    var body: some View {
+        LinearGradient(
+            colors: [
+                Color.clear,
+                Color.black.opacity(0.42),
+                Color.black.opacity(0.82)
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+        .frame(maxWidth: .infinity)
+        .frame(height: coverHeight * heightRatio)
+        .frame(maxHeight: .infinity, alignment: .bottom)
     }
 }
 
@@ -197,6 +234,78 @@ struct XhsProfileTabBarView: View {
     }
 }
 
+/// 访客主页封面操作栏：关注 + 发私信（叠在背景图上）
+struct XhsVisitorProfileCoverActionRow: View {
+    let isFollowing: Bool
+    let onFollow: () -> Void
+    let onMessage: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Button(action: onFollow) {
+                Text(isFollowing ? "已关注" : "关注")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 32)
+                    .background(isFollowing ? Color.white.opacity(0.2) : XhsTheme.red)
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            }
+            .buttonStyle(.plain)
+
+            Button(action: onMessage) {
+                Text("发私信")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 32)
+                    .background(Color.white.opacity(0.18))
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            }
+            .buttonStyle(.plain)
+        }
+    }
+}
+
+/// 访客主页操作栏：关注 + 发私信（白底样式，备用）
+struct XhsVisitorProfileActionBar: View {
+    let isFollowing: Bool
+    let onFollow: () -> Void
+    let onMessage: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Button(action: onFollow) {
+                Text(isFollowing ? "已关注" : "关注")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(isFollowing ? XhsTheme.textPrimary : .white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 40)
+                    .background(isFollowing ? Color(red: 0.96, green: 0.96, blue: 0.96) : XhsTheme.red)
+                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    .overlay {
+                        if isFollowing {
+                            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                .stroke(Color(red: 0.90, green: 0.90, blue: 0.90), lineWidth: 1)
+                        }
+                    }
+            }
+            .buttonStyle(.plain)
+
+            Button(action: onMessage) {
+                Text("发私信")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(XhsTheme.textPrimary)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 40)
+                    .background(Color(red: 0.96, green: 0.96, blue: 0.96))
+                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+            }
+            .buttonStyle(.plain)
+        }
+    }
+}
+
 enum XhsProfileTopBarMode {
     case selfProfile
     case visitor
@@ -213,6 +322,8 @@ struct XhsProfileGradientTopNav: View {
     let onEditProfile: (() -> Void)?
     let onScanProfile: (() -> Void)?
     let onShare: (() -> Void)?
+    var isFollowing: Bool = false
+    var onFollowToggle: (() -> Void)? = nil
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -329,7 +440,32 @@ struct XhsProfileGradientTopNav: View {
                 }
             }
         } else {
-            Color.clear.frame(width: 44, height: 44)
+            HStack(spacing: 8) {
+                if showAvatar, let onFollowToggle {
+                    Button(action: onFollowToggle) {
+                        Text(isFollowing ? "已关注" : "关注")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(isFollowing ? XhsTheme.textPrimary : .white)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(isFollowing ? Color.white.opacity(0.92) : XhsTheme.red)
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                if let onShare {
+                    Button(action: onShare) {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.system(size: 18))
+                            .foregroundStyle(.white)
+                            .frame(width: 36, height: 36)
+                    }
+                    .buttonStyle(.plain)
+                } else if !showAvatar {
+                    Color.clear.frame(width: 44, height: 44)
+                }
+            }
         }
     }
 }
@@ -365,12 +501,14 @@ struct ProfileTabPaginationFooter: View {
                 Color.clear
                     .frame(height: 1)
                     .onAppear(perform: onLoadMore)
+            } else if !tabState.hasMore && !tabState.isInitialLoading && !isContentEmpty {
+                FeedListEndFooter()
             }
         }
     }
 }
 
-private struct ProfileTabBarMinYKey: PreferenceKey {
+struct ProfileTabBarMinYKey: PreferenceKey {
     static var defaultValue: CGFloat = .infinity
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = nextValue()

@@ -328,6 +328,7 @@ struct HomeRootView: View {
 
     private func openPost(_ id: Int) {
         if case .postDetail(let currentId) = path.last, currentId == id { return }
+        store.preparePostDetail(id: id)
         path.append(.postDetail(id: id))
     }
 
