@@ -15,6 +15,7 @@ struct HomeRootView: View {
                 MainTabView(
                     store: store,
                     onNavigate: { route in path.append(route) },
+                    onTabSelected: handleTabSelected,
                     onPublishTap: {
                         showPublishHub = true
                     },
@@ -85,21 +86,24 @@ struct HomeRootView: View {
             }
         }
         .task { await store.bootstrap() }
-        .onChange(of: store.toastMessage) { _, message in
-            guard message != nil else { return }
+        .lfcHomeToasts(message: store.toastMessage, error: store.toastError) {
             store.clearToast()
         }
-        .onChange(of: store.toastError) { _, error in
-            guard error != nil else { return }
-            store.clearToast()
+    }
+
+    private func handleTabSelected(_ tab: HomeTab) {
+        if tab == .discover, !path.isEmpty {
+            path.removeAll()
         }
+        store.selectedTab = tab
     }
 
     @ViewBuilder
     private func destination(for route: HomeRoute) -> some View {
         switch route {
         case .main:
-            EmptyView()
+            ContentUnavailableView("页面不存在", systemImage: "exclamationmark.triangle")
+                .onAppear { popToMain() }
 
         case .search:
             SearchPageView(

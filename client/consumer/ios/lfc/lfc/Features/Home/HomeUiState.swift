@@ -17,6 +17,8 @@ struct FeedUiState: Sendable {
     var isRefreshing: Bool = false
     var isLoadingMore: Bool = false
     var isInitialLoading: Bool = false
+    var hasLoadedOnce: Bool = false
+    var loadError: String?
 
     var effectiveMyChannels: [String] {
         if !myChannels.isEmpty { return myChannels }
@@ -33,6 +35,7 @@ struct ActivityFeedUiState: Sendable {
     var isLoadingMore: Bool = false
     var isInitialLoading: Bool = false
     var hasLoadedOnce: Bool = false
+    var loadError: String?
     var listResetNonce: Int = 0
 }
 
@@ -211,6 +214,7 @@ struct ProfileUiState: Sendable {
     var selectedUserProfile: UserProfileDto?
     var profileContentTab: Int = 0
     var isLoading: Bool = false
+    var loadFailed: Bool = false
     var isUserProfileLoading: Bool = false
     var profileNotes: [PostDto] = []
     var profileActivities: [ActivityDto] = []

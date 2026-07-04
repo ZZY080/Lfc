@@ -3,6 +3,7 @@ import SwiftUI
 struct MainTabView: View {
     @Bindable var store: HomeStore
     var onNavigate: (HomeRoute) -> Void
+    var onTabSelected: (HomeTab) -> Void
     var onPublishTap: () -> Void
     var onOpenSideMenu: () -> Void
     var onLogout: () -> Void
@@ -70,7 +71,7 @@ struct MainTabView: View {
             XhsBottomBar(
                 selectedTab: store.selectedTab,
                 unreadCount: store.unreadCount,
-                onTabSelected: { store.selectedTab = $0 },
+                onTabSelected: onTabSelected,
                 onPublishTap: onPublishTap
             )
         }

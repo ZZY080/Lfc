@@ -57,12 +57,46 @@ struct XhsSelfProfileView: View {
                 ProfilePageSkeleton()
             } else if let profile, let userId {
                 profileScroll(profile: profile, userId: userId)
+            } else if store.profileState.loadFailed {
+                profileLoadError
             } else {
                 ProfilePageSkeleton()
             }
         }
         .background(Color(red: 0.96, green: 0.96, blue: 0.96).ignoresSafeArea())
         .appStatusBarStyle(.lightContent)
+    }
+
+    private var profileLoadError: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Button(action: onOpenSideMenu) {
+                    Image(systemName: "line.3.horizontal")
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundStyle(XhsTheme.textPrimary)
+                        .frame(width: 44, height: 44)
+                }
+                .buttonStyle(.plain)
+                Spacer()
+            }
+            .padding(.horizontal, 2)
+            .padding(.top, XhsProfileLayout.statusBarTopInset)
+            .frame(height: XhsProfileLayout.topNavTotalHeight)
+            .background(Color.white)
+
+            ContentUnavailableView {
+                Label("加载失败", systemImage: "person.crop.circle.badge.exclamationmark")
+            } description: {
+                Text("个人资料加载失败，请检查网络后重试")
+            } actions: {
+                Button("重试") {
+                    Task { await store.loadProfile() }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(XhsTheme.red)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
     }
 
     @ViewBuilder

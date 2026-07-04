@@ -19,11 +19,6 @@ struct ActivityFeedView: View {
             content
         }
         .background(XhsTheme.background)
-        .task {
-            if !feedState.hasLoadedOnce, !feedState.isInitialLoading {
-                await onRefresh()
-            }
-        }
     }
 
     @ViewBuilder
@@ -31,6 +26,20 @@ struct ActivityFeedView: View {
         if feedState.isInitialLoading, feedState.activities.isEmpty {
             ActivityFeedSkeleton()
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        } else if feedState.activities.isEmpty, let error = feedState.loadError {
+            ContentUnavailableView {
+                Label("加载失败", systemImage: "wifi.exclamationmark")
+            } description: {
+                Text(error)
+            } actions: {
+                Button("重试") {
+                    Task { await onRefresh() }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(XhsTheme.red)
+            }
+            .refreshable { await onRefresh() }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if feedState.activities.isEmpty {
             ContentUnavailableView("暂无活动", systemImage: "calendar", description: Text("下拉刷新试试"))
                 .refreshable { await onRefresh() }

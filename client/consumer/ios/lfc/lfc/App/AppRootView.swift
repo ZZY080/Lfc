@@ -40,7 +40,8 @@ struct AppRootView: View {
                         LegalDocumentView(documentId: documentId, onBack: { path.removeLast() })
                             .lfcHideSystemNavigationBar()
                     default:
-                        EmptyView()
+                        ContentUnavailableView("页面不存在", systemImage: "exclamationmark.triangle")
+                            .lfcHideSystemNavigationBar()
                     }
                 }
         }

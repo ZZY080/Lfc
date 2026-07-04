@@ -67,6 +67,7 @@ final class HomeStore {
 
     let api = LFCAPIService.shared
     private var messagesLoadGeneration = 0
+    private var feedLoadGeneration = 0
 
     // MARK: - Bootstrap
 
@@ -90,6 +91,9 @@ final class HomeStore {
     // MARK: - Feed
 
     func loadFeed(refresh: Bool = false) async {
+        feedLoadGeneration += 1
+        let generation = feedLoadGeneration
+
         let page = refresh ? 1 : feedState.page
         if refresh, feedState.posts.isEmpty {
             feedState.isInitialLoading = true
@@ -97,6 +101,9 @@ final class HomeStore {
         feedState.isRefreshing = refresh
         feedState.isLoadingMore = !refresh && feedState.hasMore
         feedState.page = page
+        if refresh {
+            feedState.loadError = nil
+        }
 
         do {
             let sort: String? = {
@@ -118,6 +125,8 @@ final class HomeStore {
                 city: feedCityQueryParamForCurrentTab()
             )
 
+            guard generation == feedLoadGeneration else { return }
+
             let merged: [PostDto]
             if refresh {
                 merged = response.items
@@ -129,10 +138,15 @@ final class HomeStore {
             feedState.posts = merged
             feedState.page = response.page + 1
             feedState.hasMore = response.hasMore
+            feedState.loadError = nil
+            feedState.hasLoadedOnce = true
         } catch {
-            toastError = parseError(error, fallback: "加载笔记失败")
+            guard generation == feedLoadGeneration else { return }
+            guard !isRequestCancelled(error) else { return }
+            reportFeedError(error)
         }
 
+        guard generation == feedLoadGeneration else { return }
         feedState.isRefreshing = false
         feedState.isInitialLoading = false
         feedState.isLoadingMore = false
@@ -155,6 +169,7 @@ final class HomeStore {
         feedState.posts = []
         feedState.page = 1
         feedState.isInitialLoading = true
+        feedState.loadError = nil
         feedState.isChannelPanelExpanded = false
         feedState.isChannelEditMode = false
         Task { await loadFeed(refresh: true) }
@@ -166,6 +181,7 @@ final class HomeStore {
         feedState.posts = []
         feedState.page = 1
         feedState.isInitialLoading = true
+        feedState.loadError = nil
         feedState.isChannelPanelExpanded = false
         feedState.isChannelEditMode = false
         Task { await loadFeed(refresh: true) }
@@ -183,6 +199,7 @@ final class HomeStore {
         activityFeedState.isLoadingMore = !refresh && activityFeedState.hasMore
         activityFeedState.page = page
         if refresh {
+            activityFeedState.loadError = nil
             activityFeedState.listResetNonce += 1
         }
 
@@ -199,8 +216,12 @@ final class HomeStore {
             activityFeedState.page = response.page + 1
             activityFeedState.hasMore = response.hasMore
             activityFeedState.hasLoadedOnce = true
+            activityFeedState.loadError = nil
         } catch {
-            toastError = parseError(error, fallback: "加载活动失败")
+            guard !isRequestCancelled(error) else { return }
+            let message = parseError(error, fallback: "加载活动失败")
+            activityFeedState.loadError = message
+            toastError = message
         }
 
         activityFeedState.isRefreshing = false
@@ -325,6 +346,7 @@ final class HomeStore {
 
     func loadProfile() async {
         profileState.isLoading = true
+        profileState.loadFailed = false
         do {
             let profile = try await api.getMyProfile()
             let myId = profile.id
@@ -340,7 +362,9 @@ final class HomeStore {
             await loadSelfProfileTab(tab: profileState.profileContentTab, userId: myId)
             await preloadSelfProfileTabTotals(userId: myId)
         } catch {
-            toastError = parseError(error, fallback: "加载个人资料失败")
+            guard !isRequestCancelled(error) else { return }
+            profileState.loadFailed = true
+            reportError(error, fallback: "加载个人资料失败")
         }
         profileState.isLoading = false
     }
@@ -529,6 +553,24 @@ final class HomeStore {
     }
 
     // MARK: - Helpers
+
+    func isRequestCancelled(_ error: Error) -> Bool {
+        if error is CancellationError { return true }
+        if let urlError = error as? URLError, urlError.code == .cancelled { return true }
+        return false
+    }
+
+    func reportError(_ error: Error, fallback: String) {
+        guard !isRequestCancelled(error) else { return }
+        toastError = parseError(error, fallback: fallback)
+    }
+
+    func reportFeedError(_ error: Error) {
+        guard !isRequestCancelled(error) else { return }
+        let message = parseError(error, fallback: "加载笔记失败")
+        feedState.loadError = message
+        toastError = message
+    }
 
     func parseError(_ error: Error, fallback: String) -> String {
         if let apiError = error as? ApiError {

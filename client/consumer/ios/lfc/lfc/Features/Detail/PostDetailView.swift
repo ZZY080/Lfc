@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct PostDetailView: View {
     let postId: Int
@@ -14,6 +15,9 @@ struct PostDetailView: View {
     @State private var replyParentId: Int?
     @State private var replyLabel: String?
     @State private var showComposer = false
+    @State private var pendingCommentImage: PendingCommentImage?
+    @State private var pendingCommentImagePreview: UIImage?
+    @State private var openComposerPickImage = false
 
     private var post: PostDto? {
         if store.selectedPost?.id == postId { return store.selectedPost }
@@ -163,6 +167,10 @@ struct PostDetailView: View {
                 XhsPostCommentExpandedPanel(
                     replyLabel: replyLabel,
                     text: $commentInput,
+                    pendingImage: $pendingCommentImage,
+                    pendingImagePreview: $pendingCommentImagePreview,
+                    requestPickImageOnOpen: openComposerPickImage,
+                    onPickImageRequestHandled: { openComposerPickImage = false },
                     isSubmitting: store.isPostSocialSubmitting,
                     onSubmit: submitComment
                 )
@@ -200,7 +208,8 @@ struct PostDetailView: View {
         XhsPostQuickCommentTrigger(
             userLabel: currentUserLabel,
             userAvatarUrl: currentUserAvatarUrl,
-            onTap: { openComposer() }
+            onTap: { openComposer() },
+            onImageTap: { openComposer(pickImage: true) }
         )
 
         if commentsUi.isInitialLoading {
@@ -249,9 +258,10 @@ struct PostDetailView: View {
         }
     }
 
-    private func openComposer(replyId: Int? = nil, replyLabel: String? = nil) {
+    private func openComposer(replyId: Int? = nil, replyLabel: String? = nil, pickImage: Bool = false) {
         replyParentId = replyId
         self.replyLabel = replyLabel
+        openComposerPickImage = pickImage
         showComposer = true
     }
 
@@ -259,14 +269,26 @@ struct PostDetailView: View {
         showComposer = false
         replyParentId = nil
         replyLabel = nil
+        pendingCommentImage = nil
+        pendingCommentImagePreview = nil
+        openComposerPickImage = false
     }
 
     private func submitComment() {
         let content = commentInput
         let parentId = replyParentId
+        let image = pendingCommentImage
+        guard !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || image != nil else { return }
         commentInput = ""
         dismissComposer()
-        Task { await store.createComment(postId: postId, content: content, parentId: parentId) }
+        Task {
+            await store.createComment(
+                postId: postId,
+                content: content,
+                parentId: parentId,
+                image: image
+            )
+        }
     }
 }
 

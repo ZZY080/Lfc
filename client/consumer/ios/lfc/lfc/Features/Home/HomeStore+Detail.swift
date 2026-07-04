@@ -484,17 +484,35 @@ extension HomeStore {
         }
     }
 
-    func createComment(postId: Int, content: String, parentId: Int? = nil) async {
+    func createComment(
+        postId: Int,
+        content: String,
+        parentId: Int? = nil,
+        image: PendingCommentImage? = nil
+    ) async {
         let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
+        guard !trimmed.isEmpty || image != nil else { return }
 
         isPostSocialSubmitting = true
         defer { isPostSocialSubmitting = false }
 
         do {
+            var imageUrl: String?
+            if let image {
+                let upload = try await api.uploadImage(
+                    data: image.data,
+                    filename: image.filename,
+                    mimeType: "image/jpeg",
+                    scope: "post"
+                )
+                imageUrl = upload.url
+            }
+            let finalContent = CommentContentHelper.build(text: trimmed, imageUrl: imageUrl)
+            guard !finalContent.isEmpty else { return }
+
             let comment = try await api.createPostComment(
                 id: postId,
-                request: CreatePostCommentRequest(content: trimmed, parentId: parentId)
+                request: CreatePostCommentRequest(content: finalContent, parentId: parentId)
             )
             if parentId == nil {
                 postCommentsUi.comments.insert(comment, at: 0)
@@ -524,7 +542,11 @@ extension HomeStore {
             }
             AnalyticsTracker.shared.track(
                 AnalyticsEvents.postComment,
-                properties: ["postId": postId, "hasReply": parentId != nil]
+                properties: [
+                    "postId": postId,
+                    "hasReply": parentId != nil,
+                    "hasImage": imageUrl != nil,
+                ]
             )
         } catch {
             toastError = parseError(error, fallback: "评论失败")

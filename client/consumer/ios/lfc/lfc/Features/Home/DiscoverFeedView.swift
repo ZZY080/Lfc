@@ -38,11 +38,6 @@ struct DiscoverFeedView: View {
             }
         }
         .background(XhsTheme.background)
-        .task {
-            if feedState.posts.isEmpty, !feedState.isInitialLoading, !showChannelPanel {
-                await onRefresh()
-            }
-        }
     }
 
     private var header: some View {
@@ -94,6 +89,20 @@ struct DiscoverFeedView: View {
             ScrollView {
                 FeedGridSkeletonStatic()
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if feedState.posts.isEmpty, let error = feedState.loadError {
+            ContentUnavailableView {
+                Label("加载失败", systemImage: "wifi.exclamationmark")
+            } description: {
+                Text(error)
+            } actions: {
+                Button("重试") {
+                    Task { await onRefresh() }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(XhsTheme.red)
+            }
+            .refreshable { await onRefresh() }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if feedState.posts.isEmpty {
             ContentUnavailableView("暂无笔记", systemImage: "doc.text", description: Text("下拉刷新试试"))

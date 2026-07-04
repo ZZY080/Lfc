@@ -922,7 +922,8 @@ extension PostDto {
       trimmedTitle.isEmpty
       || ["图片笔记", "校园笔记"].contains(trimmedTitle)
       || trimmedTitle == String(trimmedContent.prefix(30))
-      || (trimmedTitle.count <= 4 && trimmedTitle.allSatisfy { $0.isLetter || $0.isNumber })
+      // Only treat short ASCII slugs as weak (e.g. "test"), not short Chinese titles like "出去玩".
+      || (trimmedTitle.count <= 4 && trimmedTitle.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber) })
 
     if !titleLooksWeak {
       return trimmedTitle
@@ -930,7 +931,7 @@ extension PostDto {
     if !trimmedContent.isEmpty {
       return trimmedContent.split(separator: "\n", maxSplits: 1).first.map(String.init) ?? trimmedContent
     }
-    return "好物"
+    return "\(postProductCategoryLabel(product?.category))好物"
   }
 
   func toChatProductPayload() -> ChatProductPayload? {

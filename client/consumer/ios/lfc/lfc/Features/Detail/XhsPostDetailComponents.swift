@@ -1,4 +1,6 @@
+import PhotosUI
 import SwiftUI
+import UIKit
 
 // MARK: - Content helpers
 
@@ -289,7 +291,7 @@ struct XhsPostDetailContentSection: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 16)
         .padding(.top, hasImages ? 16 : 12)
-        .padding(.bottom, 8)
+        .padding(.bottom, 12)
     }
 }
 
@@ -302,10 +304,10 @@ struct XhsPostProductLinkCard: View {
 
     var body: some View {
         Button(action: onTap) {
-            HStack(spacing: 12) {
+            HStack(spacing: 20) {
                 DetailRemoteImage(urlString: post.images?.first, cornerRadius: 10)
                     .frame(width: 56, height: 56)
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 8) {
                     Text(post.productDisplayTitle())
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(XhsTheme.textPrimary)
@@ -315,19 +317,22 @@ struct XhsPostProductLinkCard: View {
                         .font(.system(size: 16, weight: .bold))
                         .foregroundStyle(XhsTheme.red)
                 }
-                Spacer()
+                Spacer(minLength: 20)
                 Image(systemName: "chevron.right")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(Color(red: 0.82, green: 0.82, blue: 0.82))
+                    .padding(.leading, 8)
             }
-            .padding(12)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 14)
             .background(Color.white)
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .shadow(color: .black.opacity(0.04), radius: 4, y: 1)
         }
         .buttonStyle(.plain)
         .padding(.horizontal, 16)
-        .padding(.vertical, 8)
+        .padding(.top, 12)
+        .padding(.bottom, 12)
     }
 }
 
@@ -368,7 +373,8 @@ struct XhsPostCommentsHeader: View {
             .buttonStyle(.plain)
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 14)
+        .padding(.top, 16)
+        .padding(.bottom, 14)
         .background(Color.white)
     }
 }
@@ -377,26 +383,37 @@ struct XhsPostQuickCommentTrigger: View {
     let userLabel: String
     let userAvatarUrl: String?
     let onTap: () -> Void
+    var onImageTap: (() -> Void)?
 
     var body: some View {
         HStack(spacing: 10) {
             XhsProfileAvatar(label: userLabel, size: 32, avatarUrl: userAvatarUrl)
-            Button(action: onTap) {
-                HStack {
+            HStack {
+                Button(action: onTap) {
                     Text("有话要说，快来评论")
                         .font(.system(size: 14))
                         .foregroundStyle(Color(red: 0.67, green: 0.67, blue: 0.67))
-                    Spacer()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.plain)
+
+                if let onImageTap {
+                    Button(action: onImageTap) {
+                        Image(systemName: "photo")
+                            .font(.system(size: 16))
+                            .foregroundStyle(Color(red: 0.73, green: 0.73, blue: 0.73))
+                    }
+                    .buttonStyle(.plain)
+                } else {
                     Image(systemName: "photo")
                         .font(.system(size: 16))
                         .foregroundStyle(Color(red: 0.73, green: 0.73, blue: 0.73))
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(Color(red: 0.96, green: 0.96, blue: 0.96))
-                .clipShape(Capsule())
             }
-            .buttonStyle(.plain)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(Color(red: 0.96, green: 0.96, blue: 0.96))
+            .clipShape(Capsule())
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
@@ -506,8 +523,16 @@ struct XhsPostCommentRow: View {
         parentComment != nil
     }
 
+    private var parsedContent: ParsedCommentContent {
+        CommentContentHelper.parse(comment.content)
+    }
+
     private var displayContent: String {
-        comment.content.trimmingCharacters(in: .whitespacesAndNewlines)
+        parsedContent.text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var commentImageUrl: String? {
+        parsedContent.imageUrl
     }
 
     private var replyTargetName: String? {
@@ -551,6 +576,12 @@ struct XhsPostCommentRow: View {
                             .fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
+                }
+
+                if let commentImageUrl {
+                    DetailRemoteImage(urlString: commentImageUrl, cornerRadius: 8)
+                        .frame(width: 120, height: 120)
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 }
 
                 HStack(spacing: 12) {
@@ -708,12 +739,22 @@ struct XhsPostCommentScrim: View {
 struct XhsPostCommentExpandedPanel: View {
     let replyLabel: String?
     @Binding var text: String
+    @Binding var pendingImage: PendingCommentImage?
+    @Binding var pendingImagePreview: UIImage?
+    var requestPickImageOnOpen: Bool
+    let onPickImageRequestHandled: () -> Void
     let isSubmitting: Bool
     let onSubmit: () -> Void
 
     @FocusState private var isFocused: Bool
+    @State private var pickerItem: PhotosPickerItem?
+    @State private var showImagePicker = false
 
     private let quickEmojis = ["😀", "😂", "🥰", "😭", "👍", "🙏", "❤️", "🔥"]
+
+    private var canSend: Bool {
+        (!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || pendingImage != nil) && !isSubmitting
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -728,25 +769,61 @@ struct XhsPostCommentExpandedPanel: View {
                 .padding(.top, 10)
             }
 
-            TextField("友善评论，文明发言", text: $text, axis: .vertical)
-                .lineLimit(3...6)
-                .font(.system(size: 15))
-                .focused($isFocused)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
+            VStack(alignment: .leading, spacing: 10) {
+                TextField("友善评论，文明发言", text: $text, axis: .vertical)
+                    .lineLimit(3...6)
+                    .font(.system(size: 15))
+                    .focused($isFocused)
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 12) {
-                    ForEach(quickEmojis, id: \.self) { emoji in
-                        Button(emoji) {
-                            text += emoji
+                if let pendingImagePreview {
+                    ZStack(alignment: .topTrailing) {
+                        Image(uiImage: pendingImagePreview)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 72, height: 72)
+                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+                        Button {
+                            clearPendingImage()
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(.white)
+                                .padding(5)
+                                .background(Color.black.opacity(0.45))
+                                .clipShape(Circle())
                         }
-                        .font(.system(size: 24))
+                        .buttonStyle(.plain)
+                        .padding(4)
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 10)
             }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+
+            HStack(spacing: 16) {
+                Button {
+                    showImagePicker = true
+                } label: {
+                    Image(systemName: "photo")
+                        .font(.system(size: 20))
+                        .foregroundStyle(XhsTheme.textSecondary)
+                }
+                .buttonStyle(.plain)
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 12) {
+                        ForEach(quickEmojis, id: \.self) { emoji in
+                            Button(emoji) {
+                                text += emoji
+                            }
+                            .font(.system(size: 24))
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 10)
 
             HStack {
                 Text("\(text.count)/500")
@@ -755,20 +832,43 @@ struct XhsPostCommentExpandedPanel: View {
                 Spacer()
                 Button("发送", action: onSubmit)
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(
-                        text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSubmitting
-                            ? XhsTheme.textSecondary
-                            : XhsTheme.red
-                    )
-                    .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSubmitting)
+                    .foregroundStyle(canSend ? XhsTheme.red : XhsTheme.textSecondary)
+                    .disabled(!canSend)
             }
             .padding(.horizontal, 16)
             .padding(.top, 12)
             .padding(.bottom, 12)
         }
         .background(Color.white)
+        .photosPicker(isPresented: $showImagePicker, selection: $pickerItem, matching: .images)
+        .onChange(of: pickerItem) { _, item in
+            guard let item else {
+                clearPendingImage()
+                return
+            }
+            Task { await loadPendingImage(from: item) }
+        }
         .onAppear {
             DispatchQueue.main.async { isFocused = true }
+            if requestPickImageOnOpen {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+                    showImagePicker = true
+                    onPickImageRequestHandled()
+                }
+            }
         }
+    }
+
+    private func clearPendingImage() {
+        pickerItem = nil
+        pendingImage = nil
+        pendingImagePreview = nil
+    }
+
+    private func loadPendingImage(from item: PhotosPickerItem) async {
+        guard let data = try? await item.loadTransferable(type: Data.self) else { return }
+        let filename = "comment_\(UUID().uuidString).jpg"
+        pendingImage = PendingCommentImage(data: data, filename: filename)
+        pendingImagePreview = UIImage(data: data)
     }
 }

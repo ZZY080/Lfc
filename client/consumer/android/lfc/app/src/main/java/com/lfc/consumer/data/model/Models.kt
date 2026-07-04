@@ -780,7 +780,7 @@ fun PostDto.productDisplayTitle(): String {
     val titleLooksWeak = trimmedTitle.isBlank() ||
         trimmedTitle in setOf("图片笔记", "校园笔记") ||
         trimmedTitle == trimmedContent.take(30) ||
-        (trimmedTitle.length <= 4 && trimmedTitle.all { it.isDigit() || it.isLetter() })
+        (trimmedTitle.length <= 4 && trimmedTitle.all { it.code <= 127 && (it.isDigit() || it.isLetter()) })
     return when {
         !titleLooksWeak -> trimmedTitle
         trimmedContent.isNotBlank() -> trimmedContent.lineSequence().first().take(36)
