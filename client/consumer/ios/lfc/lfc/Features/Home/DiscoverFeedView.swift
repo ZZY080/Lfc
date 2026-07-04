@@ -28,9 +28,9 @@ struct DiscoverFeedView: View {
                 categoryHeader
             }
 
-            if !showChannelPanel {
-                feedContent
-            }
+            feedContent
+                .opacity(showChannelPanel ? 0 : 1)
+                .allowsHitTesting(!showChannelPanel)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

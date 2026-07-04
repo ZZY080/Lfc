@@ -179,14 +179,21 @@ final class HomeStore {
     }
 
     func selectFeedTab(_ tab: String) {
-        if feedState.selectedTab == tab, !feedState.isChannelPanelExpanded { return }
+        let isSameTab = feedState.selectedTab == tab
+
+        feedState.isChannelPanelExpanded = false
+        feedState.isChannelEditMode = false
+
+        // Same channel: only dismiss the panel, keep cached feed.
+        if isSameTab {
+            return
+        }
+
         feedState.selectedTab = tab
         feedState.posts = []
         feedState.page = 1
         feedState.isInitialLoading = true
         feedState.loadError = nil
-        feedState.isChannelPanelExpanded = false
-        feedState.isChannelEditMode = false
         Task { await loadFeed(refresh: true) }
     }
 
