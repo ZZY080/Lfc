@@ -224,9 +224,10 @@ struct SearchResultView: View {
     }
 
     private func activityWaterfall(activities: [ActivityDto]) -> some View {
-        HStack(alignment: .top, spacing: 8) {
+        let columns = WaterfallColumnSplit.split(activities, spacing: 8, estimatedHeight: estimatedActivityCardHeight(for:))
+        return HStack(alignment: .top, spacing: 8) {
             LazyVStack(spacing: 8) {
-                ForEach(leftActivities(activities)) { activity in
+                ForEach(columns.left) { activity in
                     XhsProfileActivityCard(
                         activity: activity,
                         authorLabel: activity.author?.displayName ?? "同学\(activity.authorId)",
@@ -239,7 +240,7 @@ struct SearchResultView: View {
             .frame(maxWidth: .infinity, alignment: .top)
 
             LazyVStack(spacing: 8) {
-                ForEach(rightActivities(activities)) { activity in
+                ForEach(columns.right) { activity in
                     XhsProfileActivityCard(
                         activity: activity,
                         authorLabel: activity.author?.displayName ?? "同学\(activity.authorId)",
@@ -252,18 +253,6 @@ struct SearchResultView: View {
             .frame(maxWidth: .infinity, alignment: .top)
         }
         .padding(8)
-    }
-
-    private func leftActivities(_ activities: [ActivityDto]) -> [ActivityDto] {
-        activities.enumerated().compactMap { index, item in
-            index.isMultiple(of: 2) ? item : nil
-        }
-    }
-
-    private func rightActivities(_ activities: [ActivityDto]) -> [ActivityDto] {
-        activities.enumerated().compactMap { index, item in
-            index.isMultiple(of: 2) ? nil : item
-        }
     }
 
     private func triggerLoadMoreIfNeeded(for id: Int, in ids: [Int]) {

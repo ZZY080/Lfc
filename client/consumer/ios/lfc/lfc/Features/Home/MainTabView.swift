@@ -8,31 +8,18 @@ struct MainTabView: View {
     var onOpenSideMenu: () -> Void
     var onLogout: () -> Void
 
+    private var showFeedChannelOverlay: Bool {
+        store.selectedTab == .discover
+            && store.feedState.isChannelPanelExpanded
+            && store.feedState.primaryTab != "关注"
+    }
+
     var body: some View {
         ZStack(alignment: .bottom) {
             Group {
                 switch store.selectedTab {
                 case .discover:
-                    DiscoverFeedView(
-                        feedState: store.feedState,
-                        cityLabel: store.feedCityLabel,
-                        recommendedChannels: store.recommendedFeedChannels,
-                        userLat: store.userLatitude,
-                        userLng: store.userLongitude,
-                        onRefresh: { await store.loadFeed(refresh: true) },
-                        onLoadMore: { await store.loadMoreFeed() },
-                        onPrimaryTabSelected: { store.selectFeedPrimaryTab($0) },
-                        onCategoryTabSelected: { store.selectFeedTab($0) },
-                        onSearchTap: { onNavigate(.search) },
-                        onMessageTap: { store.selectedTab = .messages },
-                        onToggleChannelPanel: { store.toggleFeedChannelPanel() },
-                        onCollapseChannelPanel: { store.collapseFeedChannelPanel() },
-                        onToggleChannelEditMode: { store.toggleFeedChannelEditMode() },
-                        onEnterChannelEditMode: { store.enterFeedChannelEditMode() },
-                        onAddChannel: { store.addFeedChannel($0) },
-                        onRemoveChannel: { store.removeFeedChannel($0) },
-                        onPostTap: { onNavigate(.postDetail(id: $0)) }
-                    )
+                    DiscoverFeedScreen(store: store, onNavigate: onNavigate)
                 case .activity:
                     ActivityFeedView(
                         feedState: store.activityFeedState,
@@ -65,7 +52,7 @@ struct MainTabView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                Color.clear.frame(height: 56)
+                Color.clear.frame(height: showFeedChannelOverlay ? 0 : 56)
             }
 
             XhsBottomBar(
@@ -74,8 +61,11 @@ struct MainTabView: View {
                 onTabSelected: onTabSelected,
                 onPublishTap: onPublishTap
             )
+            .opacity(showFeedChannelOverlay ? 0 : 1)
+            .allowsHitTesting(!showFeedChannelOverlay)
         }
-        .background(XhsTheme.background)
+        .lfcImmersiveBackground()
+        .animation(XhsFeedLayout.channelPanelAnimation, value: showFeedChannelOverlay)
         .onChange(of: store.selectedTab) { _, tab in
             if tab == .messages {
                 Task { await store.loadMessages(refresh: true) }

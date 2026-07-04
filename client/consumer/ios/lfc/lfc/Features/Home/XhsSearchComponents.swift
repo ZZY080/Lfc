@@ -162,9 +162,10 @@ struct SearchResultWaterfallGrid: View {
     var onItemAppear: ((SearchFeedItem) -> Void)?
 
     var body: some View {
+        let columns = WaterfallColumnSplit.split(items, spacing: spacing, estimatedHeight: estimatedSearchFeedItemHeight)
         HStack(alignment: .top, spacing: spacing) {
-            columnView(items: leftColumn)
-            columnView(items: rightColumn)
+            columnView(items: columns.left)
+            columnView(items: columns.right)
         }
     }
 
@@ -190,18 +191,6 @@ struct SearchResultWaterfallGrid: View {
                 authorLabel: activity.author?.displayName ?? "同学\(activity.authorId)",
                 onTap: { onActivityTap(activity.id) }
             )
-        }
-    }
-
-    private var leftColumn: [SearchFeedItem] {
-        items.enumerated().compactMap { index, item in
-            index.isMultiple(of: 2) ? item : nil
-        }
-    }
-
-    private var rightColumn: [SearchFeedItem] {
-        items.enumerated().compactMap { index, item in
-            index.isMultiple(of: 2) ? nil : item
         }
     }
 }

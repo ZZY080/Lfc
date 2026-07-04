@@ -2,23 +2,17 @@ import SwiftUI
 
 struct DiscoverFeedView: View {
     let feedState: FeedUiState
-    let cityLabel: String
-    let recommendedChannels: [String]
     var userLat: Double?
     var userLng: Double?
     let onRefresh: () async -> Void
     let onLoadMore: () async -> Void
-    let onPrimaryTabSelected: (String) -> Void
     let onCategoryTabSelected: (String) -> Void
-    let onSearchTap: () -> Void
-    let onMessageTap: () -> Void
     let onToggleChannelPanel: () -> Void
-    let onCollapseChannelPanel: () -> Void
-    let onToggleChannelEditMode: () -> Void
     let onEnterChannelEditMode: () -> Void
-    let onAddChannel: (String) -> Void
-    let onRemoveChannel: (String) -> Void
     let onPostTap: (Int) -> Void
+
+    private static let channelAnimation = XhsFeedLayout.channelPanelAnimation
+    private static let categoryRowHeight = XhsFeedLayout.categoryRowHeight
 
     private var isFollowingTab: Bool {
         feedState.primaryTab == "关注"
@@ -30,57 +24,32 @@ struct DiscoverFeedView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            header
-            if showChannelPanel {
-                channelPanel
-            } else {
+            if !isFollowingTab {
+                categoryHeader
+            }
+
+            if !showChannelPanel {
                 feedContent
             }
         }
-        .background(XhsTheme.background)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private var header: some View {
-        VStack(spacing: 0) {
-            XhsFeedPrimaryTabRow(
-                selectedTab: feedState.primaryTab,
-                cityLabel: cityLabel,
-                onTabSelected: onPrimaryTabSelected,
-                onMessageTap: onMessageTap,
-                onSearchTap: onSearchTap
-            )
-            .padding(.top, 2)
-            .padding(.bottom, 2)
-
-            if !isFollowingTab {
-                XhsFeedCategoryTabRow(
-                    myChannels: feedState.effectiveMyChannels,
-                    selectedTab: feedState.selectedTab,
-                    isPanelExpanded: feedState.isChannelPanelExpanded,
-                    onTabSelected: onCategoryTabSelected,
-                    onExpandPanel: onToggleChannelPanel,
-                    onChannelLongPress: onEnterChannelEditMode
-                )
-            }
-        }
-        .background(Color.white)
-    }
-
-    private var channelPanel: some View {
-        ScrollView {
-            XhsFeedChannelPanel(
-                myChannels: feedState.effectiveMyChannels,
-                recommendedChannels: recommendedChannels,
-                isEditMode: feedState.isChannelEditMode,
-                onToggleEditMode: onToggleChannelEditMode,
-                onEnterEditMode: onEnterChannelEditMode,
-                onCollapse: onCollapseChannelPanel,
-                onChannelClick: onCategoryTabSelected,
-                onAddChannel: onAddChannel,
-                onRemoveChannel: onRemoveChannel
-            )
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    /// Category tabs collapse in place (XHS-style) before the panel fades in below.
+    private var categoryHeader: some View {
+        XhsFeedCategoryTabRow(
+            myChannels: feedState.effectiveMyChannels,
+            selectedTab: feedState.selectedTab,
+            isPanelExpanded: feedState.isChannelPanelExpanded,
+            onTabSelected: onCategoryTabSelected,
+            onExpandPanel: onToggleChannelPanel,
+            onChannelLongPress: onEnterChannelEditMode
+        )
+        .frame(height: showChannelPanel ? 0 : Self.categoryRowHeight)
+        .opacity(showChannelPanel ? 0 : 1)
+        .clipped()
+        .allowsHitTesting(!showChannelPanel)
+        .animation(Self.channelAnimation, value: showChannelPanel)
     }
 
     @ViewBuilder
@@ -134,5 +103,60 @@ struct DiscoverFeedView: View {
             }
             .refreshable { await onRefresh() }
         }
+    }
+}
+
+/// Discover tab shell: primary header stays fixed above channel overlay.
+struct DiscoverFeedScreen: View {
+    @Bindable var store: HomeStore
+    var onNavigate: (HomeRoute) -> Void
+
+    private var showFeedChannelOverlay: Bool {
+        store.feedState.isChannelPanelExpanded && store.feedState.primaryTab != "关注"
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            DiscoverFeedPrimaryHeader(
+                selectedTab: store.feedState.primaryTab,
+                cityLabel: store.feedCityLabel,
+                onTabSelected: { store.selectFeedPrimaryTab($0) },
+                onMessageTap: { store.selectedTab = .messages },
+                onSearchTap: { onNavigate(.search) }
+            )
+
+            ZStack(alignment: .top) {
+                DiscoverFeedView(
+                    feedState: store.feedState,
+                    userLat: store.userLatitude,
+                    userLng: store.userLongitude,
+                    onRefresh: { await store.loadFeed(refresh: true) },
+                    onLoadMore: { await store.loadMoreFeed() },
+                    onCategoryTabSelected: { store.selectFeedTab($0) },
+                    onToggleChannelPanel: { store.toggleFeedChannelPanel() },
+                    onEnterChannelEditMode: { store.enterFeedChannelEditMode() },
+                    onPostTap: { onNavigate(.postDetail(id: $0)) }
+                )
+
+                if showFeedChannelOverlay {
+                    FeedChannelPanelOverlay(
+                        feedState: store.feedState,
+                        recommendedChannels: store.recommendedFeedChannels,
+                        onToggleChannelEditMode: { store.toggleFeedChannelEditMode() },
+                        onEnterChannelEditMode: { store.enterFeedChannelEditMode() },
+                        onCollapse: { store.collapseFeedChannelPanel() },
+                        onChannelClick: { store.selectFeedTab($0) },
+                        onAddChannel: { store.addFeedChannel($0) },
+                        onRemoveChannel: { store.removeFeedChannel($0) }
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    .ignoresSafeArea(edges: .bottom)
+                    .transition(.opacity)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .animation(XhsFeedLayout.channelPanelAnimation, value: showFeedChannelOverlay)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

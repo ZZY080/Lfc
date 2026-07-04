@@ -454,16 +454,17 @@ struct XhsVisitorProfileView: View {
 
     private func activitiesGrid(profile: UserProfileDto) -> some View {
         let activities = store.profileState.visitorProfileActivities
+        let columns = WaterfallColumnSplit.split(activities, spacing: 8, estimatedHeight: estimatedActivityCardHeight(for:))
         return HStack(alignment: .top, spacing: 8) {
             LazyVStack(spacing: 8) {
-                ForEach(leftItems(activities)) { activity in
+                ForEach(columns.left) { activity in
                     activityCard(activity: activity, profile: profile)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .top)
 
             LazyVStack(spacing: 8) {
-                ForEach(rightItems(activities)) { activity in
+                ForEach(columns.right) { activity in
                     activityCard(activity: activity, profile: profile)
                 }
             }
@@ -489,19 +490,18 @@ struct XhsVisitorProfileView: View {
     }
 
     private func libraryGrid(items: [ProfileLibraryFeedItem], profile: UserProfileDto) -> some View {
-        let left = items.enumerated().compactMap { index, item in index.isMultiple(of: 2) ? item : nil }
-        let right = items.enumerated().compactMap { index, item in index.isMultiple(of: 2) ? nil : item }
+        let columns = WaterfallColumnSplit.split(items, spacing: 8, estimatedHeight: estimatedProfileLibraryItemHeight)
 
         return HStack(alignment: .top, spacing: 8) {
             LazyVStack(spacing: 8) {
-                ForEach(left) { item in
+                ForEach(columns.left) { item in
                     libraryItemView(item: item, profile: profile)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .top)
 
             LazyVStack(spacing: 8) {
-                ForEach(right) { item in
+                ForEach(columns.right) { item in
                     libraryItemView(item: item, profile: profile)
                 }
             }
@@ -754,14 +754,6 @@ struct XhsVisitorProfileView: View {
         case profileLikesTab: "还没有赞过内容"
         default: ""
         }
-    }
-
-    private func leftItems<T: Identifiable>(_ items: [T]) -> [T] where T.ID: Equatable {
-        items.enumerated().compactMap { index, item in index.isMultiple(of: 2) ? item : nil }
-    }
-
-    private func rightItems<T: Identifiable>(_ items: [T]) -> [T] where T.ID: Equatable {
-        items.enumerated().compactMap { index, item in index.isMultiple(of: 2) ? nil : item }
     }
 }
 

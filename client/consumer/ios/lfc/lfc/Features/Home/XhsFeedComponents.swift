@@ -14,6 +14,13 @@ struct FeedListEndFooter: View {
 
 // MARK: - Primary tabs (关注 / 发现 / 城市)
 
+enum XhsFeedLayout {
+    /// Primary tab row height including vertical padding in `DiscoverFeedView`.
+    static let primaryHeaderHeight: CGFloat = 44
+    static let categoryRowHeight: CGFloat = 40
+    static let channelPanelAnimation = Animation.easeInOut(duration: 0.24)
+}
+
 struct XhsFeedPrimaryTabRow: View {
     let selectedTab: String
     let cityLabel: String
@@ -77,6 +84,29 @@ struct XhsFeedPrimaryTabRow: View {
     }
 }
 
+/// Fixed header for the discover feed: 关注 / 发现 / 同城.
+struct DiscoverFeedPrimaryHeader: View {
+    let selectedTab: String
+    let cityLabel: String
+    let onTabSelected: (String) -> Void
+    let onMessageTap: () -> Void
+    let onSearchTap: () -> Void
+
+    var body: some View {
+        XhsFeedPrimaryTabRow(
+            selectedTab: selectedTab,
+            cityLabel: cityLabel,
+            onTabSelected: onTabSelected,
+            onMessageTap: onMessageTap,
+            onSearchTap: onSearchTap
+        )
+        .padding(.top, 2)
+        .padding(.bottom, 2)
+        .frame(height: XhsFeedLayout.primaryHeaderHeight)
+        .background(XhsTheme.background)
+    }
+}
+
 // MARK: - Category tabs
 
 struct XhsFeedCategoryTabRow: View {
@@ -113,8 +143,10 @@ struct XhsFeedCategoryTabRow: View {
                     .font(.system(size: 20, weight: .medium))
                     .foregroundStyle(XhsTheme.textPrimary)
                     .frame(width: 40, height: 40)
+                    .rotationEffect(.degrees(isPanelExpanded ? 180 : 0))
             }
             .buttonStyle(.plain)
+            .animation(.easeInOut(duration: 0.24), value: isPanelExpanded)
             .accessibilityLabel(isPanelExpanded ? "收起频道" : "展开频道")
         }
     }
@@ -128,9 +160,10 @@ struct WaterfallFeedGrid<Content: View>: View {
     let content: (PostDto) -> Content
 
     var body: some View {
+        let columns = WaterfallColumnSplit.split(posts, spacing: spacing, estimatedHeight: estimatedFeedCardHeight(for:))
         HStack(alignment: .top, spacing: spacing) {
-            columnView(posts: leftColumn)
-            columnView(posts: rightColumn)
+            columnView(posts: columns.left)
+            columnView(posts: columns.right)
         }
     }
 
@@ -142,18 +175,6 @@ struct WaterfallFeedGrid<Content: View>: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .top)
-    }
-
-    private var leftColumn: [PostDto] {
-        posts.enumerated().compactMap { index, post in
-            index.isMultiple(of: 2) ? post : nil
-        }
-    }
-
-    private var rightColumn: [PostDto] {
-        posts.enumerated().compactMap { index, post in
-            index.isMultiple(of: 2) ? nil : post
-        }
     }
 }
 

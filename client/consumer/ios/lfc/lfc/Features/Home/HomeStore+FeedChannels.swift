@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 extension HomeStore {
     var feedCityLabel: String {
@@ -48,21 +49,27 @@ extension HomeStore {
     }
 
     func toggleFeedChannelPanel() {
-        feedState.isChannelPanelExpanded.toggle()
-        if !feedState.isChannelPanelExpanded {
-            feedState.isChannelEditMode = false
+        withAnimation(.easeInOut(duration: 0.24)) {
+            feedState.isChannelPanelExpanded.toggle()
+            if !feedState.isChannelPanelExpanded {
+                feedState.isChannelEditMode = false
+            }
         }
     }
 
     func collapseFeedChannelPanel() {
         guard feedState.isChannelPanelExpanded || feedState.isChannelEditMode else { return }
-        feedState.isChannelPanelExpanded = false
-        feedState.isChannelEditMode = false
+        withAnimation(.easeInOut(duration: 0.24)) {
+            feedState.isChannelPanelExpanded = false
+            feedState.isChannelEditMode = false
+        }
     }
 
     func enterFeedChannelEditMode() {
-        feedState.isChannelPanelExpanded = true
-        feedState.isChannelEditMode = true
+        withAnimation(.easeInOut(duration: 0.24)) {
+            feedState.isChannelPanelExpanded = true
+            feedState.isChannelEditMode = true
+        }
     }
 
     func toggleFeedChannelEditMode() {

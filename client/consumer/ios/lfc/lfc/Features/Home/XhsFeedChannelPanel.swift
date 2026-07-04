@@ -60,7 +60,7 @@ struct XhsFeedChannelPanel: View {
             .padding(.bottom, 12)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white)
+        .background(XhsTheme.background)
     }
 
     private var panelHeader: some View {

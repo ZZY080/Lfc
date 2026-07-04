@@ -14,11 +14,10 @@ struct ActivityFeedView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
-                .background(Color.white)
 
             content
         }
-        .background(XhsTheme.background)
+        .lfcImmersiveBackground()
     }
 
     @ViewBuilder
