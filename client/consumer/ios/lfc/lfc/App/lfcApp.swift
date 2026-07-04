@@ -10,14 +10,12 @@ struct lfcApp: App {
             ZStack {
                 AppRootView()
                     .environmentObject(session)
+                    .allowsHitTesting(!showSplash)
 
                 if showSplash {
                     SplashView()
-                        .transition(.opacity)
-                        .zIndex(1)
                 }
             }
-            .animation(.easeOut(duration: 0.35), value: showSplash)
             .task {
                 try? await Task.sleep(for: .seconds(1.6))
                 showSplash = false
