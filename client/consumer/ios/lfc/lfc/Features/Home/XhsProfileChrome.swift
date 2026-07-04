@@ -40,6 +40,11 @@ enum XhsProfileLayout {
         max(0, coverHeight - sheetOverlap - tabBarHeight)
     }
 
+    /// Scroll offset when the section header top reaches the scroll top and pins.
+    static func sectionHeaderPinOffset(coverHeight: CGFloat = coverHeight) -> CGFloat {
+        max(0, coverHeight - sheetOverlap)
+    }
+
     static func visitorWithActionBarTabPinOffset(coverHeight: CGFloat = coverHeight) -> CGFloat {
         max(0, coverHeight + visitorActionBarTotalHeight - topNavTotalHeight)
     }
@@ -71,6 +76,7 @@ enum XhsProfileLayout {
 struct XhsProfileRefreshIndicator: View {
     let isRefreshing: Bool
     var pullDownOffset: CGFloat = 0
+    var coverHeight: CGFloat = XhsProfileLayout.coverHeight
 
     private var shouldShow: Bool {
         isRefreshing || pullDownOffset > 24
@@ -83,7 +89,7 @@ struct XhsProfileRefreshIndicator: View {
                 .tint(.white)
                 .scaleEffect(isRefreshing ? 1.15 : min(1.0, 0.6 + pullDownOffset / 120))
                 .frame(maxWidth: .infinity)
-                .padding(.top, XhsProfileLayout.topNavTotalHeight + XhsProfileLayout.coverHeight * 0.38)
+                .padding(.top, XhsProfileLayout.topNavTotalHeight + coverHeight * 0.38)
                 .opacity(isRefreshing ? 1 : min(1, pullDownOffset / 72))
                 .transition(.opacity)
                 .accessibilityLabel("正在刷新")
@@ -534,9 +540,7 @@ private struct ProfileScrollOffsetTracker: UIViewRepresentable {
 
     func updateUIView(_ uiView: UIView, context: Context) {
         context.coordinator.attach(to: uiView)
-        if let scrollToY {
-            context.coordinator.scrollTo(y: scrollToY)
-        }
+        context.coordinator.applyScrollToIfNeeded(scrollToY)
     }
 
     final class Coordinator: NSObject {
@@ -544,16 +548,28 @@ private struct ProfileScrollOffsetTracker: UIViewRepresentable {
         private var pullDownOffset: Binding<CGFloat>?
         private weak var scrollView: UIScrollView?
         private var contentOffsetObservation: NSKeyValueObservation?
+        private var lastScrollToY: CGFloat?
 
         init(offset: Binding<CGFloat>, pullDownOffset: Binding<CGFloat>?) {
             self.offset = offset
             self.pullDownOffset = pullDownOffset
         }
 
+        func applyScrollToIfNeeded(_ scrollToY: CGFloat?) {
+            guard let scrollToY else {
+                lastScrollToY = nil
+                return
+            }
+            guard scrollToY != lastScrollToY else { return }
+            lastScrollToY = scrollToY
+            scrollTo(y: scrollToY)
+        }
+
         private func publishScrollOffsets(from scrollView: UIScrollView) {
             let rawY = scrollView.contentOffset.y
-            offset.wrappedValue = max(0, rawY)
-            pullDownOffset?.wrappedValue = max(0, -rawY)
+            let topInset = scrollView.adjustedContentInset.top
+            offset.wrappedValue = max(0, rawY + topInset)
+            pullDownOffset?.wrappedValue = max(0, -(rawY + topInset))
         }
 
         func attach(to view: UIView) {
@@ -577,13 +593,15 @@ private struct ProfileScrollOffsetTracker: UIViewRepresentable {
             DispatchQueue.main.async { [weak self] in
                 guard let self, let scrollView = self.scrollView else { return }
                 scrollView.layoutIfNeeded()
+                let topInset = scrollView.adjustedContentInset.top
                 let maxOffset = max(
                     0,
                     scrollView.contentSize.height
                         - scrollView.bounds.height
                         + scrollView.adjustedContentInset.bottom
                 )
-                let target = min(max(0, y), maxOffset)
+                let rawTarget = y - topInset
+                let target = min(max(-topInset, rawTarget), maxOffset)
                 guard abs(scrollView.contentOffset.y - target) > 1 else { return }
                 scrollView.setContentOffset(CGPoint(x: 0, y: target), animated: false)
                 self.publishScrollOffsets(from: scrollView)

@@ -20,10 +20,7 @@ struct XhsVisitorProfileView: View {
     @State private var tabBarMinY: CGFloat = .greatestFiniteMagnitude
 
     private var collapseProgress: CGFloat {
-        let pinOffset = tabPinScrollOffset
-        let fadeStart: CGFloat = 24
-        guard pinOffset > fadeStart else { return scrollOffset > 0 ? 1 : 0 }
-        return min(1, max(0, (scrollOffset - fadeStart) / (pinOffset - fadeStart)))
+        XhsProfileLayout.collapseProgress(for: scrollOffset, coverHeight: activeCoverHeight)
     }
 
     private var activeCoverHeight: CGFloat {
@@ -37,31 +34,25 @@ struct XhsVisitorProfileView: View {
             : XhsProfileLayout.coverHeight
     }
 
-    private var tabPinScrollOffset: CGFloat {
-        XhsProfileLayout.tabPinScrollOffset(coverHeight: activeCoverHeight)
+    private var sectionHeaderPinOffset: CGFloat {
+        XhsProfileLayout.sectionHeaderPinOffset(coverHeight: activeCoverHeight)
     }
 
-    private var sectionHeaderStickOffset: CGFloat {
-        XhsProfileLayout.sectionHeaderStickOffset(coverHeight: activeCoverHeight)
-    }
-
-    private var sectionHeaderIsStuck: Bool {
-        if tabBarMinY.isFinite, tabBarMinY < 10_000 {
-            return tabBarMinY <= XhsProfileLayout.topNavTotalHeight + 8
-        }
-        return scrollOffset >= sectionHeaderStickOffset - 2
-    }
-
-    private var tabsArePinned: Bool {
-        sectionHeaderIsStuck
+    /// Fixed overlay tab bar once the in-scroll header would sit under the top nav.
+    private var showStickyTabBar: Bool {
+        let fromScroll = scrollOffset >= sectionHeaderPinOffset - 2
+        let fromGeometry = tabBarMinY.isFinite
+            && tabBarMinY < 10_000
+            && tabBarMinY <= XhsProfileLayout.topNavTotalHeight + 2
+        return fromScroll || fromGeometry
     }
 
     private var navCollapseProgress: CGFloat {
-        max(collapseProgress, tabsArePinned ? 1 : 0)
+        max(collapseProgress, showStickyTabBar ? 1 : 0)
     }
 
     private var showCollapsedNav: Bool {
-        tabsArePinned
+        showStickyTabBar
     }
 
     private var shouldSuppressContentTaps: Bool {
@@ -171,20 +162,19 @@ struct XhsVisitorProfileView: View {
             .onAppear {
                 scrollOffset = 0
                 pullDownOffset = 0
-                pendingScrollToY = 0
+                pendingScrollToY = nil
                 tabBarMinY = .greatestFiniteMagnitude
             }
             .onChange(of: profile.id) { _, _ in
                 scrollOffset = 0
                 pullDownOffset = 0
-                pendingScrollToY = 0
+                pendingScrollToY = nil
                 tabBarMinY = .greatestFiniteMagnitude
             }
             .onChange(of: selectedTab) { _, _ in
                 suppressContentTapsUntil = Date().addingTimeInterval(0.35)
-                let pinOffset = sectionHeaderStickOffset
-                guard scrollOffset >= pinOffset - 2 else { return }
-                pendingScrollToY = pinOffset
+                guard scrollOffset >= sectionHeaderPinOffset - 2 else { return }
+                pendingScrollToY = sectionHeaderPinOffset
                 Task { @MainActor in
                     try? await Task.sleep(nanoseconds: 120_000_000)
                     pendingScrollToY = nil
@@ -192,18 +182,8 @@ struct XhsVisitorProfileView: View {
             }
             .onChange(of: tabUiState.isInitialLoading) { wasLoading, isLoading in
                 guard wasLoading, !isLoading else { return }
-                if scrollOffset > sectionHeaderStickOffset + 40 {
-                    pendingScrollToY = 0
-                    Task { @MainActor in
-                        try? await Task.sleep(nanoseconds: 80_000_000)
-                        pendingScrollToY = nil
-                    }
-                    return
-                }
-                guard scrollOffset > 24 else { return }
-                let pinOffset = sectionHeaderStickOffset
-                guard scrollOffset >= pinOffset - 2 else { return }
-                pendingScrollToY = pinOffset
+                guard scrollOffset >= sectionHeaderPinOffset - 2 else { return }
+                pendingScrollToY = sectionHeaderPinOffset
                 Task { @MainActor in
                     try? await Task.sleep(nanoseconds: 80_000_000)
                     pendingScrollToY = nil
@@ -212,10 +192,19 @@ struct XhsVisitorProfileView: View {
 
             XhsProfileRefreshIndicator(
                 isRefreshing: tabUiState.isRefreshing,
-                pullDownOffset: scrollOffset <= 1 ? pullDownOffset : 0
+                pullDownOffset: scrollOffset <= 1 ? pullDownOffset : 0,
+                coverHeight: blockHeight
             )
             .allowsHitTesting(false)
             .zIndex(5)
+
+            if showStickyTabBar {
+                profileTabBar(profile: profile, roundedTop: false)
+                    .background(Color.white)
+                    .padding(.top, XhsProfileLayout.topNavTotalHeight)
+                    .frame(maxWidth: .infinity, alignment: .top)
+                    .zIndex(8)
+            }
 
             XhsProfileGradientTopNav(
                 profile: profile,
@@ -247,8 +236,8 @@ struct XhsVisitorProfileView: View {
         let scaleY = (imageBase + stretch) / imageBase
         let blockHeight = coverHeight + stretch
 
-        // Rectangle keeps a stable height in LazyVStack. Foreground uses overlay + fixedSize
-        // so profile info stays at the bottom and is never clipped (do not wrap both in .clipped()).
+        // Rectangle keeps LazyVStack height stable. Image stays in background (clipped);
+        // foreground uses bottom overlay + fixedSize so avatar/stats are never top-clipped.
         return Rectangle()
             .fill(.clear)
             .frame(height: blockHeight)
@@ -315,19 +304,14 @@ struct XhsVisitorProfileView: View {
     }
 
     private func pinnedTabBarHeader(profile: UserProfileDto) -> some View {
-        VStack(spacing: 0) {
-            if sectionHeaderIsStuck {
-                Color.white
-                    .frame(height: XhsProfileLayout.topNavTotalHeight)
-            }
-            profileTabBar(
-                profile: profile,
-                roundedTop: !sectionHeaderIsStuck
-            )
-        }
+        profileTabBar(
+            profile: profile,
+            roundedTop: !showStickyTabBar
+        )
         .background(Color.white)
+        .opacity(showStickyTabBar ? 0 : 1)
+        .allowsHitTesting(!showStickyTabBar)
         .reportProfileTabBarMinY()
-        .zIndex(1)
     }
 
     private func profileTabBar(profile: UserProfileDto, roundedTop: Bool) -> some View {
