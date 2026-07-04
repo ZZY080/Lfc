@@ -243,15 +243,8 @@ struct XhsProfileFeedCard: View {
     }
 
     private var textNoteCover: some View {
-        let colors: [Color] = [
-            Color(red: 1, green: 0.6, blue: 0.62),
-            Color(red: 0.98, green: 0.82, blue: 0.77),
-            Color(red: 0.85, green: 0.9, blue: 0.98),
-            Color(red: 0.92, green: 0.88, blue: 0.98),
-        ]
-        let bg = colors[gradientIndexForId(post.id, size: colors.count)]
-        return ZStack {
-            bg
+        ZStack {
+            SkeletonColors.base
             Text(post.content.isEmpty ? post.title : post.content)
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(XhsTheme.textPrimary.opacity(0.85))
@@ -263,11 +256,7 @@ struct XhsProfileFeedCard: View {
     }
 
     private var coverPlaceholder: some View {
-        LinearGradient(
-            colors: [Color(red: 1, green: 0.6, blue: 0.62), Color(red: 0.98, green: 0.82, blue: 0.77)],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
+        FeedImagePlaceholder()
     }
 
     private var footerRow: some View {

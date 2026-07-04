@@ -14,7 +14,7 @@ struct HomeRootView: View {
             ZStack {
                 MainTabView(
                     store: store,
-                    onNavigate: { route in path.append(route) },
+                    onNavigate: handleNavigate,
                     onTabSelected: handleTabSelected,
                     onPublishTap: {
                         showPublishHub = true
@@ -84,6 +84,7 @@ struct HomeRootView: View {
                 destination(for: route)
                     .lfcHideSystemNavigationBar()
             }
+            .toolbar(.hidden, for: .navigationBar)
         }
         .task { await store.bootstrap() }
         .lfcHomeToasts(message: store.toastMessage, error: store.toastError) {
@@ -101,10 +102,6 @@ struct HomeRootView: View {
     @ViewBuilder
     private func destination(for route: HomeRoute) -> some View {
         switch route {
-        case .main:
-            ContentUnavailableView("页面不存在", systemImage: "exclamationmark.triangle")
-                .onAppear { popToMain() }
-
         case .search:
             SearchPageView(
                 store: store,
@@ -149,7 +146,7 @@ struct HomeRootView: View {
                 },
                 onPostTap: { openPost($0) },
                 onActivityTap: { openActivity($0) },
-                onProductTap: { path.append(.productDetail(id: $0)) }
+                onProductTap: { openProduct($0) }
             )
             .task { await store.loadChat(conversationId) }
 
@@ -163,13 +160,14 @@ struct HomeRootView: View {
                     pop()
                 },
                 onAuthorTap: { openUserProfile($0) },
-                onProductTap: { path.append(.productDetail(id: $0)) },
+                onProductTap: { openProduct($0) },
                 onEdit: { path.append(.editPost) },
                 onDeleted: { pop() }
             )
 
         case .activityDetail(let id):
             ActivityDetailView(
+                activityId: id,
                 store: store,
                 currentUserId: session.userSession?.userId,
                 onBack: {
@@ -180,18 +178,17 @@ struct HomeRootView: View {
                 onEdit: { path.append(.editActivity) },
                 onDeleted: { pop() }
             )
-            .task { await store.loadActivityDetail(id) }
 
         case .productDetail(let id):
             ProductDetailView(
+                postId: id,
                 store: store,
                 currentUserId: session.userSession?.userId,
                 onBack: { pop() },
-                onViewNote: { path.append(.postDetail(id: id)) },
+                onViewNote: { openPost(id) },
                 onAuthorTap: { openUserProfile($0) },
                 onOpenChat: { path.append(.chat(conversationId: $0)) }
             )
-            .task { await store.loadProductDetail(id) }
 
         case .userProfile(let id):
             UserProfileView(
@@ -330,6 +327,19 @@ struct HomeRootView: View {
         path.removeAll()
     }
 
+    private func handleNavigate(_ route: HomeRoute) {
+        switch route {
+        case .postDetail(let id):
+            openPost(id)
+        case .activityDetail(let id):
+            openActivity(id)
+        case .productDetail(let id):
+            openProduct(id)
+        default:
+            path.append(route)
+        }
+    }
+
     private func openPost(_ id: Int) {
         if case .postDetail(let currentId) = path.last, currentId == id { return }
         store.preparePostDetail(id: id)
@@ -337,7 +347,15 @@ struct HomeRootView: View {
     }
 
     private func openActivity(_ id: Int) {
+        if case .activityDetail(let currentId) = path.last, currentId == id { return }
+        store.prepareActivityDetail(id: id)
         path.append(.activityDetail(id: id))
+    }
+
+    private func openProduct(_ id: Int) {
+        if case .productDetail(let currentId) = path.last, currentId == id { return }
+        store.prepareProductDetail(id: id)
+        path.append(.productDetail(id: id))
     }
 
     private func openUserProfile(_ id: Int) {

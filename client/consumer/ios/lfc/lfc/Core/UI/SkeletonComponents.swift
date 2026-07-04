@@ -101,3 +101,12 @@ struct SkeletonLoadMoreFooter: View {
             .padding(16)
     }
 }
+
+/// Gray shimmer placeholder shown while feed/detail images load.
+struct FeedImagePlaceholder: View {
+    var body: some View {
+        Rectangle()
+            .fill(SkeletonColors.base)
+            .skeletonShimmer()
+    }
+}

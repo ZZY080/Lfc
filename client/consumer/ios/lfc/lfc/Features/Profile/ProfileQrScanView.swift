@@ -36,7 +36,7 @@ struct ProfileQrScanView: View {
                     .tint(XhsTheme.red)
                     .disabled(isLookingUp || lfcNoInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     if isLookingUp {
-                        ProgressView().tint(.white)
+                        SkeletonLine(height: 10, fixedWidth: 80)
                     }
                     Text("也可扫描用户主页二维码（完整扫码能力后续接入）")
                         .font(.system(size: 12))

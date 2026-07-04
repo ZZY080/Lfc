@@ -574,3 +574,90 @@ struct AuthFormSkeleton: View {
         .padding(24)
     }
 }
+
+struct CommentReplySkeleton: View {
+    var body: some View {
+        HStack(spacing: 10) {
+            SkeletonCircle(size: 26)
+            VStack(alignment: .leading, spacing: 6) {
+                SkeletonLine(height: 10, widthFraction: 0.22)
+                SkeletonLine(height: 12, widthFraction: 0.62)
+            }
+        }
+        .padding(.leading, 46)
+        .padding(.top, 10)
+    }
+}
+
+struct SideMenuSkeleton: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 12) {
+                SkeletonCircle(size: 52)
+                VStack(alignment: .leading, spacing: 8) {
+                    SkeletonLine(height: 16, widthFraction: 0.55)
+                    SkeletonLine(height: 12, widthFraction: 0.4)
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 24)
+
+            Divider().overlay(XhsTheme.divider)
+
+            VStack(spacing: 4) {
+                ForEach(0 ..< 6, id: \.self) { _ in
+                    HStack(spacing: 12) {
+                        SkeletonBox(cornerRadius: 6)
+                            .frame(width: 22, height: 22)
+                        SkeletonLine(height: 14, widthFraction: 0.45)
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 14)
+                }
+            }
+            Spacer()
+        }
+    }
+}
+
+struct InlineActionSkeleton: View {
+    var body: some View {
+        SkeletonLine(height: 10, fixedWidth: 48)
+            .frame(height: 28)
+    }
+}
+
+struct DocumentSkeleton: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            SkeletonLine(height: 12, widthFraction: 0.35)
+            ForEach(0 ..< 4, id: \.self) { _ in
+                VStack(alignment: .leading, spacing: 8) {
+                    SkeletonLine(height: 16, widthFraction: 0.5)
+                    SkeletonLine(height: 13)
+                    SkeletonLine(height: 13)
+                    SkeletonLine(height: 13, widthFraction: 0.82)
+                }
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+}
+
+struct DetailPageErrorView: View {
+    let message: String
+    let onRetry: () -> Void
+
+    var body: some View {
+        ContentUnavailableView {
+            Label(message, systemImage: "wifi.exclamationmark")
+        } actions: {
+            Button("重试", action: onRetry)
+                .buttonStyle(.borderedProminent)
+                .tint(XhsTheme.red)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}

@@ -329,14 +329,7 @@ struct XhsProfileActivityCard: View {
     }
 
     private var coverPlaceholder: some View {
-        let colors: [Color] = [
-            Color(red: 1, green: 0.6, blue: 0.62),
-            Color(red: 0.98, green: 0.82, blue: 0.77),
-            Color(red: 0.85, green: 0.9, blue: 0.98),
-            Color(red: 0.92, green: 0.88, blue: 0.98),
-        ]
-        let bg = colors[gradientIndexForId(activity.id, size: colors.count)]
-        return bg.frame(maxWidth: .infinity, maxHeight: .infinity)
+        FeedImagePlaceholder()
     }
 
     private var footerAuthor: String {

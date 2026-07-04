@@ -54,9 +54,18 @@ struct NotificationListView: View {
             if store.notificationFeedState.isInitialLoading,
                store.notificationFeedState.notifications.isEmpty {
                 NotificationListSkeleton()
+            } else if store.notificationFeedState.notifications.isEmpty {
+                ContentUnavailableView("暂无通知", systemImage: "bell")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                List(store.notificationFeedState.notifications) { item in
-                    Button(item.title) { onNotificationTap(item.id) }
+                List {
+                    ForEach(store.notificationFeedState.notifications) { item in
+                        Button(item.title) { onNotificationTap(item.id) }
+                    }
+                    if store.notificationFeedState.isLoadingMore {
+                        SkeletonLoadMoreFooter()
+                            .listRowSeparator(.hidden)
+                    }
                 }
                 .refreshable { await store.loadNotificationFeed(refresh: true) }
             }

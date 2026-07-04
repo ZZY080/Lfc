@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct ActivityDetailView: View {
+    let activityId: Int
     @Bindable var store: HomeStore
     let currentUserId: Int?
     let onBack: () -> Void
@@ -8,24 +9,54 @@ struct ActivityDetailView: View {
     let onEdit: (() -> Void)?
     let onDeleted: () -> Void
 
-    private var activity: ActivityDto? { store.selectedActivity }
-    private var isLoading: Bool { store.isActivityLoading }
+    private var activity: ActivityDto? {
+        if store.selectedActivity?.id == activityId { return store.selectedActivity }
+        return store.cachedActivityForDetail(id: activityId)
+    }
+
+    private var isLoadingForThisActivity: Bool {
+        store.isActivityLoading && store.activityDetailTargetId == activityId
+    }
+
+    private var showSkeleton: Bool {
+        isLoadingForThisActivity && activity == nil
+    }
+
+    private var showError: Bool {
+        store.activityDetailLoadFailed && store.activityDetailTargetId == activityId && activity == nil
+    }
 
     var body: some View {
         VStack(spacing: 0) {
-            if isLoading, activity == nil {
+            if let activity {
+                content(activity: activity)
+            } else if showError {
+                errorContent
+            } else if showSkeleton {
                 ActivityDetailSkeleton()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let activity {
-                content(activity: activity)
             } else {
-                ContentUnavailableView("活动不存在", systemImage: "calendar")
+                ActivityDetailSkeleton()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .background(Color.white)
+        .lfcHideSystemNavigationBar()
         .safeAreaInset(edge: .bottom) {
             if let activity, currentUserId != activity.authorId {
                 joinBar(activity: activity)
+            }
+        }
+        .task(id: activityId) {
+            await store.loadActivityDetail(activityId)
+        }
+    }
+
+    private var errorContent: some View {
+        VStack(spacing: 0) {
+            DetailFallbackHeader(onBack: onBack)
+            DetailPageErrorView(message: "活动加载失败") {
+                Task { await store.loadActivityDetail(activityId) }
             }
         }
     }

@@ -23,7 +23,7 @@ struct ActivityFeedView: View {
 
     @ViewBuilder
     private var content: some View {
-        if feedState.isInitialLoading, feedState.activities.isEmpty {
+        if feedState.isInitialLoading || (feedState.isRefreshing && feedState.activities.isEmpty) {
             ActivityFeedSkeleton()
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         } else if feedState.activities.isEmpty, let error = feedState.loadError {
@@ -131,10 +131,6 @@ private struct ActivityRow: View {
     }
 
     private var coverPlaceholder: some View {
-        LinearGradient(
-            colors: [Color(red: 0.64, green: 0.55, blue: 0.82), Color(red: 0.98, green: 0.76, blue: 0.92)],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
+        FeedImagePlaceholder()
     }
 }

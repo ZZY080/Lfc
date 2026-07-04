@@ -18,6 +18,7 @@ struct PublishActivityView: View {
     @State private var maxParticipants = "20"
     @State private var fee = ""
     @State private var pickerItems: [PhotosPickerItem] = []
+    @State private var isFormReady = false
 
     private var hasLocation: Bool { hasValidCoordinate(latitude: latitude, longitude: longitude) }
     private var feeAmount: Double { Double(fee) ?? 0 }
@@ -37,73 +38,84 @@ struct PublishActivityView: View {
                 isSubmitting: store.isPublishSubmitting
             )
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    if needsAlipay {
-                        Text("绑定支付宝后才能发布付费活动")
-                            .font(.system(size: 13))
-                            .foregroundStyle(XhsTheme.red)
-                        Button("去绑定", action: onBindAlipay)
-                            .foregroundStyle(XhsTheme.red)
-                    }
-
-                    PublishImagePickerGrid(
-                        pickerItems: $pickerItems,
-                        existingImageUrls: .constant([]),
-                        maxCount: 9
-                    )
-
-                    TextField("活动标题", text: $title)
-                        .font(.system(size: 18, weight: .bold))
-
-                    TextField("活动介绍、注意事项…", text: $description, axis: .vertical)
-                        .lineLimit(4...10)
-
-                    PublishFieldCard {
-                        Text("时间与人数")
-                            .font(.system(size: 15, weight: .semibold))
-                        DatePicker("开始时间", selection: $startTime)
-                        DatePicker("结束时间", selection: $endTime)
-                        HStack {
-                            Text("人数上限")
-                            Spacer()
-                            TextField("0 表示不限", text: $maxParticipants)
-                                .keyboardType(.numberPad)
-                                .multilineTextAlignment(.trailing)
-                                .frame(maxWidth: 120)
+            if isFormReady {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        if needsAlipay {
+                            Text("绑定支付宝后才能发布付费活动")
+                                .font(.system(size: 13))
+                                .foregroundStyle(XhsTheme.red)
+                            Button("去绑定", action: onBindAlipay)
+                                .foregroundStyle(XhsTheme.red)
                         }
-                        HStack {
-                            Text("报名费用（元）")
-                            Spacer()
-                            TextField("0 为免费", text: $fee)
-                                .keyboardType(.decimalPad)
-                                .multilineTextAlignment(.trailing)
-                                .frame(maxWidth: 120)
-                        }
-                    }
 
-                    PublishFieldCard {
-                        Text("活动地点")
-                            .font(.system(size: 15, weight: .semibold))
-                        Button(action: onOpenLocationSearch) {
+                        PublishImagePickerGrid(
+                            pickerItems: $pickerItems,
+                            existingImageUrls: .constant([]),
+                            maxCount: 9
+                        )
+
+                        TextField("活动标题", text: $title)
+                            .font(.system(size: 18, weight: .bold))
+
+                        TextField("活动介绍、注意事项…", text: $description, axis: .vertical)
+                            .lineLimit(4...10)
+
+                        PublishFieldCard {
+                            Text("时间与人数")
+                                .font(.system(size: 15, weight: .semibold))
+                            DatePicker("开始时间", selection: $startTime)
+                            DatePicker("结束时间", selection: $endTime)
                             HStack {
-                                Image(systemName: "mappin.and.ellipse")
-                                    .foregroundStyle(XhsTheme.red)
-                                Text(locationLabel.isEmpty ? "选择位置" : locationLabel)
-                                    .foregroundStyle(locationLabel.isEmpty ? XhsTheme.textSecondary : XhsTheme.textPrimary)
-                                    .lineLimit(2)
+                                Text("人数上限")
                                 Spacer()
-                                Image(systemName: "chevron.right")
-                                    .foregroundStyle(XhsTheme.textSecondary)
+                                TextField("0 表示不限", text: $maxParticipants)
+                                    .keyboardType(.numberPad)
+                                    .multilineTextAlignment(.trailing)
+                                    .frame(maxWidth: 120)
+                            }
+                            HStack {
+                                Text("报名费用（元）")
+                                Spacer()
+                                TextField("0 为免费", text: $fee)
+                                    .keyboardType(.decimalPad)
+                                    .multilineTextAlignment(.trailing)
+                                    .frame(maxWidth: 120)
+                            }
+                        }
+
+                        PublishFieldCard {
+                            Text("活动地点")
+                                .font(.system(size: 15, weight: .semibold))
+                            Button(action: onOpenLocationSearch) {
+                                HStack {
+                                    Image(systemName: "mappin.and.ellipse")
+                                        .foregroundStyle(XhsTheme.red)
+                                    Text(locationLabel.isEmpty ? "选择位置" : locationLabel)
+                                        .foregroundStyle(locationLabel.isEmpty ? XhsTheme.textSecondary : XhsTheme.textPrimary)
+                                        .lineLimit(2)
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                        .foregroundStyle(XhsTheme.textSecondary)
+                                }
                             }
                         }
                     }
+                    .padding(16)
                 }
-                .padding(16)
+                .background(XhsTheme.background)
+            } else {
+                EditFormSkeleton()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
-            .background(XhsTheme.background)
         }
         .background(Color.white)
+        .task {
+            if store.paymentConfig == nil {
+                await store.loadPaymentConfig()
+            }
+            isFormReady = true
+        }
         .onChange(of: store.pendingLocationPick) { _, pick in
             guard let pick else { return }
             locationLabel = pick.label

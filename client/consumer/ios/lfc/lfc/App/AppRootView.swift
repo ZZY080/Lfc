@@ -24,26 +24,12 @@ struct AppRootView: View {
     }
 
     var body: some View {
-        NavigationStack(path: $path) {
-            rootView(for: rootRoute)
-                .navigationDestination(for: AppRoute.self) { route in
-                    switch route {
-                    case .register:
-                        RegisterView(
-                            session: session,
-                            onRegisterSuccess: handleAuthSuccess,
-                            onNavigateToLogin: { path.removeLast() },
-                            onOpenLegalDocument: openLegalDocument
-                        )
-                        .lfcHideSystemNavigationBar()
-                    case .legalDocument(let documentId):
-                        LegalDocumentView(documentId: documentId, onBack: { path.removeLast() })
-                            .lfcHideSystemNavigationBar()
-                    default:
-                        ContentUnavailableView("页面不存在", systemImage: "exclamationmark.triangle")
-                            .lfcHideSystemNavigationBar()
-                    }
-                }
+        Group {
+            if session.isLoggedIn && !needsLegalConsent {
+                HomeRootView(onLogout: handleLogout)
+            } else {
+                authNavigationStack
+            }
         }
         .onAppear {
             resolveRootRoute()
@@ -61,6 +47,32 @@ struct AppRootView: View {
         }
         .onReceive(TokenStore.shared.sessionExpiredPublisher) { _ in
             navigateToLogin(clearStack: true)
+        }
+    }
+
+    private var authNavigationStack: some View {
+        NavigationStack(path: $path) {
+            rootView(for: rootRoute)
+                .navigationDestination(for: AppRoute.self) { route in
+                    switch route {
+                    case .register:
+                        RegisterView(
+                            session: session,
+                            onRegisterSuccess: handleAuthSuccess,
+                            onNavigateToLogin: { path.removeLast() },
+                            onOpenLegalDocument: openLegalDocument
+                        )
+                        .lfcHideSystemNavigationBar()
+                    case .legalDocument(let documentId):
+                        LegalDocumentView(documentId: documentId, onBack: { path.removeLast() })
+                            .lfcHideSystemNavigationBar()
+                    case .login, .home, .legalConsent:
+                        Color.clear
+                            .onAppear {
+                                if !path.isEmpty { path.removeLast() }
+                            }
+                    }
+                }
         }
     }
 
@@ -109,10 +121,8 @@ struct AppRootView: View {
         }
 
         if session.isLoggedIn {
-            if rootRoute != .home || !path.isEmpty {
-                path = NavigationPath()
-                rootRoute = .home
-            }
+            path = NavigationPath()
+            return
         } else if rootRoute == .home {
             navigateToLogin(clearStack: true)
         } else if rootRoute == .legalConsent {

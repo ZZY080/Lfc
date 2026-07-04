@@ -81,21 +81,10 @@ struct PostDetailView: View {
 
     private var errorContent: some View {
         VStack(spacing: 0) {
-            PostDetailFallbackHeader(onBack: onBack)
-            VStack(spacing: 16) {
-                Image(systemName: "wifi.exclamationmark")
-                    .font(.system(size: 40))
-                    .foregroundStyle(XhsTheme.textSecondary)
-                Text("笔记加载失败")
-                    .font(.system(size: 16))
-                    .foregroundStyle(XhsTheme.textSecondary)
-                Button("重试") {
-                    Task { await store.loadPostDetail(postId) }
-                }
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(XhsTheme.red)
+            DetailFallbackHeader(onBack: onBack)
+            DetailPageErrorView(message: "笔记加载失败") {
+                Task { await store.loadPostDetail(postId) }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
@@ -289,25 +278,5 @@ struct PostDetailView: View {
                 image: image
             )
         }
-    }
-}
-
-private struct PostDetailFallbackHeader: View {
-    let onBack: () -> Void
-
-    var body: some View {
-        HStack {
-            Button(action: onBack) {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(XhsTheme.textPrimary)
-                    .frame(width: 40, height: 40)
-            }
-            .buttonStyle(.plain)
-            Spacer()
-        }
-        .padding(.horizontal, 4)
-        .padding(.vertical, 6)
-        .background(Color.white)
     }
 }

@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct ProductDetailView: View {
+    let postId: Int
     @Bindable var store: HomeStore
     let currentUserId: Int?
     let onBack: () -> Void
@@ -8,24 +9,54 @@ struct ProductDetailView: View {
     let onAuthorTap: (Int) -> Void
     let onOpenChat: (Int) -> Void
 
-    private var post: PostDto? { store.selectedPost }
-    private var isLoading: Bool { store.isPostLoading }
+    private var post: PostDto? {
+        if store.selectedPost?.id == postId { return store.selectedPost }
+        return store.cachedPostForDetail(id: postId)
+    }
+
+    private var isLoadingForThisPost: Bool {
+        store.isPostLoading && store.postDetailTargetId == postId
+    }
+
+    private var showSkeleton: Bool {
+        isLoadingForThisPost && (post == nil || post?.product == nil)
+    }
+
+    private var showError: Bool {
+        store.postDetailLoadFailed && store.postDetailTargetId == postId && post?.product == nil
+    }
 
     var body: some View {
         VStack(spacing: 0) {
-            if isLoading, post == nil {
+            if let post, let product = post.product {
+                content(post: post, product: product)
+            } else if showError {
+                errorContent
+            } else if showSkeleton {
                 ProductDetailSkeleton()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let post, let product = post.product {
-                content(post: post, product: product)
             } else {
-                ContentUnavailableView("商品不存在", systemImage: "bag")
+                ProductDetailSkeleton()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .background(XhsTheme.background)
+        .lfcHideSystemNavigationBar()
         .safeAreaInset(edge: .bottom) {
             if let post, let product = post.product, currentUserId != post.authorId, product.isOnSale {
                 purchaseBar(post: post, product: product)
+            }
+        }
+        .task(id: postId) {
+            await store.loadProductDetail(postId)
+        }
+    }
+
+    private var errorContent: some View {
+        VStack(spacing: 0) {
+            DetailFallbackHeader(onBack: onBack)
+            DetailPageErrorView(message: "商品加载失败") {
+                Task { await store.loadProductDetail(postId) }
             }
         }
     }

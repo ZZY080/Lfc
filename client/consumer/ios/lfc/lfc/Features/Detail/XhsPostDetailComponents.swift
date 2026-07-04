@@ -483,10 +483,7 @@ struct XhsPostCommentThreadView: View {
             }
 
             if isLoadingReplies {
-                ProgressView()
-                    .scaleEffect(0.8)
-                    .padding(.leading, XhsCommentLayout.replyIndent)
-                    .padding(.top, 10)
+                CommentReplySkeleton()
             } else if hasMoreReplies, hiddenReplyCount > 0 {
                 Button("展开 \(hiddenReplyCount) 条回复", action: onLoadMoreReplies)
                     .font(.system(size: 13, weight: .medium))

@@ -227,48 +227,126 @@ extension HomeStore {
     }
 
     func loadActivityDetail(_ id: Int) async {
+        activityDetailRequestID += 1
+        let requestID = activityDetailRequestID
+        activityDetailTargetId = id
+        activityDetailLoadFailed = false
+
+        if selectedActivity?.id != id {
+            selectedActivity = cachedActivityForDetail(id: id)
+        }
         isActivityLoading = true
-        selectedActivity = nil
         detailAuthorFollowing = nil
 
         do {
             let activity = try await api.getActivity(id: id)
+            guard requestID == activityDetailRequestID else { return }
             selectedActivity = activity
             detailAuthorFollowing = await loadAuthorFollowState(authorId: activity.authorId)
+            isActivityLoading = false
             AnalyticsTracker.shared.track(
                 AnalyticsEvents.activityView,
                 properties: ["activityId": id]
             )
+        } catch is CancellationError {
+            guard requestID == activityDetailRequestID else { return }
+            isActivityLoading = false
+            return
         } catch {
-            toastError = parseError(error, fallback: "加载活动失败")
+            guard requestID == activityDetailRequestID else { return }
+            isActivityLoading = false
+            if selectedActivity?.id == id {
+                toastError = parseError(error, fallback: "刷新活动失败")
+            } else {
+                activityDetailLoadFailed = true
+                toastError = parseError(error, fallback: "加载活动失败")
+            }
         }
-        isActivityLoading = false
+    }
+
+    /// Call synchronously before navigation so the detail page never flashes empty.
+    func prepareActivityDetail(id: Int) {
+        activityDetailTargetId = id
+        activityDetailLoadFailed = false
+        if selectedActivity?.id != id {
+            selectedActivity = cachedActivityForDetail(id: id)
+        }
+    }
+
+    func cachedActivityForDetail(id: Int) -> ActivityDto? {
+        cachedActivity(id: id)
     }
 
     func clearSelectedActivity() {
+        activityDetailRequestID += 1
         selectedActivity = nil
+        activityDetailTargetId = nil
+        activityDetailLoadFailed = false
+        isActivityLoading = false
         detailAuthorFollowing = nil
     }
 
+    private func cachedActivity(id: Int) -> ActivityDto? {
+        if let activity = activityFeedState.activities.first(where: { $0.id == id }) { return activity }
+        if let activity = searchState.activities.first(where: { $0.id == id }) { return activity }
+        if let activity = profileState.profileActivities.first(where: { $0.id == id }) { return activity }
+        if let activity = profileState.visitorProfileActivities.first(where: { $0.id == id }) { return activity }
+        if let activity = profileState.profileFavoriteActivities.first(where: { $0.id == id }) { return activity }
+        if let activity = profileState.profileLikedActivities.first(where: { $0.id == id }) { return activity }
+        if let activity = profileState.visitorProfileFavoriteActivities.first(where: { $0.id == id }) { return activity }
+        if let activity = profileState.visitorProfileLikedActivities.first(where: { $0.id == id }) { return activity }
+        if let activity = profileState.myProfile?.activities.first(where: { $0.id == id }) { return activity }
+        if let activity = profileState.selectedUserProfile?.activities.first(where: { $0.id == id }) { return activity }
+        return nil
+    }
+
     func loadProductDetail(_ id: Int) async {
+        postDetailRequestID += 1
+        let requestID = postDetailRequestID
+        postDetailTargetId = id
+        postDetailLoadFailed = false
         isPostLoading = true
-        selectedPost = nil
         productPurchaseOrder = nil
+
+        if selectedPost?.id != id {
+            selectedPost = cachedPostForDetail(id: id)
+        }
 
         do {
             let post = try await api.getPost(id: id)
+            guard requestID == postDetailRequestID else { return }
             selectedPost = post
             if post.product != nil {
                 productPurchaseOrder = try await api.getPostProductOrder(postId: id)
             }
+            isPostLoading = false
             AnalyticsTracker.shared.track(
                 AnalyticsEvents.productView,
                 properties: ["postId": id]
             )
+        } catch is CancellationError {
+            guard requestID == postDetailRequestID else { return }
+            isPostLoading = false
+            return
         } catch {
-            toastError = parseError(error, fallback: "加载商品失败")
+            guard requestID == postDetailRequestID else { return }
+            isPostLoading = false
+            if selectedPost?.id == id {
+                toastError = parseError(error, fallback: "刷新商品失败")
+            } else {
+                postDetailLoadFailed = true
+                toastError = parseError(error, fallback: "加载商品失败")
+            }
         }
-        isPostLoading = false
+    }
+
+    /// Call synchronously before navigation so the product page never flashes empty.
+    func prepareProductDetail(id: Int) {
+        postDetailTargetId = id
+        postDetailLoadFailed = false
+        if selectedPost?.id != id {
+            selectedPost = cachedPostForDetail(id: id)
+        }
     }
 
     func loadChat(_ conversationId: Int) async {

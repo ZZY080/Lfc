@@ -24,11 +24,15 @@ struct ProfileSideMenuView: View {
                 .onTapGesture(perform: onDismiss)
 
             VStack(alignment: .leading, spacing: 0) {
-                header
-                Divider().overlay(XhsTheme.divider)
-                menuSection
-                Spacer()
-                logoutButton
+                if profile == nil {
+                    SideMenuSkeleton()
+                } else {
+                    header
+                    Divider().overlay(XhsTheme.divider)
+                    menuSection
+                    Spacer()
+                    logoutButton
+                }
             }
             .frame(width: menuWidth)
             .frame(maxHeight: .infinity)

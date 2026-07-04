@@ -1,7 +1,6 @@
 import Foundation
 
 enum HomeRoute: Hashable {
-    case main
     case search
     case searchResult
     case notifications

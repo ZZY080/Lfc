@@ -162,7 +162,7 @@ struct OrderCenterView: View {
                 }
             }
             if store.orderCenterState.actingOutTradeNo == order.outTradeNo {
-                ProgressView().scaleEffect(0.8)
+                InlineActionSkeleton()
             }
         }
         .padding(.vertical, 8)

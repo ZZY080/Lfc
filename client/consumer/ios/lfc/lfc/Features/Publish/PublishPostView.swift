@@ -18,6 +18,7 @@ struct PublishPostView: View {
     @State private var price = ""
     @State private var productCategory = defaultPostProductCategory
     @State private var pickerItems: [PhotosPickerItem] = []
+    @State private var isFormReady = false
 
     private var categories: [String] {
         store.publishCategories.isEmpty ? fallbackPublishCategories : store.publishCategories
@@ -41,43 +42,57 @@ struct PublishPostView: View {
                 isSubmitting: store.isPublishSubmitting
             )
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    if needsAlipay {
-                        alipayBanner
+            if isFormReady {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        if needsAlipay {
+                            alipayBanner
+                        }
+
+                        PublishImagePickerGrid(
+                            pickerItems: $pickerItems,
+                            existingImageUrls: .constant([]),
+                            maxCount: 9
+                        )
+
+                        TextField("添加标题（可选）", text: $title)
+                            .font(.system(size: 18, weight: .bold))
+
+                        TextField("分享你的校园生活、学习心得，或描述你要出售的商品…", text: $content, axis: .vertical)
+                            .lineLimit(5...12)
+                            .font(.system(size: 15))
+
+                        PublishFieldCard {
+                            Text("笔记类型")
+                                .font(.system(size: 15, weight: .semibold))
+                            Text("选择后笔记会出现在发现页对应频道")
+                                .font(.system(size: 12))
+                                .foregroundStyle(XhsTheme.textSecondary)
+                            CategoryChipRow(options: categories, selection: $category)
+                        }
+
+                        locationSection
+
+                        productSection
                     }
-
-                    PublishImagePickerGrid(
-                        pickerItems: $pickerItems,
-                        existingImageUrls: .constant([]),
-                        maxCount: 9
-                    )
-
-                    TextField("添加标题（可选）", text: $title)
-                        .font(.system(size: 18, weight: .bold))
-
-                    TextField("分享你的校园生活、学习心得，或描述你要出售的商品…", text: $content, axis: .vertical)
-                        .lineLimit(5...12)
-                        .font(.system(size: 15))
-
-                    PublishFieldCard {
-                        Text("笔记类型")
-                            .font(.system(size: 15, weight: .semibold))
-                        Text("选择后笔记会出现在发现页对应频道")
-                            .font(.system(size: 12))
-                            .foregroundStyle(XhsTheme.textSecondary)
-                        CategoryChipRow(options: categories, selection: $category)
-                    }
-
-                    locationSection
-
-                    productSection
+                    .padding(16)
                 }
-                .padding(16)
+                .background(XhsTheme.background)
+            } else {
+                EditFormSkeleton()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
-            .background(XhsTheme.background)
         }
         .background(Color.white)
+        .task {
+            if store.publishCategories.isEmpty {
+                await store.loadPublishCategories()
+            }
+            if store.paymentConfig == nil {
+                await store.loadPaymentConfig()
+            }
+            isFormReady = true
+        }
         .onChange(of: store.pendingLocationPick) { _, pick in
             guard let pick else { return }
             locationLabel = pick.label

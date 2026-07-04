@@ -32,6 +32,9 @@ final class HomeStore {
     var visitorProfileLoadFailed = false
     var selectedActivity: ActivityDto?
     var isActivityLoading = false
+    var activityDetailTargetId: Int?
+    var activityDetailLoadFailed = false
+    var activityDetailRequestID = 0
     var selectedNotification: NotificationDto?
     var isNotificationLoading = false
     var selectedConversation: ConversationDto?
