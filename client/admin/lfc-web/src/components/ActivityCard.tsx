@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { formatDateTime, formatFee } from '../utils/format'
 import { ImagePreviewGallery } from './ImagePreviewGallery'
 import { StatusBadge } from './StatusBadge'
@@ -42,7 +43,11 @@ export function ActivityCard({
     <article className="manage-card">
       <div className="manage-card-header">
         <div>
-          <h3 className="manage-card-title">{activity.title}</h3>
+          <h3 className="manage-card-title">
+            <Link to={`/activities/${activity.id}`} className="manage-card-title-link">
+              {activity.title}
+            </Link>
+          </h3>
           <p className="manage-meta">
             发起人：{authorName}
             {activity.author?.studentId && `（${activity.author.studentId}）`}

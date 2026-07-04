@@ -9,6 +9,8 @@ import com.lfc.consumer.data.ApiClient
 import com.lfc.consumer.data.MediaUploadHelper
 import com.lfc.consumer.data.local.TokenManager
 import com.lfc.consumer.data.model.LoginRequest
+import com.lfc.consumer.analytics.AnalyticsEvents
+import com.lfc.consumer.analytics.AnalyticsTracker
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -45,6 +47,7 @@ class AuthViewModel(
                     email = response.user.email,
                     studentId = response.user.studentId,
                 )
+                AnalyticsTracker.track(AnalyticsEvents.USER_LOGIN)
                 _uiState.value = AuthUiState(isSuccess = true)
             } catch (e: Exception) {
                 _uiState.value = AuthUiState(error = parseErrorMessage(e, "登录失败"))
@@ -97,6 +100,7 @@ class AuthViewModel(
                     email = response.user.email,
                     studentId = response.user.studentId,
                 )
+                AnalyticsTracker.track(AnalyticsEvents.USER_REGISTER)
                 _uiState.value = AuthUiState(isSuccess = true)
             } catch (e: Exception) {
                 _uiState.value = AuthUiState(error = parseErrorMessage(e, "注册失败"))

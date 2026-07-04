@@ -100,3 +100,108 @@
   font-size: 12px;
   color: var(--text-muted);
 }
+
+.quick-link-analytics {
+  background: linear-gradient(135deg, rgba(91, 141, 239, 0.12), rgba(124, 92, 255, 0.12));
+  border-color: rgba(91, 141, 239, 0.35);
+}
+
+.dashboard-analytics {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 20px;
+}
+
+.dashboard-analytics-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.dashboard-analytics-head h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.dashboard-analytics-head p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.dashboard-analytics-link {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--primary);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.dashboard-analytics-link:hover {
+  text-decoration: underline;
+}
+
+.dashboard-analytics-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.dashboard-mini-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+
+.dashboard-mini-kpi span {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.dashboard-mini-kpi strong {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.dashboard-chart-box {
+  min-height: 220px;
+}
+
+.dashboard-chart-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 220px;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.dashboard-chart-tooltip {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  font-size: 13px;
+}
+
+.dashboard-chart-tooltip-title {
+  margin-bottom: 6px;
+  color: var(--text-muted);
+}
+
+.dashboard-chart-tooltip-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}

@@ -1,8 +1,10 @@
+import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   IsArray,
   IsDateString,
   IsEnum,
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsNumber,
@@ -28,6 +30,20 @@ export class ActivityFeedQuerySchema extends PaginationQuerySchema {
   @IsString()
   @MaxLength(64)
   keyword?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  latitude?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  longitude?: number;
+
+  @IsOptional()
+  @IsIn(['distance', 'latest'])
+  sort?: 'distance' | 'latest';
 }
 
 export class CreateActivityBodySchema implements CreateActivityBodyDto {

@@ -8,7 +8,7 @@ import {
   forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, SelectQueryBuilder } from 'typeorm';
 import { ActivityEntity } from '@module/activity/entity/activity.entity';
 import { ActivityParticipantEntity } from '@module/activity/entity/activity-participant.entity';
 import { RoleAuthzService } from '@shared/auth/role-authz.service';
@@ -87,6 +87,9 @@ export class ConsumerActivityService {
     limit?: number,
     userId?: number,
     keyword?: string,
+    latitude?: number,
+    longitude?: number,
+    sort?: 'distance' | 'latest',
   ) {
     const trimmedKeyword = keyword?.trim();
     if (trimmedKeyword) {
@@ -95,6 +98,9 @@ export class ConsumerActivityService {
         page,
         limit,
         userId,
+        latitude,
+        longitude,
+        sort,
       );
     }
 
@@ -140,8 +146,9 @@ export class ConsumerActivityService {
       regularQb.andWhere('activity.id NOT IN (:...promotedIds)', { promotedIds });
     }
 
+    this.applyActivityFeedOrdering(regularQb);
+
     const [regularActivities, totalRegular] = await regularQb
-      .orderBy('activity.createdAt', 'DESC')
       .skip(Math.max(regularSkip, 0))
       .take(regularTake)
       .getManyAndCount();
@@ -175,6 +182,9 @@ export class ConsumerActivityService {
     page?: number,
     limit?: number,
     userId?: number,
+    latitude?: number,
+    longitude?: number,
+    sort?: 'distance' | 'latest',
   ) {
     const { page: normalizedPage, limit: normalizedLimit, skip } =
       normalizePagination(page, limit);
@@ -189,12 +199,14 @@ export class ConsumerActivityService {
       .andWhere(
         '(activity.title LIKE :keyword OR activity.description LIKE :keyword OR activity.location LIKE :keyword)',
         { keyword: searchKeyword },
-      )
-      .orderBy('activity.createdAt', 'DESC')
-      .skip(skip)
-      .take(normalizedLimit);
+      );
 
-    const [activities, total] = await qb.getManyAndCount();
+    this.applyActivityFeedOrdering(qb);
+
+    const [activities, total] = await qb
+      .skip(skip)
+      .take(normalizedLimit)
+      .getManyAndCount();
     const items = await this.consumerActivitySocialService.enrichActivities(
       activities.map((activity) => ({
         ...activity,
@@ -348,6 +360,7 @@ export class ConsumerActivityService {
       fee: body.fee !== undefined ? this.normalizeFee(body.fee) : activity.fee,
       status: ActivityStatus.PENDING,
       reviewComment: null,
+      promotedUntil: null,
     });
     const saved = await this.activityRepository.save(activity);
     await this.notificationService.sendActivitySubmitted(userId, saved);
@@ -521,5 +534,9 @@ export class ConsumerActivityService {
     if (end <= start) {
       throw new BadRequestException('结束时间必须晚于开始时间');
     }
+  }
+
+  private applyActivityFeedOrdering(qb: SelectQueryBuilder<ActivityEntity>) {
+    qb.orderBy('activity.createdAt', 'DESC');
   }
 }

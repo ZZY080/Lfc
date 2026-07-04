@@ -2,8 +2,9 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { fetchPaymentOrders } from '../api/payment'
 import { ApiError } from '../api/client'
 import { Pagination } from '../components/Pagination'
+import { PaymentOrderDetailModal } from '../components/PaymentOrderDetailModal'
 import { useAuth } from '../hooks/useAuth'
-import type { PaymentBizType, PaymentOrderStatus } from '../types'
+import type { PaymentBizType, PaymentOrder, PaymentOrderStatus } from '../types'
 import { formatDateTime, formatFee } from '../utils/format'
 import {
   formatPaymentBizType,
@@ -45,6 +46,7 @@ export function PaymentOrdersTab() {
   const [bizType, setBizType] = useState<PaymentBizType | ''>('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [selectedOrder, setSelectedOrder] = useState<PaymentOrder | null>(null)
 
   const loadOrders = useCallback(async () => {
     if (!token) return
@@ -152,7 +154,11 @@ export function PaymentOrdersTab() {
                 </tr>
               ) : (
                 orders.map((order) => (
-                  <tr key={order.id}>
+                  <tr
+                    key={order.id}
+                    className="row-clickable"
+                    onClick={() => setSelectedOrder(order)}
+                  >
                     <td className="cell-mono">{order.outTradeNo}</td>
                     <td className="cell-subject">{order.subject}</td>
                     <td>{formatPaymentBizType(order.bizType)}</td>
@@ -182,6 +188,11 @@ export function PaymentOrdersTab() {
           />
         </div>
       )}
+
+      <PaymentOrderDetailModal
+        order={selectedOrder}
+        onClose={() => setSelectedOrder(null)}
+      />
     </>
   )
 }

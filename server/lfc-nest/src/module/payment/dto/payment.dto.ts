@@ -21,6 +21,8 @@ export interface PaymentConfigDto {
   platformFeeRateLabel: string;
   platformFeeMin: number;
   autoConfirmDays: number;
+  /** 客户端 Alipay SDK 是否切沙箱环境 */
+  alipaySandboxMode: boolean;
 }
 
 /** @deprecated 使用 CreatePaymentResultDto */

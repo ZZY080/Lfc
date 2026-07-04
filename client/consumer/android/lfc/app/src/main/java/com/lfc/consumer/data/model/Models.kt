@@ -412,6 +412,7 @@ data class PaymentConfigDto(
     val platformFeeRateLabel: String,
     val platformFeeMin: Double,
     val autoConfirmDays: Int = 7,
+    val alipaySandboxMode: Boolean = false,
 )
 
 data class AlipayPayPayloadDto(

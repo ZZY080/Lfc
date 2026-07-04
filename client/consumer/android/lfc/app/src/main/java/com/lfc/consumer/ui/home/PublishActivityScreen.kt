@@ -16,7 +16,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -30,9 +33,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.lfc.consumer.data.model.ActivityDto
+import com.lfc.consumer.data.model.LocationPick
 import com.lfc.consumer.location.AmapLocationHelper
+import com.lfc.consumer.location.hasValidCoordinate
 import com.lfc.consumer.ui.theme.XhsRed
 import com.lfc.consumer.ui.theme.XhsTextSecondary
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 private val locationPermissions = arrayOf(
@@ -42,12 +48,23 @@ private val locationPermissions = arrayOf(
 
 @Composable
 fun PublishActivityScreen(
+    draft: PublishActivityFormDraft,
+    onDraftChange: (PublishActivityFormDraft) -> Unit,
+    onPatchDraft: ((PublishActivityFormDraft) -> PublishActivityFormDraft) -> Unit = { patch ->
+        onDraftChange(patch(draft))
+    },
     initial: ActivityDto? = null,
     isSubmitting: Boolean = false,
     platformFeeRateLabel: String? = null,
     alipayBound: Boolean = false,
     onBack: () -> Unit,
     onBindAlipay: () -> Unit = {},
+    pendingLocationPick: LocationPick? = null,
+    onConsumeLocationPick: () -> Unit = {},
+    onOpenLocationSearch: (
+        latitude: Double?,
+        longitude: Double?,
+    ) -> Unit = { _, _ -> },
     onSubmit: (
         title: String,
         description: String,
@@ -64,38 +81,66 @@ fun PublishActivityScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var title by remember { mutableStateOf(initial?.title ?: "") }
-    var description by remember { mutableStateOf(initial?.description ?: "") }
-    var location by remember { mutableStateOf(initial?.location ?: "") }
-    var latitude by remember { mutableStateOf(initial?.latitude) }
-    var longitude by remember { mutableStateOf(initial?.longitude) }
-    var startTime by remember { mutableStateOf(initial?.startTime?.take(16)?.replace(" ", "T") ?: "") }
-    var endTime by remember { mutableStateOf(initial?.endTime?.take(16)?.replace(" ", "T") ?: "") }
     var showStartPicker by remember { mutableStateOf(false) }
     var showEndPicker by remember { mutableStateOf(false) }
-    var maxParticipants by remember { mutableStateOf((initial?.maxParticipants ?: 0).toString()) }
-    var fee by remember { mutableStateOf(initial?.fee?.toDoubleOrNull()?.let { if (it > 0) it.toString() else "" } ?: "") }
     var isLocating by remember { mutableStateOf(false) }
     var locationHint by remember { mutableStateOf<String?>(null) }
-    val selectedImages = rememberPublishImageSelection()
-    val keptExistingImages = rememberPublishExistingImages(initial?.images.orEmpty(), initial?.id)
+    var locateJob by remember { mutableStateOf<Job?>(null) }
+    val selectedImages = remember { mutableStateListOf<Uri>() }
+    val keptExistingImages = remember { mutableStateListOf<String>() }
+    var imagesHydrated by remember { mutableStateOf(false) }
+
+    LaunchedEffect(draft) {
+        if (!imagesHydrated) {
+            selectedImages.clear()
+            selectedImages.addAll(draft.selectedImageUris.map(Uri::parse))
+            keptExistingImages.clear()
+            keptExistingImages.addAll(draft.existingImageUrls)
+            imagesHydrated = true
+        }
+    }
+
+    SideEffect {
+        if (!imagesHydrated) return@SideEffect
+        val uriStrings = selectedImages.map { it.toString() }
+        val existing = keptExistingImages.toList()
+        if (uriStrings != draft.selectedImageUris || existing != draft.existingImageUrls) {
+            onDraftChange(
+                draft.copy(
+                    selectedImageUris = uriStrings,
+                    existingImageUrls = existing,
+                ),
+            )
+        }
+    }
+
+    val hasLocation = hasValidCoordinate(draft.latitude, draft.longitude)
 
     fun hasLocationPermission(): Boolean = locationPermissions.all { permission ->
         ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
     }
 
     fun startLocate() {
+        locateJob?.cancel()
         locationHint = null
-        scope.launch {
+        locateJob = scope.launch {
             isLocating = true
-            AmapLocationHelper.getCurrentLocation(context)
-                .onSuccess {
-                    location = it.address
-                    latitude = it.latitude
-                    longitude = it.longitude
-                }
-                .onFailure { locationHint = it.message ?: "定位失败，请检查高德 Key 或定位权限" }
-            isLocating = false
+            try {
+                AmapLocationHelper.getCurrentLocation(context)
+                    .onSuccess { location ->
+                        onPatchDraft {
+                            it.copy(
+                                locationLabel = location.address,
+                                latitude = location.latitude,
+                                longitude = location.longitude,
+                                autoLocateConsumed = true,
+                            )
+                        }
+                    }
+                    .onFailure { locationHint = it.message ?: "定位失败，请检查高德 Key 或定位权限" }
+            } finally {
+                isLocating = false
+            }
         }
     }
 
@@ -105,7 +150,7 @@ fun PublishActivityScreen(
         if (results.values.all { it }) {
             startLocate()
         } else {
-            locationHint = "需要定位权限才能使用高德定位"
+            locationHint = "需要定位权限才能记录活动位置"
         }
     }
 
@@ -117,9 +162,38 @@ fun PublishActivityScreen(
         }
     }
 
-    val isValid = location.isNotBlank() && startTime.isNotBlank() && endTime.isNotBlank() &&
-        (description.isNotBlank() || selectedImages.isNotEmpty() || keptExistingImages.isNotEmpty())
-    val activityFee = fee.toDoubleOrNull() ?: 0.0
+    LaunchedEffect(pendingLocationPick) {
+        pendingLocationPick?.let { pick ->
+            locateJob?.cancel()
+            locateJob = null
+            isLocating = false
+            onPatchDraft {
+                it.copy(
+                    locationLabel = pick.label,
+                    latitude = pick.latitude,
+                    longitude = pick.longitude,
+                    autoLocateConsumed = true,
+                )
+            }
+            locationHint = null
+            onConsumeLocationPick()
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        if (pendingLocationPick != null) return@LaunchedEffect
+        if (draft.autoLocateConsumed || hasValidCoordinate(draft.latitude, draft.longitude)) {
+            return@LaunchedEffect
+        }
+        onPatchDraft { it.copy(autoLocateConsumed = true) }
+        requestLocate()
+    }
+
+    val isValid = hasLocation &&
+        draft.startTime.isNotBlank() &&
+        draft.endTime.isNotBlank() &&
+        (draft.description.isNotBlank() || selectedImages.isNotEmpty() || keptExistingImages.isNotEmpty())
+    val activityFee = draft.fee.toDoubleOrNull() ?: 0.0
     val needsAlipay = activityFee > 0 && !alipayBound
 
     XhsPublishScreenContainer(modifier = Modifier.fillMaxSize()) {
@@ -130,15 +204,15 @@ fun PublishActivityScreen(
                 onBack = onBack,
                 onAction = {
                     onSubmit(
-                        title.trim(),
-                        description.trim(),
-                        location.trim(),
-                        latitude,
-                        longitude,
-                        startTime.trim(),
-                        endTime.trim(),
-                        maxParticipants.toIntOrNull() ?: 0,
-                        fee.toDoubleOrNull() ?: 0.0,
+                        draft.title.trim(),
+                        draft.description.trim(),
+                        draft.locationLabel.trim(),
+                        draft.latitude,
+                        draft.longitude,
+                        draft.startTime.trim(),
+                        draft.endTime.trim(),
+                        draft.maxParticipants.toIntOrNull() ?: 0,
+                        draft.fee.toDoubleOrNull() ?: 0.0,
                         selectedImages.toList(),
                         keptExistingImages.toList(),
                     )
@@ -174,16 +248,16 @@ fun PublishActivityScreen(
                 XhsPublishFieldCard {
                     XhsPublishSectionTitle("基本信息")
                     XhsPublishTextField(
-                        value = title,
-                        onValueChange = { title = it },
+                        value = draft.title,
+                        onValueChange = { onDraftChange(draft.copy(title = it)) },
                         placeholder = "活动标题（可选，不填将自动生成）",
                         singleLine = true,
                         textStyle = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.Bold),
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     XhsPublishTextField(
-                        value = description,
-                        onValueChange = { description = it },
+                        value = draft.description,
+                        onValueChange = { onDraftChange(draft.copy(description = it)) },
                         placeholder = "介绍活动内容、流程和注意事项…\n支持纯文字，也可配图发布",
                         minLines = 4,
                         textStyle = TextStyle(fontSize = 15.sp, lineHeight = 24.sp),
@@ -194,15 +268,19 @@ fun PublishActivityScreen(
 
                 XhsPublishFieldCard {
                     XhsPublishSectionTitle("时间地点")
-                    XhsPublishLocationField(
-                        value = location,
-                        onValueChange = { newValue ->
-                            location = newValue
-                            latitude = null
-                            longitude = null
-                        },
-                        placeholder = "点击右侧按钮获取当前位置，也可手动输入",
+                    Text(
+                        text = "用于展示活动位置与距离，可搜索地点或定位当前位置",
+                        fontSize = 12.sp,
+                        color = XhsTextSecondary,
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    XhsPublishLocationPicker(
+                        value = draft.locationLabel,
+                        placeholder = if (isLocating) "正在获取当前位置…" else "点击搜索地点",
                         isLoading = isLocating,
+                        onOpenSearch = {
+                            onOpenLocationSearch(draft.latitude, draft.longitude)
+                        },
                         onLocate = ::requestLocate,
                     )
                     locationHint?.let { hint ->
@@ -213,17 +291,25 @@ fun PublishActivityScreen(
                             color = XhsRed,
                         )
                     }
+                    if (!hasLocation && !isLocating) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "请选择或定位活动位置后才能提交",
+                            fontSize = 12.sp,
+                            color = XhsRed,
+                        )
+                    }
                     Spacer(modifier = Modifier.height(14.dp))
                     XhsPublishDateTimeField(
                         label = "开始时间",
-                        value = startTime,
+                        value = draft.startTime,
                         placeholder = "请选择开始时间",
                         onClick = { showStartPicker = true },
                     )
                     Spacer(modifier = Modifier.height(14.dp))
                     XhsPublishDateTimeField(
                         label = "结束时间",
-                        value = endTime,
+                        value = draft.endTime,
                         placeholder = "请选择结束时间",
                         onClick = { showEndPicker = true },
                     )
@@ -234,19 +320,23 @@ fun PublishActivityScreen(
                 XhsPublishFieldCard {
                     XhsPublishSectionTitle("报名设置")
                     XhsPublishTextField(
-                        value = maxParticipants,
-                        onValueChange = { maxParticipants = it.filter { c -> c.isDigit() } },
+                        value = draft.maxParticipants,
+                        onValueChange = {
+                            onDraftChange(draft.copy(maxParticipants = it.filter { c -> c.isDigit() }))
+                        },
                         placeholder = "人数上限，0 表示不限",
                         singleLine = true,
                     )
                     Spacer(modifier = Modifier.height(14.dp))
                     XhsPublishTextField(
-                        value = fee,
-                        onValueChange = { fee = it.filter { c -> c.isDigit() || c == '.' } },
+                        value = draft.fee,
+                        onValueChange = {
+                            onDraftChange(draft.copy(fee = it.filter { c -> c.isDigit() || c == '.' }))
+                        },
                         placeholder = "向参与者收取费用（元），留空或 0 表示免费",
                         singleLine = true,
                     )
-                    formatPayeeReceiveHint(fee, platformFeeRateLabel)?.let { hint ->
+                    formatPayeeReceiveHint(draft.fee, platformFeeRateLabel)?.let { hint ->
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             text = hint,
@@ -279,29 +369,36 @@ fun PublishActivityScreen(
     ActivityDateTimePickerSheet(
         visible = showStartPicker,
         title = "选择开始时间",
-        initialValue = startTime,
+        initialValue = draft.startTime,
         onDismiss = { showStartPicker = false },
         onConfirm = { value ->
-            startTime = value
             showStartPicker = false
-            if (endTime.isBlank()) {
+            val autoEndTime = if (draft.endTime.isBlank()) {
                 parseActivityDateTime(value)?.let { startCalendar ->
                     val endCalendar = (startCalendar.clone() as java.util.Calendar).apply {
                         add(java.util.Calendar.HOUR_OF_DAY, 2)
                     }
-                    endTime = formatActivityDateTimeForApi(endCalendar)
-                }
+                    formatActivityDateTimeForApi(endCalendar)
+                }.orEmpty()
+            } else {
+                draft.endTime
             }
+            onDraftChange(
+                draft.copy(
+                    startTime = value,
+                    endTime = autoEndTime.ifBlank { draft.endTime },
+                ),
+            )
         },
     )
 
     ActivityDateTimePickerSheet(
         visible = showEndPicker,
         title = "选择结束时间",
-        initialValue = endTime.ifBlank { startTime },
+        initialValue = draft.endTime.ifBlank { draft.startTime },
         onDismiss = { showEndPicker = false },
         onConfirm = { value ->
-            endTime = value
+            onDraftChange(draft.copy(endTime = value))
             showEndPicker = false
         },
     )

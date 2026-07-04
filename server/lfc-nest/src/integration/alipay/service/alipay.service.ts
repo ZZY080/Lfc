@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Injectable,
   Logger,
+  OnModuleInit,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { Inject } from '@nestjs/common';
@@ -17,6 +18,7 @@ import {
 import {
   buildAppAuthInfoString,
   buildAppPayOrderString,
+  deriveAppPublicKeyBase64,
   verifyAlipayNotify,
 } from '@integration/alipay/util/alipay-crypto.util';
 import { executeAlipayOpenApi } from '@integration/alipay/util/alipay-openapi.util';
@@ -41,7 +43,7 @@ export interface AlipayRefundResult {
 }
 
 @Injectable()
-export class AlipayService {
+export class AlipayService implements OnModuleInit {
   private readonly logger = new Logger(AlipayService.name);
 
   constructor(
@@ -49,6 +51,10 @@ export class AlipayService {
     private readonly alipayConfig: IAlipayConfig,
   ) {
     this.logBootstrapConfig();
+  }
+
+  async onModuleInit(): Promise<void> {
+    await this.validateCredentialsOnBoot();
   }
 
   isConfigured(): boolean {
@@ -427,6 +433,71 @@ export class AlipayService {
     }
   }
 
+  private async validateCredentialsOnBoot(): Promise<void> {
+    if (!this.isConfigured()) {
+      return;
+    }
+
+    const appPublicKey = deriveAppPublicKeyBase64(this.alipayConfig.privateKey);
+    if (appPublicKey) {
+      this.logger.log(
+        `Alipay app public key (upload to open platform): ${appPublicKey.slice(0, 24)}...${appPublicKey.slice(-12)}`,
+      );
+    }
+
+    const notifyUrl = this.alipayConfig.notifyUrl?.trim() ?? '';
+    if (notifyUrl.includes('/api/alipay/')) {
+      this.logger.error(
+        'ALIPAY_NOTIFY_URL 含 /api/alipay/，服务端路径应为 /alipay/notify（无 /api 前缀）',
+      );
+    }
+
+    try {
+      const payload = await executeAlipayOpenApi({
+        gateway: this.alipayConfig.gateway,
+        appId: this.alipayConfig.appId,
+        privateKey: this.alipayConfig.privateKey,
+        method: 'alipay.trade.query',
+        bizContent: { out_trade_no: '__lfc_boot_probe__' },
+      });
+      const subCode = String(payload.sub_code ?? '');
+      if (subCode === 'ACQ.TRADE_NOT_EXIST') {
+        this.logger.log('Alipay credentials probe ok (trade not exist as expected)');
+        return;
+      }
+      if (subCode === 'isv.invalid-signature') {
+        this.logInvalidSignatureHelp();
+        return;
+      }
+      if (String(payload.code ?? '') === '10000') {
+        return;
+      }
+      this.logger.warn(
+        `Alipay credentials probe: code=${String(payload.code ?? '')} sub_code=${subCode} sub_msg=${String(payload.sub_msg ?? '')}`,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes('invalid-signature') || message.includes('验签出错')) {
+        this.logInvalidSignatureHelp();
+        return;
+      }
+      this.logger.warn(`Alipay credentials probe skipped: ${message.slice(0, 160)}`);
+    }
+  }
+
+  private logInvalidSignatureHelp(): void {
+    this.logger.error(
+      [
+        '支付宝密钥与 AppID 不匹配（isv.invalid-signature），App 支付会提示「系统繁忙」',
+        '请到开放平台沙箱控制台核对：',
+        '1. 是否已「升级沙箱环境」（新旧沙箱 AppID/密钥不通用）',
+        '2. 将启动日志中的应用公钥上传到该沙箱应用',
+        '3. 重新复制沙箱「支付宝公钥」到 ALIPAY_ALIPAY_PUBLIC_KEY',
+        '沙箱控制台：https://open.alipay.com/develop/sandbox/app',
+      ].join(' | '),
+    );
+  }
+
   private logBootstrapConfig() {
     const appId = this.alipayConfig.appId?.trim() || '(empty)';
     const pid = this.alipayConfig.pid?.trim() || '(empty)';
@@ -444,7 +515,7 @@ export class AlipayService {
     );
     const notifyUrlConfigured = Boolean(this.alipayConfig.notifyUrl?.trim());
     this.logger.log(
-      `Alipay config loaded appId=${appId}, pid=${pid}, gateway=${gateway}, privateKeySha256=${keyFingerprint}, alipayPublicKeyConfigured=${alipayPublicKeyConfigured}, notifyUrlConfigured=${notifyUrlConfigured}`,
+      `Alipay config loaded appId=${appId}, pid=${pid}, gateway=${gateway}, sandboxMode=${this.alipayConfig.sandboxMode}, royaltyEnabled=${this.alipayConfig.royaltyEnabled}, privateKeySha256=${keyFingerprint}, alipayPublicKeyConfigured=${alipayPublicKeyConfigured}, notifyUrlConfigured=${notifyUrlConfigured}`,
     );
   }
 

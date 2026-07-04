@@ -25,6 +25,7 @@ import { PaymentModule } from '@module/payment/payment.module';
 import { PromotionModule } from '@module/promotion/promotion.module';
 import { AdminModule } from '@module/admin/admin.module';
 import { FeedChannelModule } from '@module/feed-channel/feed-channel.module';
+import { AnalyticsModule } from '@module/analytics/analytics.module';
 
 @Module({
   imports: [
@@ -65,6 +66,7 @@ import { FeedChannelModule } from '@module/feed-channel/feed-channel.module';
     PromotionModule,
     AdminModule,
     FeedChannelModule,
+    AnalyticsModule,
   ],
 })
 export class AppModule {}

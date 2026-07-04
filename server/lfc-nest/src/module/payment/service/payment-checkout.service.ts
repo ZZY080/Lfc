@@ -1,4 +1,4 @@
-import { Injectable, ServiceUnavailableException } from '@nestjs/common';
+import { Injectable, ServiceUnavailableException, Inject } from '@nestjs/common';
 import { AlipayService } from '@integration/alipay/service/alipay.service';
 import { PaymentFeeService } from '@module/payment/service/payment-fee.service';
 import { CreatePaymentResultDto } from '@module/payment/dto/payment.dto';
@@ -7,12 +7,15 @@ import {
   PaymentChannel,
 } from '@shared/enum/payment.enum';
 import { shouldEnableAlipayRoyalty } from '@module/payment/util/payment-order.util';
+import { alipayConfiguration, type IAlipayConfig } from '@config/configuration';
 
 @Injectable()
 export class PaymentCheckoutService {
   constructor(
     private readonly alipayService: AlipayService,
     private readonly paymentFeeService: PaymentFeeService,
+    @Inject(alipayConfiguration.KEY)
+    private readonly alipayConfig: IAlipayConfig,
   ) {}
 
   assertAlipayConfigured(): void {
@@ -31,7 +34,9 @@ export class PaymentCheckoutService {
       outTradeNo: order.outTradeNo,
       totalAmount: order.amount,
       subject: order.subject,
-      enableRoyalty: shouldEnableAlipayRoyalty(order.bizType),
+      enableRoyalty:
+        this.alipayConfig.royaltyEnabled &&
+        shouldEnableAlipayRoyalty(order.bizType),
     });
 
     return {

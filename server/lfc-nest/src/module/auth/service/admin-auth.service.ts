@@ -43,6 +43,31 @@ export class AdminAuthService {
     return { message: '已退出登录' };
   }
 
+  async refresh(refreshToken: string): Promise<AuthTokenDto> {
+    let payload: { userId: number; role: string };
+    try {
+      payload = this.jwtService.verify(refreshToken);
+    } catch {
+      throw new UnauthorizedException('refreshToken 无效或已过期');
+    }
+
+    const stored = await this.redisService.get(
+      `${this.PREFIX_REFRESH}${payload.userId}`,
+    );
+    if (!stored || stored !== refreshToken) {
+      throw new UnauthorizedException('refreshToken 无效或已过期');
+    }
+
+    const user = await this.userRepository.findOne({
+      where: { id: payload.userId },
+    });
+    if (!user || user.role !== UserRole.ADMIN) {
+      throw new UnauthorizedException('用户不存在');
+    }
+
+    return this.issueTokens(user);
+  }
+
   private async issueTokens(user: UserEntity): Promise<AuthTokenDto> {
     const payload = { userId: user.id, role: user.role };
     const accessToken = this.jwtService.sign(payload, {

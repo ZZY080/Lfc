@@ -26,6 +26,7 @@ import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -223,41 +224,52 @@ fun FeedGridSkeleton(
 
 @Composable
 private fun ActivityCardSkeleton(modifier: Modifier = Modifier) {
-    Column(
+    Row(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(Color.White),
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.Top,
     ) {
         SkeletonBox(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(168.dp),
-            shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
+            modifier = Modifier.size(96.dp),
+            shape = RoundedCornerShape(6.dp),
         )
-        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
-            SkeletonLine(height = 16.dp, widthFraction = 0.85f)
-            Spacer(modifier = Modifier.height(8.dp))
-            SkeletonLine(height = 12.dp, widthFraction = 0.95f)
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .padding(start = 12.dp),
+        ) {
+            SkeletonLine(height = 16.dp, widthFraction = 0.95f)
             Spacer(modifier = Modifier.height(6.dp))
-            SkeletonLine(height = 12.dp, widthFraction = 0.7f)
-            Spacer(modifier = Modifier.height(12.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                SkeletonCircle(size = 15.dp)
-                Spacer(modifier = Modifier.width(6.dp))
-                SkeletonLine(modifier = Modifier.weight(1f), height = 12.dp, widthFraction = 0.5f)
-            }
+            SkeletonLine(height = 16.dp, widthFraction = 0.7f)
             Spacer(modifier = Modifier.height(8.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                SkeletonCircle(size = 15.dp)
-                Spacer(modifier = Modifier.width(6.dp))
-                SkeletonLine(modifier = Modifier.weight(1f), height = 12.dp, widthFraction = 0.6f)
+            SkeletonLine(height = 13.dp, widthFraction = 0.8f)
+            Spacer(modifier = Modifier.height(6.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.Top,
+            ) {
+                SkeletonBox(
+                    modifier = Modifier.size(14.dp),
+                    shape = RoundedCornerShape(3.dp),
+                )
+                Column(modifier = Modifier.padding(start = 4.dp)) {
+                    SkeletonLine(height = 13.dp, widthFraction = 0.9f)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    SkeletonLine(height = 13.dp, widthFraction = 0.55f)
+                }
             }
-            Spacer(modifier = Modifier.height(12.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                SkeletonCircle(size = 20.dp)
-                Spacer(modifier = Modifier.width(8.dp))
-                SkeletonLine(modifier = Modifier.weight(1f), height = 12.dp, widthFraction = 0.35f)
+            Spacer(modifier = Modifier.height(10.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                SkeletonLine(height = 13.dp, widthFraction = 0.45f)
+                SkeletonBox(
+                    modifier = Modifier.size(width = 76.dp, height = 28.dp),
+                    shape = RoundedCornerShape(14.dp),
+                )
             }
         }
     }
@@ -269,11 +281,18 @@ fun ActivityFeedSkeleton(
     itemCount: Int = 3,
 ) {
     Column(
-        modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        modifier = modifier
+            .fillMaxWidth()
+            .background(Color.White),
     ) {
-        repeat(itemCount) {
+        repeat(itemCount) { index ->
             ActivityCardSkeleton()
+            if (index < itemCount - 1) {
+                HorizontalDivider(
+                    color = Color(0xFFEEEEEE),
+                    thickness = 0.5.dp,
+                )
+            }
         }
     }
 }

@@ -38,6 +38,8 @@ import com.lfc.consumer.ui.legal.LegalConsentScreen
 import com.lfc.consumer.ui.legal.LegalDocumentId
 import com.lfc.consumer.ui.legal.LegalDocumentScreen
 import com.lfc.consumer.ui.theme.LfcTheme
+import com.lfc.consumer.analytics.AnalyticsEvents
+import com.lfc.consumer.analytics.AnalyticsTracker
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -58,6 +60,8 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         val tokenManager = TokenManager(applicationContext)
+        AnalyticsTracker.init(tokenManager)
+        AnalyticsTracker.track(AnalyticsEvents.APP_OPEN)
         val searchHistoryStore = SearchHistoryStore(applicationContext)
         val feedChannelStore = FeedChannelStore(applicationContext)
         val legalConsentStore = LegalConsentStore(applicationContext)

@@ -35,6 +35,8 @@ import {
   DEFAULT_POST_CATEGORY,
 } from '@shared/enum/post-category.enum';
 import { FeedChannelService } from '@module/feed-channel/service/feed-channel.service';
+import { AnalyticsIngestService } from '@module/analytics/service/analytics-ingest.service';
+import { ANALYTICS_EVENTS } from '@shared/enum/analytics-event.enum';
 
 @Injectable()
 export class ConsumerPostService {
@@ -55,6 +57,7 @@ export class ConsumerPostService {
     private readonly amapGeocodeService: AmapGeocodeService,
     private readonly notificationService: NotificationService,
     private readonly feedChannelService: FeedChannelService,
+    private readonly analyticsIngestService: AnalyticsIngestService,
   ) {}
 
   async create(userId: number, body: CreatePostBodyDto) {
@@ -88,6 +91,17 @@ export class ConsumerPostService {
     }
 
     await this.notificationService.sendPostSubmitted(userId, saved);
+
+    void this.analyticsIngestService.track(
+      ANALYTICS_EVENTS.POST_CREATE,
+      userId,
+      {
+        postId: saved.id,
+        category: saved.category,
+        hasProduct: Boolean(body.product),
+      },
+      'server',
+    );
 
     return this.findOne(saved.id, userId);
   }
@@ -279,7 +293,27 @@ export class ConsumerPostService {
       );
     }
 
+    this.applyCityFilter(qb, query.city);
+
     return qb;
+  }
+
+  /** 按发布地址文案筛选同城笔记（如 location 含「上海」） */
+  private applyCityFilter(
+    qb: ReturnType<Repository<PostEntity>['createQueryBuilder']>,
+    city?: string,
+  ) {
+    const normalized = city?.trim().replace(/市$/, '');
+    if (!normalized || normalized === '同城') {
+      return;
+    }
+    qb.andWhere(
+      '(post.location LIKE :cityKeyword OR post.location LIKE :cityWithSuffix)',
+      {
+        cityKeyword: `%${normalized}%`,
+        cityWithSuffix: `%${normalized}市%`,
+      },
+    );
   }
 
   private applyFeedOrdering(
@@ -373,6 +407,15 @@ export class ConsumerPostService {
     }
     await this.postRepository.increment({ id }, 'viewCount', 1);
     post.viewCount = (post.viewCount ?? 0) + 1;
+    void this.analyticsIngestService.track(
+      ANALYTICS_EVENTS.POST_VIEW,
+      userId,
+      {
+        postId: post.id,
+        category: post.category,
+      },
+      'server',
+    );
     const [enriched] = await this.enrichPostsWithProduct([post], userId);
     return enriched;
   }
@@ -411,17 +454,12 @@ export class ConsumerPostService {
         location: null,
       });
     }
-    const shouldResubmit = post.status === PostStatus.REJECTED;
-    if (shouldResubmit) {
-      post.status = PostStatus.PENDING;
-      post.reviewComment = null;
-      post.isVisible = false;
-    }
+    post.status = PostStatus.PENDING;
+    post.isVisible = false;
+    post.reviewComment = null;
+    post.boostedUntil = null;
     const saved = await this.postRepository.save(post);
-
-    if (shouldResubmit) {
-      await this.notificationService.sendPostSubmitted(userId, saved);
-    }
+    await this.notificationService.sendPostSubmitted(userId, saved);
 
     if (body.product === null) {
       const existing = await this.postProductService.findByPostId(id);
@@ -547,16 +585,21 @@ export class ConsumerPostService {
     location?: string | null;
   }): Promise<string | null> {
     const trimmed = body.location?.trim();
-    if (trimmed) {
-      return trimmed;
-    }
     if (body.latitude == null || body.longitude == null) {
-      return null;
+      return trimmed || null;
     }
-    return this.amapGeocodeService.reverseGeocode(
+    const geocoded = await this.amapGeocodeService.reverseGeocode(
       body.longitude,
       body.latitude,
     );
+    if (!trimmed) {
+      return geocoded;
+    }
+    const hasCityInLabel = /[\u4e00-\u9fa5]{2,10}市/.test(trimmed);
+    if (!hasCityInLabel && geocoded) {
+      return `${trimmed}·${geocoded}`;
+    }
+    return trimmed;
   }
 
   private normalizePostBody(body: CreatePostBodyDto) {

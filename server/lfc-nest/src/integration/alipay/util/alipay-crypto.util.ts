@@ -74,6 +74,40 @@ export function rsaVerify(
   return verifier.verify(formatPublicKey(publicKey), sign, 'base64');
 }
 
+/** 从应用私钥导出公钥（单行 Base64，用于上传到支付宝开放平台） */
+export function deriveAppPublicKeyBase64(privateKey: string): string | null {
+  const normalized = privateKey.replace(/\\n/g, '\n').trim();
+  if (!normalized) {
+    return null;
+  }
+  const body = normalized.includes('BEGIN')
+    ? normalized
+    : `-----BEGIN PRIVATE KEY-----\n${normalized.match(/.{1,64}/g)?.join('\n') ?? normalized}\n-----END PRIVATE KEY-----`;
+  try {
+    const keyObject = normalized.includes('RSA PRIVATE KEY')
+      ? crypto.createPrivateKey(body)
+      : (() => {
+          try {
+            return crypto.createPrivateKey(body);
+          } catch {
+            const raw = normalized.match(/.{1,64}/g)?.join('\n') ?? normalized;
+            return crypto.createPrivateKey(
+              `-----BEGIN RSA PRIVATE KEY-----\n${raw}\n-----END RSA PRIVATE KEY-----`,
+            );
+          }
+        })();
+    const publicPem = crypto
+      .createPublicKey(keyObject)
+      .export({ type: 'spki', format: 'pem' }) as string;
+    const match = publicPem.match(
+      /-----BEGIN PUBLIC KEY-----\n([\s\S]+?)\n-----END PUBLIC KEY-----/,
+    );
+    return match?.[1]?.replace(/\n/g, '') ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /** App 支付宝授权登录（AuthTask.authV2）参数串 */
 export function buildAppAuthInfoString(input: {
   appId: string;

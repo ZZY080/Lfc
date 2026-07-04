@@ -32,6 +32,9 @@ import { RedisService } from '@integration/redis/service/redis.service';
 import { PaymentOrderDetailDto } from '@module/payment/dto/payment.dto';
 import { PaymentFeeService } from '@module/payment/service/payment-fee.service';
 import { ConsumerPromotionService } from '@module/promotion/service/consumer-promotion.service';
+import { AnalyticsIngestService } from '@module/analytics/service/analytics-ingest.service';
+import { ANALYTICS_EVENTS } from '@shared/enum/analytics-event.enum';
+import { paymentScenarioFromBizType } from '@module/analytics/util/payment-scenario.util';
 import { paymentConfiguration } from '@config/configuration';
 import type { IPaymentConfig } from '@config/configuration';
 import {
@@ -116,6 +119,7 @@ export class PaymentOrderService {
     private readonly consumerPromotionService: ConsumerPromotionService,
     @Inject(paymentConfiguration.KEY)
     private readonly paymentConfig: IPaymentConfig,
+    private readonly analyticsIngestService: AnalyticsIngestService,
   ) {}
 
   async acquirePostProductOrder(
@@ -414,7 +418,7 @@ export class PaymentOrderService {
     );
 
     try {
-      return await this.paymentOrderRepository.save(
+      const saved = await this.paymentOrderRepository.save(
         this.paymentOrderRepository.create({
           outTradeNo: input.outTradeNo,
           activeKey,
@@ -430,6 +434,12 @@ export class PaymentOrderService {
           status: PaymentOrderStatus.PENDING,
         }),
       );
+      void this.trackPaymentEvent(
+        ANALYTICS_EVENTS.PAYMENT_START,
+        saved.userId,
+        saved,
+      );
+      return saved;
     } catch (error) {
       if (this.isDuplicateActiveKeyError(error)) {
         const existing = await this.paymentOrderRepository.findOne({
@@ -749,7 +759,13 @@ export class PaymentOrderService {
     }
 
     try {
-      return await this.paymentOrderRepository.save(order);
+      const saved = await this.paymentOrderRepository.save(order);
+      void this.trackPaymentEvent(
+        ANALYTICS_EVENTS.PAYMENT_SUCCESS,
+        saved.userId,
+        saved,
+      );
+      return saved;
     } catch (error) {
       if (error instanceof OptimisticLockVersionMismatchError) {
         const latest = await this.paymentOrderRepository.findOne({
@@ -1087,5 +1103,25 @@ export class PaymentOrderService {
       canConfirmReceipt,
       createdAt: order.createdAt,
     };
+  }
+
+  private trackPaymentEvent(
+    event: string,
+    userId: number,
+    order: PaymentOrderEntity,
+  ): void {
+    const scenario = paymentScenarioFromBizType(order.bizType);
+    void this.analyticsIngestService.track(
+      event,
+      userId,
+      {
+        outTradeNo: order.outTradeNo,
+        subject: order.subject,
+        amount: order.amount,
+        scenario,
+        bizType: order.bizType,
+      },
+      'server',
+    );
   }
 }

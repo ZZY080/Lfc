@@ -26,10 +26,12 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
@@ -114,18 +116,41 @@ fun PublishImagePicker(
 }
 
 @Composable
-fun rememberPublishImageSelection(): SnapshotStateList<Uri> {
-    return remember { mutableStateListOf() }
+fun rememberPublishImageSelection(
+    saveKey: String = "publish_selected_images",
+): SnapshotStateList<Uri> {
+    var savedUris by rememberSaveable(saveKey) { mutableStateOf(emptyList<String>()) }
+    val list = remember(saveKey) {
+        mutableStateListOf<Uri>().apply {
+            addAll(savedUris.map(Uri::parse))
+        }
+    }
+    SideEffect {
+        val encoded = list.map { it.toString() }
+        if (encoded != savedUris) {
+            savedUris = encoded
+        }
+    }
+    return list
 }
 
 @Composable
 fun rememberPublishExistingImages(
     initial: List<String>,
     key: Any? = initial,
+    saveKey: String = "publish_existing_images",
 ): SnapshotStateList<String> {
-    return remember(key) {
-        mutableStateListOf<String>().apply { addAll(initial) }
+    var savedUrls by rememberSaveable(saveKey, key) { mutableStateOf(initial) }
+    val list = remember(saveKey, key) {
+        mutableStateListOf<String>().apply { addAll(savedUrls) }
     }
+    SideEffect {
+        val encoded = list.toList()
+        if (encoded != savedUrls) {
+            savedUrls = encoded
+        }
+    }
+    return list
 }
 
 @Composable

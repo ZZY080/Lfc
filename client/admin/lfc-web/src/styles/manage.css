@@ -85,6 +85,15 @@
   color: var(--text-primary);
 }
 
+.manage-card-title-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.manage-card-title-link:hover {
+  color: var(--primary);
+}
+
 .manage-meta {
   margin: 0;
   font-size: 13px;

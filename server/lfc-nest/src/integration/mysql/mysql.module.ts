@@ -22,6 +22,7 @@ import { PaymentPayoutEntity } from '@module/payment/entity/payment-payout.entit
 import { PaymentOrderReviewEntity } from '@module/payment/entity/payment-order-review.entity';
 import { PaymentAfterSalesEntity } from '@module/payment/entity/payment-after-sales.entity';
 import { FeedChannelEntity } from '@module/feed-channel/entity/feed-channel.entity';
+import { AnalyticsEventEntity } from '@module/analytics/entity/analytics-event.entity';
 
 @Global()
 @Module({
@@ -58,6 +59,7 @@ import { FeedChannelEntity } from '@module/feed-channel/entity/feed-channel.enti
           PaymentOrderReviewEntity,
           PaymentAfterSalesEntity,
           FeedChannelEntity,
+          AnalyticsEventEntity,
         ],
         charset: 'utf8mb4',
         timezone: '+08:00',

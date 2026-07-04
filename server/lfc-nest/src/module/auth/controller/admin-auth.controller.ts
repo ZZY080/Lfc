@@ -18,4 +18,9 @@ export class AdminAuthController {
   logout(@CurrentUser('userId') userId: number) {
     return this.adminAuthService.logout(userId);
   }
+
+  @Post('refresh')
+  refresh(@Body('refreshToken') refreshToken: string) {
+    return this.adminAuthService.refresh(refreshToken);
+  }
 }

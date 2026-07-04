@@ -51,19 +51,60 @@ interface IRedisConfig {
   db: number;
 }
 
+const ALIPAY_SANDBOX_GATEWAY =
+  'https://openapi-sandbox.dl.alipaydev.com/gateway.do';
+const ALIPAY_PRODUCTION_GATEWAY =
+  'https://openapi.alipay.com/gateway.do';
+
+function isAlipaySandboxAppId(appId: string): boolean {
+  return /^902100\d+$/.test(appId.trim());
+}
+
+function isSandboxAlipayGateway(gateway: string): boolean {
+  const normalized = gateway.trim().toLowerCase();
+  return (
+    normalized.includes('alipaydev') || normalized.includes('sandbox')
+  );
+}
+
+function resolveAlipayGateway(appId: string, configured?: string): string {
+  const sandboxApp = isAlipaySandboxAppId(appId);
+  const configuredGateway = configured?.trim();
+  if (sandboxApp) {
+    if (configuredGateway && isSandboxAlipayGateway(configuredGateway)) {
+      return configuredGateway;
+    }
+    return ALIPAY_SANDBOX_GATEWAY;
+  }
+  return configuredGateway || ALIPAY_PRODUCTION_GATEWAY;
+}
+
+function resolveAlipayRoyaltyEnabled(appId: string): boolean {
+  if (process.env.ALIPAY_ENABLE_ROYALTY === 'false') {
+    return false;
+  }
+  if (process.env.ALIPAY_ENABLE_ROYALTY === 'true') {
+    return true;
+  }
+  return !isAlipaySandboxAppId(appId);
+}
+
 const alipayConfiguration = registerAs(
   'alipay',
-  async (): Promise<IAlipayConfig> => ({
-    appId: process.env.ALIPAY_APP_ID ?? '',
-    privateKey: normalizePem(process.env.ALIPAY_PRIVATE_KEY),
-    alipayPublicKey: normalizePem(process.env.ALIPAY_ALIPAY_PUBLIC_KEY),
-    gateway:
-      process.env.ALIPAY_GATEWAY ??
-      'https://openapi.alipay.com/gateway.do',
-    notifyUrl: process.env.ALIPAY_NOTIFY_URL ?? '',
-    /** 商户 PID，App 支付宝授权登录必填 */
-    pid: process.env.ALIPAY_PID ?? '',
-  }),
+  async (): Promise<IAlipayConfig> => {
+    const appId = process.env.ALIPAY_APP_ID ?? '';
+    return {
+      appId,
+      privateKey: normalizePem(process.env.ALIPAY_PRIVATE_KEY),
+      alipayPublicKey: normalizePem(process.env.ALIPAY_ALIPAY_PUBLIC_KEY),
+      gateway: resolveAlipayGateway(appId, process.env.ALIPAY_GATEWAY),
+      notifyUrl: process.env.ALIPAY_NOTIFY_URL ?? '',
+      /** 商户 PID，App 支付宝授权登录必填 */
+      pid: process.env.ALIPAY_PID ?? '',
+      royaltyEnabled: resolveAlipayRoyaltyEnabled(appId),
+      sandboxMode: isAlipaySandboxAppId(appId),
+    };
+  },
 );
 
 interface IAlipayConfig {
@@ -73,6 +114,8 @@ interface IAlipayConfig {
   gateway: string;
   notifyUrl: string;
   pid: string;
+  royaltyEnabled: boolean;
+  sandboxMode: boolean;
 }
 
 const wechatPayConfiguration = registerAs(

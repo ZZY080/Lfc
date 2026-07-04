@@ -62,3 +62,29 @@ yarn-error.log*
 # next.js
 /.next/
 /out/
+
+# iOS / Xcode (client/consumer/ios)
+**/xcuserdata/
+*.xcuserstate
+*.xccheckout
+*.xcscmblueprint
+**/DerivedData/
+**/build/
+*.hmap
+*.ipa
+*.dSYM
+*.dSYM.zip
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+*.moved-aside
+**/.build/
+**/Packages/
+Package.pinned
+**/Pods/
+**/Carthage/Build/
+**/fastlane/report.xml
+**/fastlane/Preview.html
+**/fastlane/screenshots/
+**/fastlane/test_output/

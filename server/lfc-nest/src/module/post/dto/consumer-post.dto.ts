@@ -28,6 +28,8 @@ export interface PostFeedQueryDto {
   sort?: 'recommend' | 'latest';
   keyword?: string;
   tab?: string;
+  /** 同城筛选，如「上海」；关注流不使用 */
+  city?: string;
 }
 
 export interface PostFeedResultDto {

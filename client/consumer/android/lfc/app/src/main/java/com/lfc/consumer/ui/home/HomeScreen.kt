@@ -25,6 +25,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import com.lfc.consumer.analytics.AnalyticsEvents
+import com.lfc.consumer.analytics.AnalyticsTracker
 import androidx.compose.ui.Alignment
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Modifier
@@ -68,10 +70,13 @@ fun HomeScreen(
 ) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
-    val isOnMainRoute = navBackStackEntry?.destination?.route == "main"
+    val currentRoute = navBackStackEntry?.destination?.route
+    val isOnMainRoute = currentRoute == "main"
     var selectedTab by remember { mutableIntStateOf(0) }
     var editingPost by remember { mutableStateOf<PostDto?>(null) }
     var editingActivity by remember { mutableStateOf<ActivityDto?>(null) }
+    var createActivityDraft by remember { mutableStateOf(PublishActivityFormDraft.empty()) }
+    var editActivityDraft by remember { mutableStateOf<PublishActivityFormDraft?>(null) }
     var pendingLocationPick by remember { mutableStateOf<LocationPick?>(null) }
     var locationSearchBiasLatitude by remember { mutableStateOf<Double?>(null) }
     var locationSearchBiasLongitude by remember { mutableStateOf<Double?>(null) }
@@ -147,8 +152,34 @@ fun HomeScreen(
     }
 
     LaunchedEffect(selectedTab) {
+        val screen = when (selectedTab) {
+            0 -> "home"
+            1 -> "activity"
+            2 -> "messages"
+            3 -> "profile"
+            else -> "unknown"
+        }
+        AnalyticsTracker.track(
+            AnalyticsEvents.SCREEN_VIEW,
+            mapOf("screen" to screen),
+        )
         if (selectedTab == 2) {
+            AnalyticsTracker.track(AnalyticsEvents.MESSAGE_TAB)
             viewModel.loadMessages(refresh = true)
+        }
+    }
+
+    LaunchedEffect(currentRoute) {
+        val route = currentRoute ?: return@LaunchedEffect
+        if (route == "main") return@LaunchedEffect
+        val screen = route.substringBefore("/")
+        AnalyticsTracker.track(
+            AnalyticsEvents.SCREEN_VIEW,
+            mapOf("screen" to screen),
+        )
+        when (screen) {
+            "notifications" -> AnalyticsTracker.track(AnalyticsEvents.NOTIFICATION_OPEN)
+            "chat" -> AnalyticsTracker.track(AnalyticsEvents.CHAT_OPEN)
         }
     }
 
@@ -212,6 +243,7 @@ fun HomeScreen(
                             onAddChannel = viewModel::addFeedChannel,
                             onRemoveChannel = viewModel::removeFeedChannel,
                             onPostClick = { postId ->
+                                viewModel.trackContentClick("post", postId)
                                 navController.navigate("post_detail/$postId")
                             },
                             modifier = Modifier
@@ -226,6 +258,7 @@ fun HomeScreen(
                             onLoadMore = viewModel::loadMoreActivityFeed,
                             onJoin = viewModel::joinActivity,
                             onActivityClick = { activityId ->
+                                viewModel.trackContentClick("activity", activityId)
                                 navController.navigate("activity_detail/$activityId")
                             },
                             currentUserId = uiState.myProfile?.id,
@@ -293,6 +326,7 @@ fun HomeScreen(
                             onOnShelfPost = viewModel::onShelfPost,
                             onEditActivity = { activity ->
                                 editingActivity = activity
+                                editActivityDraft = PublishActivityFormDraft.from(activity)
                                 navController.navigate("edit_activity")
                             },
                             onViewActivity = { activityId ->
@@ -331,6 +365,7 @@ fun HomeScreen(
                             },
                             onPublishActivity = {
                                 showPublishHub = false
+                                createActivityDraft = PublishActivityFormDraft.empty()
                                 navController.navigate("publish_activity")
                             },
                         )
@@ -367,9 +402,11 @@ fun HomeScreen(
                     onRefresh = { viewModel.loadSearchResults(refresh = true) },
                     onLoadMore = viewModel::loadMoreSearchResults,
                     onPostClick = { postId ->
+                        viewModel.trackContentClick("post", postId)
                         navController.navigate("post_detail/$postId")
                     },
                     onActivityClick = { activityId ->
+                        viewModel.trackContentClick("activity", activityId)
                         navController.navigate("activity_detail/$activityId")
                     },
                     onBack = {
@@ -635,9 +672,11 @@ fun HomeScreen(
                         navController.popBackStack()
                     },
                     onPostClick = { postId ->
+                        viewModel.trackContentClick("post", postId)
                         navController.navigate("post_detail/$postId")
                     },
                     onActivityClick = { activityId ->
+                        viewModel.trackContentClick("activity", activityId)
                         navController.navigate("activity_detail/$activityId")
                     },
                     onMessage = {
@@ -668,6 +707,7 @@ fun HomeScreen(
                     onSearch = viewModel::searchProfileNotes,
                     onClearKeyword = viewModel::clearProfileSearchKeyword,
                     onPostClick = { postId ->
+                        viewModel.trackContentClick("post", postId)
                         navController.navigate("post_detail/$postId")
                     },
                 )
@@ -840,6 +880,7 @@ fun HomeScreen(
                     }?.let { activity ->
                         {
                             editingActivity = activity
+                            editActivityDraft = PublishActivityFormDraft.from(activity)
                             navController.navigate("edit_activity")
                         }
                     },
@@ -914,11 +955,17 @@ fun HomeScreen(
 
             composable("publish_activity") {
                 PublishActivityScreen(
+                    draft = createActivityDraft,
+                    onDraftChange = { createActivityDraft = it },
+                    onPatchDraft = { patch -> createActivityDraft = patch(createActivityDraft) },
                     isSubmitting = isSubmitting,
                     platformFeeRateLabel = uiState.paymentConfig?.platformFeeRateLabel,
                     alipayBound = uiState.myProfile?.alipayBound == true,
                     onBack = { navController.popBackStack() },
                     onBindAlipay = { navController.navigate("settings") },
+                    pendingLocationPick = pendingLocationPick,
+                    onConsumeLocationPick = { pendingLocationPick = null },
+                    onOpenLocationSearch = ::openLocationSearch,
                     onSubmit = { title, description, location, latitude, longitude, startTime, endTime, maxParticipants, fee, imageUris, _ ->
                         isSubmitting = true
                         viewModel.createActivity(
@@ -933,6 +980,7 @@ fun HomeScreen(
                             fee = fee,
                             imageUris = imageUris,
                             onSuccess = {
+                                createActivityDraft = PublishActivityFormDraft.empty()
                                 navController.popBackStack("main", inclusive = false)
                                 selectedTab = 2
                             },
@@ -977,34 +1025,45 @@ fun HomeScreen(
             }
 
             composable("edit_activity") {
-                PublishActivityScreen(
-                    initial = editingActivity,
-                    isSubmitting = isSubmitting,
-                    platformFeeRateLabel = uiState.paymentConfig?.platformFeeRateLabel,
-                    alipayBound = uiState.myProfile?.alipayBound == true,
-                    onBack = { navController.popBackStack() },
-                    onBindAlipay = { navController.navigate("settings") },
-                    onSubmit = { title, description, location, latitude, longitude, startTime, endTime, maxParticipants, _, imageUris, keptExistingImageUrls ->
-                        editingActivity?.let { activity ->
-                            isSubmitting = true
-                            viewModel.updateActivity(
-                                id = activity.id,
-                                title = title,
-                                description = description,
-                                location = location,
-                                latitude = latitude,
-                                longitude = longitude,
-                                startTime = startTime,
-                                endTime = endTime,
-                                maxParticipants = maxParticipants,
-                                imageUris = imageUris,
-                                existingImages = keptExistingImageUrls,
-                                onSuccess = { navController.popBackStack() },
-                                onComplete = { isSubmitting = false },
-                            )
-                        }
-                    },
-                )
+                val draft = editActivityDraft
+                if (draft != null) {
+                    PublishActivityScreen(
+                        draft = draft,
+                        onDraftChange = { editActivityDraft = it },
+                        onPatchDraft = { patch ->
+                            editActivityDraft = editActivityDraft?.let(patch)
+                        },
+                        initial = editingActivity,
+                        isSubmitting = isSubmitting,
+                        platformFeeRateLabel = uiState.paymentConfig?.platformFeeRateLabel,
+                        alipayBound = uiState.myProfile?.alipayBound == true,
+                        onBack = { navController.popBackStack() },
+                        onBindAlipay = { navController.navigate("settings") },
+                        pendingLocationPick = pendingLocationPick,
+                        onConsumeLocationPick = { pendingLocationPick = null },
+                        onOpenLocationSearch = ::openLocationSearch,
+                        onSubmit = { title, description, location, latitude, longitude, startTime, endTime, maxParticipants, _, imageUris, keptExistingImageUrls ->
+                            editingActivity?.let { activity ->
+                                isSubmitting = true
+                                viewModel.updateActivity(
+                                    id = activity.id,
+                                    title = title,
+                                    description = description,
+                                    location = location,
+                                    latitude = latitude,
+                                    longitude = longitude,
+                                    startTime = startTime,
+                                    endTime = endTime,
+                                    maxParticipants = maxParticipants,
+                                    imageUris = imageUris,
+                                    existingImages = keptExistingImageUrls,
+                                    onSuccess = { navController.popBackStack() },
+                                    onComplete = { isSubmitting = false },
+                                )
+                            }
+                        },
+                    )
+                }
             }
         }
         }

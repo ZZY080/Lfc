@@ -29,6 +29,7 @@ import {
   CreateOrderReviewBodySchema,
 } from '@module/payment/schema/payment-order.schema';
 import { ConsumerPromotionService } from '@module/promotion/service/consumer-promotion.service';
+import { alipayConfiguration, type IAlipayConfig } from '@config/configuration';
 
 @Injectable()
 export class ConsumerPaymentService {
@@ -47,6 +48,8 @@ export class ConsumerPaymentService {
     private readonly consumerPostProductService: ConsumerPostProductService,
     @Inject(forwardRef(() => ConsumerPromotionService))
     private readonly consumerPromotionService: ConsumerPromotionService,
+    @Inject(alipayConfiguration.KEY)
+    private readonly alipayConfig: IAlipayConfig,
   ) {}
 
   async createActivityJoinOrder(
@@ -233,7 +236,10 @@ export class ConsumerPaymentService {
   }
 
   getPaymentConfig() {
-    return this.paymentFeeService.getPublicConfig();
+    return {
+      ...this.paymentFeeService.getPublicConfig(),
+      alipaySandboxMode: this.alipayConfig.sandboxMode,
+    };
   }
 
   listTransactions(userId: number, page?: number, limit?: number) {

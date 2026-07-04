@@ -1,0 +1,115 @@
+.order-detail-modal .modal-header {
+  align-items: flex-start;
+  padding-bottom: 0;
+}
+
+.order-detail-subtitle {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.order-detail-body {
+  padding: 16px 20px 0;
+  max-height: min(70vh, 640px);
+  overflow: auto;
+}
+
+.order-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 20px;
+}
+
+.order-detail-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.order-detail-item-wide {
+  grid-column: 1 / -1;
+}
+
+.order-detail-label {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.order-detail-value {
+  font-size: 14px;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+.order-detail-highlight {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--primary);
+}
+
+.order-after-sales {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.order-after-sales h3 {
+  margin: 0 0 12px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.order-after-sales-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.order-after-sales-item {
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+
+.order-after-sales-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+.order-after-sales-time {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.order-after-sales-item p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.order-after-sales-reject {
+  margin-top: 6px !important;
+  color: var(--danger) !important;
+}
+
+.order-detail-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 16px 20px 20px;
+}
+
+.data-table tbody tr.row-clickable {
+  cursor: pointer;
+}
+
+.data-table tbody tr.row-clickable:hover {
+  background: var(--primary-light);
+}

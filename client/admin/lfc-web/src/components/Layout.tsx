@@ -4,6 +4,7 @@ import './Layout.css'
 
 const NAV_ITEMS: { to: string; label: string; end?: boolean }[] = [
   { to: '/', label: '数据概览', end: true },
+  { to: '/analytics', label: '数据分析' },
   { to: '/activities', label: '活动管理' },
   { to: '/posts', label: '笔记管理' },
   { to: '/comments', label: '评论管理' },

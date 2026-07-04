@@ -48,6 +48,8 @@ import com.lfc.consumer.data.model.PaymentTransactionItemDto
 import com.lfc.consumer.data.model.CreateOrderReviewRequest
 import com.lfc.consumer.data.model.ApplyAfterSalesRequest
 import com.lfc.consumer.data.model.UpdateActivityRequest
+import com.lfc.consumer.data.model.IngestAnalyticsEventsRequest
+import com.lfc.consumer.data.model.IngestAnalyticsEventsResponse
 import com.lfc.consumer.data.model.UpdatePostRequest
 import okhttp3.MultipartBody
 import okhttp3.RequestBody
@@ -87,6 +89,7 @@ interface LfcApiService {
         @Query("sort") sort: String? = null,
         @Query("keyword") keyword: String? = null,
         @Query("tab") tab: String? = null,
+        @Query("city") city: String? = null,
     ): PostFeedResponse
 
     @GET("consumer/post/mine")
@@ -284,6 +287,9 @@ interface LfcApiService {
         @Query("page") page: Int,
         @Query("limit") limit: Int,
         @Query("keyword") keyword: String? = null,
+        @Query("latitude") latitude: Double? = null,
+        @Query("longitude") longitude: Double? = null,
+        @Query("sort") sort: String? = null,
     ): PaginatedResponse<ActivityDto>
 
     @GET("consumer/activity")
@@ -474,4 +480,9 @@ interface LfcApiService {
         @Path("id") id: Int,
         @Body request: SendChatMessageRequest,
     ): ChatMessageDto
+
+    @POST("consumer/analytics/events")
+    suspend fun ingestAnalyticsEvents(
+        @Body request: IngestAnalyticsEventsRequest,
+    ): IngestAnalyticsEventsResponse
 }

@@ -6,6 +6,8 @@ import {
 } from '../api/user'
 import { ApiError } from '../api/client'
 import { Pagination } from '../components/Pagination'
+import { BanUserModal } from '../components/BanUserModal'
+import { ConfirmDialog } from '../components/ConfirmDialog'
 import { CreateUserModal } from '../components/CreateUserModal'
 import { EditUserModal } from '../components/EditUserModal'
 import { PageHeader } from '../components/PageHeader'
@@ -41,6 +43,9 @@ export function UsersPage() {
   const [error, setError] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
   const [editingUser, setEditingUser] = useState<User | null>(null)
+  const [banningUser, setBanningUser] = useState<User | null>(null)
+  const [deletingUser, setDeletingUser] = useState<User | null>(null)
+  const [deleteLoading, setDeleteLoading] = useState(false)
 
   const loadUsers = useCallback(async () => {
     if (!token) return
@@ -75,16 +80,15 @@ export function UsersPage() {
     setKeyword(searchInput.trim())
   }
 
-  async function handleBan(user: User) {
-    if (!token) return
-    const reason = window.prompt('请输入封禁原因', user.banReason ?? '违反平台规定')
-    if (reason === null) return
+  async function handleBanConfirm(reason: string) {
+    if (!token || !banningUser) return
     try {
-      await updateUserStatus(token, user.id, 'BANNED', reason)
+      await updateUserStatus(token, banningUser.id, 'BANNED', reason)
       toast.success('用户已封禁')
       void loadUsers()
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : '封禁失败')
+      throw err
     }
   }
 
@@ -99,15 +103,18 @@ export function UsersPage() {
     }
   }
 
-  async function handleDelete(user: User) {
-    if (!token) return
-    if (!window.confirm(`确定删除用户「${user.realName}」吗？此操作不可恢复。`)) return
+  async function handleDeleteConfirm() {
+    if (!token || !deletingUser) return
+    setDeleteLoading(true)
     try {
-      await deleteUser(token, user.id)
+      await deleteUser(token, deletingUser.id)
       toast.success('用户已删除')
+      setDeletingUser(null)
       void loadUsers()
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : '删除失败')
+    } finally {
+      setDeleteLoading(false)
     }
   }
 
@@ -210,14 +217,14 @@ export function UsersPage() {
                             : {
                                 label: '封禁',
                                 variant: 'danger',
-                                onClick: () => void handleBan(user),
+                                onClick: () => setBanningUser(user),
                                 disabled:
                                   user.id === currentUser?.id || user.role === 'ADMIN',
                               },
                           {
                             label: '删除',
                             variant: 'danger',
-                            onClick: () => void handleDelete(user),
+                            onClick: () => setDeletingUser(user),
                             disabled:
                               user.id === currentUser?.id || user.role === 'ADMIN',
                           },
@@ -239,6 +246,27 @@ export function UsersPage() {
         user={editingUser}
         onClose={() => setEditingUser(null)}
         onSaved={() => void loadUsers()}
+      />
+      <BanUserModal
+        user={banningUser}
+        onClose={() => setBanningUser(null)}
+        onConfirm={handleBanConfirm}
+      />
+      <ConfirmDialog
+        open={deletingUser != null}
+        title="删除用户"
+        message={
+          deletingUser
+            ? `确定删除用户「${deletingUser.realName}」吗？此操作不可恢复。`
+            : ''
+        }
+        confirmLabel="确认删除"
+        danger
+        loading={deleteLoading}
+        onClose={() => {
+          if (!deleteLoading) setDeletingUser(null)
+        }}
+        onConfirm={() => void handleDeleteConfirm()}
       />
     </div>
   )

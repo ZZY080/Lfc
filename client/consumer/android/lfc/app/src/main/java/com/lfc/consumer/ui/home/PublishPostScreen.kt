@@ -86,28 +86,51 @@ fun PublishPostScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var title by remember { mutableStateOf(initial?.title ?: "") }
-    var content by remember { mutableStateOf(initial?.content ?: "") }
-    var noteCategory by remember { mutableStateOf(initial?.category ?: DEFAULT_POST_CATEGORY) }
-    var locationLabel by rememberSaveable {
+    val formSaveKey = if (initial == null) {
+        "publish_post_create"
+    } else {
+        "publish_post_edit_${initial.id}"
+    }
+    var title by rememberSaveable(formSaveKey) { mutableStateOf(initial?.title ?: "") }
+    var content by rememberSaveable(formSaveKey) { mutableStateOf(initial?.content ?: "") }
+    var noteCategory by rememberSaveable(formSaveKey) {
+        mutableStateOf(initial?.category ?: DEFAULT_POST_CATEGORY)
+    }
+    var locationLabel by rememberSaveable(formSaveKey) {
         mutableStateOf(initial?.location.orEmpty())
     }
-    var latitude by rememberSaveable { mutableStateOf(initial?.latitude) }
-    var longitude by rememberSaveable { mutableStateOf(initial?.longitude) }
+    var latitude by rememberSaveable(formSaveKey) { mutableStateOf(initial?.latitude) }
+    var longitude by rememberSaveable(formSaveKey) { mutableStateOf(initial?.longitude) }
     var isLocating by remember { mutableStateOf(false) }
     var locationHint by remember { mutableStateOf<String?>(null) }
     var locateJob by remember { mutableStateOf<Job?>(null) }
-    var autoLocateConsumed by rememberSaveable {
+    var autoLocateConsumed by rememberSaveable(formSaveKey) {
         mutableStateOf(hasValidCoordinate(initial?.latitude, initial?.longitude))
     }
-    var attachProduct by remember { mutableStateOf(initial?.product != null) }
-    var price by remember { mutableStateOf(initial?.product?.price ?: "") }
-    var originalPrice by remember { mutableStateOf(initial?.product?.originalPrice ?: "") }
-    var category by remember { mutableStateOf(initial?.product?.category ?: DEFAULT_POST_PRODUCT_CATEGORY) }
-    var condition by remember { mutableStateOf(initial?.product?.condition ?: "GOOD") }
-    var deliveryMethod by remember { mutableStateOf(initial?.product?.deliveryMethod ?: "PICKUP") }
-    val selectedImages = rememberPublishImageSelection()
-    val keptExistingImages = rememberPublishExistingImages(initial?.images.orEmpty(), initial?.id)
+    var attachProduct by rememberSaveable(formSaveKey) {
+        mutableStateOf(initial?.product != null)
+    }
+    var price by rememberSaveable(formSaveKey) {
+        mutableStateOf(initial?.product?.price ?: "")
+    }
+    var originalPrice by rememberSaveable(formSaveKey) {
+        mutableStateOf(initial?.product?.originalPrice ?: "")
+    }
+    var category by rememberSaveable(formSaveKey) {
+        mutableStateOf(initial?.product?.category ?: DEFAULT_POST_PRODUCT_CATEGORY)
+    }
+    var condition by rememberSaveable(formSaveKey) {
+        mutableStateOf(initial?.product?.condition ?: "GOOD")
+    }
+    var deliveryMethod by rememberSaveable(formSaveKey) {
+        mutableStateOf(initial?.product?.deliveryMethod ?: "PICKUP")
+    }
+    val selectedImages = rememberPublishImageSelection(saveKey = "${formSaveKey}_images")
+    val keptExistingImages = rememberPublishExistingImages(
+        initial = initial?.images.orEmpty(),
+        key = initial?.id,
+        saveKey = "${formSaveKey}_existing_images",
+    )
     val hasLocation = hasValidCoordinate(latitude, longitude)
     val canSubmit = (content.isNotBlank() || selectedImages.isNotEmpty() || keptExistingImages.isNotEmpty()) &&
         hasLocation

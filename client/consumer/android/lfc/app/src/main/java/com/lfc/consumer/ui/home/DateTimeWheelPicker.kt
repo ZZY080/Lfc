@@ -49,6 +49,41 @@ fun formatActivityDateTimeForDisplay(value: String): String {
     }.getOrElse { value }
 }
 
+private val compactDateTimeFormat = SimpleDateFormat("M月d日 HH:mm", Locale.getDefault())
+private val listDateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+
+fun formatActivityDateTimeCompact(value: String): String {
+    if (value.isBlank()) return ""
+    val normalized = value.trim().replace(" ", "T").take(16)
+    return runCatching {
+        compactDateTimeFormat.format(isoDateTimeFormat.parse(normalized)!!)
+    }.getOrElse { normalized.replace("T", " ") }
+}
+
+fun formatActivityListDate(value: String): String {
+    if (value.isBlank()) return ""
+    val normalized = value.trim().replace(" ", "T").take(16)
+    return runCatching {
+        listDateFormat.format(isoDateTimeFormat.parse(normalized)!!)
+    }.getOrElse { normalized.take(10) }
+}
+
+fun formatActivityDateRangeForList(start: String, end: String): String {
+    val startDate = formatActivityListDate(start)
+    val endDate = formatActivityListDate(end)
+    return when {
+        startDate.isBlank() && endDate.isBlank() -> "时间待定"
+        startDate.isBlank() -> endDate
+        endDate.isBlank() -> startDate
+        else -> "$startDate 至 $endDate"
+    }
+}
+
+fun isActivityEnded(endTime: String): Boolean {
+    val calendar = parseActivityDateTime(endTime) ?: return false
+    return calendar.timeInMillis < System.currentTimeMillis()
+}
+
 fun formatActivityDateTimeForApi(calendar: Calendar): String = isoDateTimeFormat.format(calendar.time)
 
 fun parseActivityDateTime(value: String): Calendar? {

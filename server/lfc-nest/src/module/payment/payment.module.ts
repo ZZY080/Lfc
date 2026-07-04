@@ -29,6 +29,7 @@ import { UserAlipayModule } from '@module/user/user-alipay.module';
 import { UserEntity } from '@module/user/entity/user.entity';
 import { PostEntity } from '@module/post/entity/post.entity';
 import { ActivityEntity } from '@module/activity/entity/activity.entity';
+import { AnalyticsModule } from '@module/analytics/analytics.module';
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { ActivityEntity } from '@module/activity/entity/activity.entity';
     forwardRef(() => UserAlipayModule),
     forwardRef(() => AlipayModule),
     MessageModule,
+    AnalyticsModule,
   ],
   controllers: [ConsumerPaymentController, AdminPaymentController],
   providers: [

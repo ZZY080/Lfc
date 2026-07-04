@@ -21,6 +21,7 @@ import { UserAlipayModule } from '@module/user/user-alipay.module';
 import { PromotionModule } from '@module/promotion/promotion.module';
 import { MessageModule } from '@module/message/message.module';
 import { FeedChannelModule } from '@module/feed-channel/feed-channel.module';
+import { AnalyticsModule } from '@module/analytics/analytics.module';
 import { RoleAuthzService } from '@shared/auth/role-authz.service';
 
 @Module({
@@ -39,6 +40,7 @@ import { RoleAuthzService } from '@shared/auth/role-authz.service';
     forwardRef(() => PromotionModule),
     MessageModule,
     FeedChannelModule,
+    AnalyticsModule,
   ],
   controllers: [
     ConsumerPostController,

@@ -1,6 +1,7 @@
 package com.lfc.consumer.ui.home
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -20,17 +22,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Event
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.pullrefresh.pullRefresh
 import androidx.compose.material.pullrefresh.rememberPullRefreshState
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -50,16 +47,16 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.lfc.consumer.data.model.displayName
 import com.lfc.consumer.data.model.isPaidActivity
-import com.lfc.consumer.data.model.promotionBadge
 import com.lfc.consumer.data.model.ActivityDto
 import com.lfc.consumer.data.model.ActivityFeedUiState
 import com.lfc.consumer.ui.theme.XhsBackground
+import com.lfc.consumer.ui.theme.XhsDivider
 import com.lfc.consumer.ui.theme.XhsRed
 import com.lfc.consumer.ui.theme.XhsTextPrimary
 import com.lfc.consumer.ui.theme.XhsTextSecondary
 import kotlinx.coroutines.flow.distinctUntilChanged
 
-private val activityCoverHeight = 168.dp
+private val activityCoverSize = 96.dp
 
 @Composable
 fun ActivityFeedScreen(
@@ -159,14 +156,15 @@ private fun ActivityFeedContent(
     ) {
         LazyColumn(
             state = listState,
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.White),
+            contentPadding = PaddingValues(bottom = 8.dp),
         ) {
             when {
                 feedState.isInitialLoading && feedState.activities.isEmpty() -> {
                     item(key = "loading") {
-                        ActivityFeedSkeleton(itemCount = 2)
+                        ActivityFeedSkeleton(itemCount = 4)
                     }
                 }
                 feedState.activities.isEmpty() -> {
@@ -185,12 +183,16 @@ private fun ActivityFeedContent(
                     items(feedState.activities, key = { it.id }) { activity ->
                         val isJoinBusy = isPaymentProcessing &&
                             (payingActivityId == null || payingActivityId == activity.id)
-                        ActivityCard(
+                        ActivityListItem(
                             activity = activity,
                             isSelf = currentUserId != null && currentUserId == activity.authorId,
                             isJoinBusy = isJoinBusy,
                             onClick = { onActivityClick(activity.id) },
                             onJoin = { onJoin(activity.id) },
+                        )
+                        HorizontalDivider(
+                            color = XhsDivider,
+                            thickness = 0.5.dp,
                         )
                     }
                     if (feedState.isLoadingMore) {
@@ -224,7 +226,7 @@ private fun ActivityFeedContent(
 }
 
 @Composable
-private fun ActivityCard(
+private fun ActivityListItem(
     activity: ActivityDto,
     isSelf: Boolean,
     isJoinBusy: Boolean,
@@ -232,251 +234,169 @@ private fun ActivityCard(
     onJoin: () -> Unit,
 ) {
     val coverUrl = activity.images?.firstOrNull()
-    val participantCount = activity.participants?.size ?: 0
-    val joinLabel = when {
-        activity.isJoined -> "已报名"
-        activity.isPaidActivity() -> "支付 ${formatActivityFeeLabel(activity.fee)}"
-        else -> "免费报名"
-    }
+    val organizerLabel = activity.author?.displayName() ?: "同学${activity.authorId}"
+    val (actionLabel, canJoin) = activityFeedActionLabel(activity, isSelf)
 
-    Surface(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(16.dp),
-        color = Color.White,
-        shadowElevation = 1.dp,
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.Top,
     ) {
-        Column {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(activityCoverHeight)
-                    .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
-                    .background(coverGradientForId(activity.id)),
-            ) {
-                if (coverUrl != null) {
-                    AsyncImage(
-                        model = coverUrl,
-                        contentDescription = activity.title,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
-
-                Text(
-                    text = profileActivityStatusLabel(activity.status),
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(8.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Color.Black.copy(alpha = 0.42f))
-                        .padding(horizontal = 6.dp, vertical = 2.dp),
-                    color = Color.White,
-                    fontSize = 10.sp,
+        Box(
+            modifier = Modifier
+                .size(activityCoverSize)
+                .clip(RoundedCornerShape(6.dp))
+                .background(coverGradientForId(activity.id)),
+        ) {
+            if (coverUrl != null) {
+                AsyncImage(
+                    model = coverUrl,
+                    contentDescription = activity.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
                 )
+            } else {
+                Icon(
+                    Icons.Default.Event,
+                    contentDescription = null,
+                    tint = Color.White.copy(alpha = 0.85f),
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .size(28.dp),
+                )
+            }
+        }
 
-                activity.promotionBadge()?.let { badge ->
-                    XhsPromotionBadge(
-                        label = badge,
-                        modifier = Modifier
-                            .align(Alignment.TopStart)
-                            .padding(8.dp),
-                    )
-                }
+        Spacer(modifier = Modifier.width(12.dp))
 
-                if (participantCount > 0) {
-                    Row(
-                        modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .padding(8.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(Color.Black.copy(alpha = 0.42f))
-                            .padding(horizontal = 6.dp, vertical = 2.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(
-                            Icons.Default.Event,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(11.dp),
-                        )
-                        Text(
-                            text = formatLikeCount(participantCount),
-                            color = Color.White,
-                            fontSize = 10.sp,
-                            modifier = Modifier.padding(start = 2.dp),
-                        )
-                    }
-                }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = activity.title,
+                fontSize = 16.sp,
+                lineHeight = 22.sp,
+                fontWeight = FontWeight.Bold,
+                color = XhsTextPrimary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = formatActivityDateRangeForList(activity.startTime, activity.endTime),
+                fontSize = 13.sp,
+                color = XhsTextSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.Top,
+            ) {
+                Icon(
+                    imageVector = Icons.Default.LocationOn,
+                    contentDescription = null,
+                    tint = XhsTextSecondary,
+                    modifier = Modifier
+                        .padding(top = 1.dp)
+                        .size(14.dp),
+                )
+                Text(
+                    text = activity.location.ifBlank { "地点待定" },
+                    modifier = Modifier.padding(start = 4.dp),
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp,
+                    color = XhsTextSecondary,
+                )
             }
 
-            Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Text(
-                    text = activity.title,
-                    fontSize = 16.sp,
-                    lineHeight = 22.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = XhsTextPrimary,
-                    maxLines = 2,
+                    text = organizerLabel,
+                    modifier = Modifier.weight(1f),
+                    fontSize = 13.sp,
+                    color = XhsTextSecondary,
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                if (!activity.description.isNullOrBlank()) {
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = activity.description.orEmpty(),
-                        fontSize = 14.sp,
-                        lineHeight = 21.sp,
-                        color = XhsTextPrimary,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
-                }
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(
-                        Icons.Default.LocationOn,
-                        contentDescription = null,
-                        tint = XhsTextSecondary,
-                        modifier = Modifier.size(15.dp),
-                    )
-                    Text(
-                        text = activity.location,
-                        fontSize = 13.sp,
-                        color = XhsTextSecondary,
-                        modifier = Modifier.padding(start = 4.dp),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                Spacer(modifier = Modifier.height(4.dp))
-                XhsDistanceLabel(
-                    targetLatitude = activity.latitude,
-                    targetLongitude = activity.longitude,
-                    fontSize = 13.sp,
-                    iconSize = 15.dp,
+                ActivityFeedActionChip(
+                    label = actionLabel,
+                    enabled = canJoin && !isJoinBusy,
+                    isLoading = isJoinBusy && canJoin,
+                    onClick = onJoin,
                 )
-                Spacer(modifier = Modifier.height(6.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(
-                        Icons.Default.Schedule,
-                        contentDescription = null,
-                        tint = XhsTextSecondary,
-                        modifier = Modifier.size(15.dp),
-                    )
-                    Text(
-                        text = formatActivityTime(activity.startTime, activity.endTime),
-                        fontSize = 13.sp,
-                        color = XhsTextSecondary,
-                        modifier = Modifier.padding(start = 4.dp),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    val authorLabel = activity.author?.displayName() ?: "同学${activity.authorId}"
-                    XhsProfileAvatar(
-                        label = authorLabel,
-                        size = 20,
-                        avatarUrl = activity.author?.avatarUrl,
-                    )
-                    Text(
-                        text = authorLabel,
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(start = 6.dp),
-                        fontSize = 12.sp,
-                        color = XhsTextSecondary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Icon(
-                        if (activity.isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                        contentDescription = null,
-                        tint = if (activity.isLiked) XhsRed else XhsTextSecondary.copy(alpha = 0.7f),
-                        modifier = Modifier.size(14.dp),
-                    )
-                    if (activity.likeCount > 0) {
-                        Text(
-                            text = formatLikeCount(activity.likeCount),
-                            modifier = Modifier.padding(start = 2.dp),
-                            fontSize = 12.sp,
-                            color = if (activity.isLiked) XhsRed else XhsTextSecondary,
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    val count = activity.participants?.size ?: 0
-                    Column {
-                        Text(
-                            text = "$count 人已报名",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp,
-                            color = XhsRed,
-                        )
-                        Text(
-                            text = buildString {
-                                if (activity.maxParticipants > 0) append("限额 ${activity.maxParticipants} 人 · ")
-                                append(if (activity.isPaidActivity()) formatActivityFeeLabel(activity.fee) else "免费")
-                            },
-                            fontSize = 12.sp,
-                            color = XhsTextSecondary,
-                        )
-                    }
-                    if (!isSelf) {
-                        Button(
-                            onClick = onJoin,
-                            enabled = !activity.isJoined && !isJoinBusy,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (activity.isJoined) Color(0xFFE8E8E8) else XhsRed,
-                                disabledContainerColor = Color(0xFFE8E8E8),
-                                disabledContentColor = XhsTextSecondary,
-                            ),
-                            shape = RoundedCornerShape(20.dp),
-                            modifier = Modifier.height(38.dp),
-                        ) {
-                            if (isJoinBusy && !activity.isJoined) {
-                                CircularProgressIndicator(
-                                    color = Color.White,
-                                    modifier = Modifier.size(18.dp),
-                                    strokeWidth = 2.dp,
-                                )
-                            } else {
-                                Text(
-                                    text = joinLabel,
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (activity.isJoined) XhsTextSecondary else Color.White,
-                                )
-                            }
-                        }
-                    }
-                }
             }
         }
     }
 }
 
-private fun formatActivityTime(start: String, end: String): String {
-    val startShort = start.replace("T", " ").take(16)
-    val endShort = end.replace("T", " ").take(16)
-    return "$startShort ~ $endShort"
+@Composable
+private fun ActivityFeedActionChip(
+    label: String,
+    enabled: Boolean,
+    isLoading: Boolean,
+    onClick: () -> Unit,
+) {
+    val borderColor = if (enabled) XhsRed else XhsRed.copy(alpha = 0.65f)
+    val textColor = if (enabled) XhsRed else XhsRed.copy(alpha = 0.65f)
+
+    Box(
+        modifier = Modifier
+            .padding(start = 8.dp)
+            .height(28.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .border(1.dp, borderColor, RoundedCornerShape(14.dp))
+            .clickable(enabled = enabled && !isLoading, onClick = onClick)
+            .padding(horizontal = 10.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (isLoading) {
+            CircularProgressIndicator(
+                color = XhsRed,
+                modifier = Modifier.size(14.dp),
+                strokeWidth = 2.dp,
+            )
+        } else {
+            Text(
+                text = label,
+                fontSize = 12.sp,
+                color = textColor,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+private fun activityFeedActionLabel(activity: ActivityDto, isSelf: Boolean): Pair<String, Boolean> {
+    if (isActivityEnded(activity.endTime)) {
+        return "活动已结束" to false
+    }
+    when (activity.status.uppercase()) {
+        "OFF_SHELF" -> return "已下架" to false
+        "PENDING" -> return "待审核" to false
+        "REJECTED" -> return "已拒绝" to false
+    }
+    if (activity.isJoined) {
+        return "已报名" to false
+    }
+    if (isSelf) {
+        return profileActivityStatusLabel(activity.status) to false
+    }
+    return when {
+        activity.isPaidActivity() -> "支付 ${formatActivityFeeLabel(activity.fee)}" to true
+        else -> "立即报名" to true
+    }
 }

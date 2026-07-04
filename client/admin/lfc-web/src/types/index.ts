@@ -54,8 +54,17 @@ export interface Activity {
   reviewComment: string | null
   authorId: number
   author?: ActivityAuthor
+  participants?: ActivityParticipant[]
   createdAt: string
   updatedAt: string
+}
+
+export interface ActivityParticipant {
+  id: number
+  activityId: number
+  userId: number
+  joinedAt: string
+  user?: ActivityAuthor
 }
 
 export interface User {
@@ -302,4 +311,130 @@ export interface StatsOverview {
     totalPaidAmount: string
     pendingAfterSales: number
   }
+}
+
+export interface DailyAnalyticsRow {
+  date: string
+  dau: number
+  eventCount: number
+  newUsers: number
+  postsCreated: number
+  activitiesCreated: number
+  ordersPaid: number
+  paidAmount: string
+  appOpens: number
+  screenViews: number
+  postViews: number
+  activityViews: number
+  feedRefreshes: number
+  activityFeedRefreshes: number
+  searches: number
+  postLikes: number
+  postComments: number
+  postFavorites: number
+  activityLikes: number
+  activityJoins: number
+  chatSends: number
+  userFollows: number
+  paymentSuccess: number
+  contentClicks: number
+}
+
+export interface EventDailyCount {
+  date: string
+  event: string
+  count: number
+}
+
+export interface CategoryTotal {
+  category: string
+  count: number
+}
+
+export interface DimensionCount {
+  key: string
+  label: string
+  count: number
+}
+
+export interface HourlyActivity {
+  hour: number
+  label: string
+  count: number
+}
+
+export interface AnalyticsFunnels {
+  payment: { start: number; success: number; rate: number }
+  content: {
+    clicks: number
+    views: number
+    engagements: number
+    viewRate: number
+    engageRate: number
+  }
+  post: {
+    views: number
+    likes: number
+    comments: number
+    favorites: number
+    likeRate: number
+    commentRate: number
+  }
+}
+
+export interface PaymentScenarioStat {
+  key: string
+  label: string
+  start: number
+  success: number
+  rate: number
+}
+
+export interface AnalyticsInsights {
+  topSearchKeywords: DimensionCount[]
+  screenBreakdown: DimensionCount[]
+  feedChannelBreakdown: DimensionCount[]
+  feedTabBreakdown: DimensionCount[]
+  contentClickBreakdown: DimensionCount[]
+  searchTabBreakdown: DimensionCount[]
+  chatMessageTypes: DimensionCount[]
+  postCategoryCreateBreakdown?: DimensionCount[]
+  postCategoryViewBreakdown?: DimensionCount[]
+  paymentScenarioStats?: PaymentScenarioStat[]
+  hourlyActivity: HourlyActivity[]
+  funnels: AnalyticsFunnels
+}
+
+export interface DailyAnalytics {
+  days: number
+  rows: DailyAnalyticsRow[]
+  eventBreakdown: EventDailyCount[]
+  eventLabels: Record<string, string>
+  eventCategories: Record<string, string>
+  categoryTotals: CategoryTotal[]
+  insights?: AnalyticsInsights
+  summary: {
+    totalDau: number
+    avgDau: number
+    totalEvents: number
+    totalNewUsers: number
+    totalPostsCreated: number
+    totalActivitiesCreated: number
+    totalOrdersPaid: number
+    totalPaidAmount: string
+    totalPostViews: number
+    totalActivityViews: number
+    totalEngagements: number
+    totalPaymentSuccess: number
+  }
+}
+
+export interface AnalyticsEventRecord {
+  id: number
+  userId: number | null
+  event: string
+  properties: Record<string, unknown> | null
+  platform: string | null
+  sessionId: string | null
+  createdAt: string
 }

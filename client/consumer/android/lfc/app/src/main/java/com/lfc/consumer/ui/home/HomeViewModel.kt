@@ -68,6 +68,7 @@ import com.lfc.consumer.data.model.BindAlipayOAuthRequest
 import com.lfc.consumer.data.model.SendChatMessageRequest
 import com.lfc.consumer.data.model.UpdateFeedChannelsRequest
 import com.lfc.consumer.data.model.UserProfileDto
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -91,6 +92,8 @@ import com.lfc.consumer.location.distanceMeters
 import com.lfc.consumer.location.extractFeedCityLabel
 import com.lfc.consumer.location.hasValidCoordinate
 import com.lfc.consumer.payment.AlipayHelper
+import com.lfc.consumer.analytics.AnalyticsEvents
+import com.lfc.consumer.analytics.AnalyticsTracker
 import com.google.gson.JsonParser
 
 data class HomeUiState(
@@ -180,6 +183,7 @@ class HomeViewModel(
     private val paymentGate = Any()
     private var paymentGateKey: String? = null
     private var locationJob: Job? = null
+    private var loadMessagesGeneration = 0
 
     init {
         viewModelScope.launch {
@@ -215,7 +219,29 @@ class HomeViewModel(
             try {
                 AmapLocationHelper.getCurrentLocation(appContext)
                     .onSuccess { location ->
+                        val previousCity = feedCityQueryParam(_uiState.value.feed.primaryTab)
+                        val hadActivityCoords = hasValidCoordinate(
+                            _uiState.value.userLocation?.latitude,
+                            _uiState.value.userLocation?.longitude,
+                        )
                         _uiState.value = _uiState.value.copy(userLocation = location)
+                        val newCity = feedCityQueryParam(_uiState.value.feed.primaryTab)
+                        val primaryTab = _uiState.value.feed.primaryTab
+                        if (
+                            newCity != null &&
+                            newCity != previousCity &&
+                            primaryTab != "关注" &&
+                            primaryTab != "发现"
+                        ) {
+                            loadFeed(refresh = true, silent = true)
+                        }
+                        val hasActivityCoords = hasValidCoordinate(
+                            location.latitude,
+                            location.longitude,
+                        )
+                        if (hasActivityCoords && !hadActivityCoords) {
+                            resortActivityFeedByDistance()
+                        }
                     }
             } catch (_: Exception) {
                 // 定位失败不影响主流程，避免未捕获异常导致进程退出
@@ -325,8 +351,12 @@ class HomeViewModel(
                         PromotionOrderRequest(bidAmount = chargeAmount),
                     )
                     _uiState.value = _uiState.value.copy(isPromotionSubmitting = false)
-                    val paid = launchPaymentOrder(order)
+                    val paid = launchPaymentOrder(order, "post_boost")
                     if (!paid) return@launch
+                    AnalyticsTracker.track(
+                        AnalyticsEvents.PROMOTION_PAY,
+                        mapOf("type" to "post", "postId" to postId, "scenario" to "post_boost"),
+                    )
                     refreshPostPromotion(postId, "支付成功，笔记已擦亮")
                 } else {
                     val result = api.boostPost(postId)
@@ -367,8 +397,12 @@ class HomeViewModel(
                         PromotionOrderRequest(bidAmount = chargeAmount),
                     )
                     _uiState.value = _uiState.value.copy(isPromotionSubmitting = false)
-                    val paid = launchPaymentOrder(order)
+                    val paid = launchPaymentOrder(order, "activity_promote")
                     if (!paid) return@launch
+                    AnalyticsTracker.track(
+                        AnalyticsEvents.PROMOTION_PAY,
+                        mapOf("type" to "activity", "activityId" to activityId, "scenario" to "activity_promote"),
+                    )
                     refreshActivityPromotion(activityId, "支付成功，活动已推广")
                 } else {
                     val result = api.promoteActivity(activityId)
@@ -450,6 +484,7 @@ class HomeViewModel(
         viewModelScope.launch {
             runCatching { api.getPaymentConfig() }
                 .onSuccess { config ->
+                    AlipayHelper.setSandboxMode(config.alipaySandboxMode)
                     _uiState.value = _uiState.value.copy(paymentConfig = config)
                 }
         }
@@ -492,7 +527,7 @@ class HomeViewModel(
         }
     }
 
-    fun loadFeed(refresh: Boolean = false) {
+    fun loadFeed(refresh: Boolean = false, silent: Boolean = false) {
         viewModelScope.launch {
             val feed = _uiState.value.feed
             val page = if (refresh) 1 else feed.page
@@ -521,6 +556,7 @@ class HomeViewModel(
                     sort = sort,
                     keyword = null,
                     tab = tabParam,
+                    city = feedCityQueryParam(feed.primaryTab),
                 )
                 val fetched = if (refresh) {
                     response.items
@@ -540,6 +576,15 @@ class HomeViewModel(
                         isLoadingMore = false,
                     ),
                 )
+                if (refresh && !silent) {
+                    AnalyticsTracker.track(
+                        AnalyticsEvents.FEED_REFRESH,
+                        mapOf(
+                            "primaryTab" to feed.primaryTab,
+                            "channel" to feed.selectedTab,
+                        ),
+                    )
+                }
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     feed = _uiState.value.feed.copy(
@@ -547,7 +592,7 @@ class HomeViewModel(
                         isInitialLoading = false,
                         isLoadingMore = false,
                     ),
-                    error = parseError(e, "加载失败"),
+                    error = if (silent) _uiState.value.error else parseError(e, "加载失败"),
                 )
             }
         }
@@ -556,10 +601,11 @@ class HomeViewModel(
     fun loadMoreFeed() {
         val feed = _uiState.value.feed
         if (!feed.hasMore || feed.isLoadingMore || feed.isRefreshing) return
+        AnalyticsTracker.track(AnalyticsEvents.FEED_LOAD_MORE)
         loadFeed(refresh = false)
     }
 
-    fun loadActivityFeed(refresh: Boolean = false) {
+    fun loadActivityFeed(refresh: Boolean = false, silent: Boolean = false) {
         val feed = _uiState.value.activityFeed
         if (refresh && feed.isRefreshing) return
         if (!refresh && feed.isLoadingMore) return
@@ -579,7 +625,10 @@ class HomeViewModel(
         viewModelScope.launch {
             val refreshStartedAt = if (refresh) SystemClock.elapsedRealtime() else 0L
             try {
-                val response = api.getActivityFeed(page = page, limit = ACTIVITY_FEED_PAGE_SIZE)
+                val response = api.getActivityFeed(
+                    page = page,
+                    limit = ACTIVITY_FEED_PAGE_SIZE,
+                )
                 val joinedIds = _uiState.value.myParticipations.map { it.activityId }.toSet()
                 val currentActivities = _uiState.value.activityFeed.activities
                 val merged = if (refresh) {
@@ -595,12 +644,13 @@ class HomeViewModel(
                         activity
                     }
                 }.distinctBy { it.id }
+                val sorted = sortActivitiesByDistance(merged)
                 if (refresh) {
                     awaitMinPullRefreshDuration(refreshStartedAt)
                 }
                 _uiState.value = _uiState.value.copy(
                     activityFeed = _uiState.value.activityFeed.copy(
-                        activities = merged,
+                        activities = sorted,
                         page = page + 1,
                         hasMore = response.hasMore,
                         isRefreshing = false,
@@ -608,8 +658,11 @@ class HomeViewModel(
                         isLoadingMore = false,
                         hasLoadedOnce = true,
                     ),
-                    activities = merged,
+                    activities = sorted,
                 )
+                if (refresh && !silent) {
+                    AnalyticsTracker.track(AnalyticsEvents.ACTIVITY_FEED_REFRESH)
+                }
             } catch (e: Exception) {
                 if (refresh) {
                     awaitMinPullRefreshDuration(refreshStartedAt)
@@ -621,10 +674,39 @@ class HomeViewModel(
                         isLoadingMore = false,
                         hasLoadedOnce = true,
                     ),
-                    error = parseError(e, "加载活动失败"),
+                    error = if (silent) _uiState.value.error else parseError(e, "加载活动失败"),
                 )
             }
         }
+    }
+
+    private fun sortActivitiesByDistance(activities: List<ActivityDto>): List<ActivityDto> {
+        val location = _uiState.value.userLocation
+        if (!hasValidCoordinate(location?.latitude, location?.longitude)) {
+            return activities
+        }
+        return activities.sortedBy { activity ->
+            if (hasValidCoordinate(activity.latitude, activity.longitude)) {
+                distanceMeters(
+                    location!!.latitude,
+                    location.longitude,
+                    activity.latitude!!,
+                    activity.longitude!!,
+                )
+            } else {
+                Double.MAX_VALUE
+            }
+        }
+    }
+
+    private fun resortActivityFeedByDistance() {
+        val feed = _uiState.value.activityFeed
+        if (feed.activities.isEmpty()) return
+        val sorted = sortActivitiesByDistance(feed.activities)
+        _uiState.value = _uiState.value.copy(
+            activityFeed = feed.copy(activities = sorted),
+            activities = sorted,
+        )
     }
 
     fun loadMoreActivityFeed() {
@@ -646,6 +728,10 @@ class HomeViewModel(
             ),
         )
         loadFeed(refresh = true)
+        AnalyticsTracker.track(
+            AnalyticsEvents.FEED_CHANNEL_SWITCH,
+            mapOf("channel" to tab),
+        )
     }
 
     fun toggleFeedChannelPanel() {
@@ -822,6 +908,14 @@ class HomeViewModel(
             ),
         )
         loadFeed(refresh = true)
+        AnalyticsTracker.track(
+            AnalyticsEvents.FEED_TAB_SWITCH,
+            mapOf("tab" to normalized),
+        )
+    }
+    private fun feedCityQueryParam(primaryTab: String): String? {
+        if (primaryTab == "关注" || primaryTab == "发现") return null
+        return primaryTab.takeIf { it.isNotBlank() && it != "同城" }
     }
 
     private fun applyFeedPrimaryFilter(posts: List<PostDto>, primaryTab: String): List<PostDto> {
@@ -830,15 +924,10 @@ class HomeViewModel(
         if (primaryTab != cityLabel) return posts
 
         val userLocation = _uiState.value.userLocation
-        val cityFiltered = posts.filter { post ->
-            val location = post.location.orEmpty()
-            location.contains(cityLabel) || location.contains("${cityLabel}市")
-        }
-        val base = cityFiltered.ifEmpty { posts }
         if (!hasValidCoordinate(userLocation?.latitude, userLocation?.longitude)) {
-            return base
+            return posts
         }
-        return base.sortedBy { post ->
+        return posts.sortedBy { post ->
             if (hasValidCoordinate(post.latitude, post.longitude)) {
                 distanceMeters(
                     userLocation!!.latitude,
@@ -875,6 +964,10 @@ class HomeViewModel(
                 ),
             )
             onNavigate()
+            AnalyticsTracker.track(
+                AnalyticsEvents.SEARCH_SUBMIT,
+                mapOf("keyword" to trimmed),
+            )
             loadSearchResults(refresh = true)
         }
     }
@@ -985,6 +1078,7 @@ class HomeViewModel(
                         search.activities.none { it.id == new.id }
                     }
                 }
+                val sortedActivities = sortActivitiesByDistance(mergedActivities)
                 if (refresh) {
                     awaitMinPullRefreshDuration(refreshStartedAt)
                 }
@@ -992,7 +1086,7 @@ class HomeViewModel(
                 val stillWaitingPosts = latest.selectedTab == "综合" && !latest.postsLoaded
                 _uiState.value = _uiState.value.copy(
                     search = latest.copy(
-                        activities = mergedActivities,
+                        activities = sortedActivities,
                         activitiesPage = page + 1,
                         activitiesHasMore = response.hasMore,
                         activitiesLoaded = true,
@@ -1040,6 +1134,10 @@ class HomeViewModel(
     fun selectSearchTab(tab: String) {
         val search = _uiState.value.search
         if (search.selectedTab == tab) return
+        AnalyticsTracker.track(
+            AnalyticsEvents.SEARCH_TAB_SWITCH,
+            mapOf("tab" to tab),
+        )
         val needsPosts = tab != "活动" && !search.postsLoaded
         val needsActivities = tab != "笔记" && !search.activitiesLoaded
         _uiState.value = _uiState.value.copy(
@@ -1101,6 +1199,10 @@ class HomeViewModel(
                     ),
                 )
                 _uiState.value = _uiState.value.copy(message = "信息发布成功")
+                AnalyticsTracker.track(
+                    AnalyticsEvents.POST_CREATE,
+                    mapOf("category" to category),
+                )
                 onSuccess()
                 refreshAll()
             } catch (e: Exception) {
@@ -1141,7 +1243,11 @@ class HomeViewModel(
                         location = resolvedLocation?.address?.ifBlank { null },
                     ),
                 )
-                _uiState.value = _uiState.value.copy(message = "信息更新成功")
+                _uiState.value = _uiState.value.copy(message = "信息已更新，等待重新审核")
+                AnalyticsTracker.track(
+                    AnalyticsEvents.POST_UPDATE,
+                    mapOf("postId" to id),
+                )
                 onSuccess()
                 refreshAll()
             } catch (e: Exception) {
@@ -1275,6 +1381,7 @@ class HomeViewModel(
                     ),
                 )
                 _uiState.value = _uiState.value.copy(message = "活动已提交，等待审核")
+                AnalyticsTracker.track(AnalyticsEvents.ACTIVITY_CREATE)
                 onSuccess()
                 refreshAll()
             } catch (e: Exception) {
@@ -1388,7 +1495,7 @@ class HomeViewModel(
                 if (activity.isPaidActivity()) {
                     val order = api.createActivityPaymentOrder(id)
                     endPaymentUi(activityId = id)
-                    val paid = launchPaymentOrder(order)
+                    val paid = launchPaymentOrder(order, "activity_join")
                     if (!paid) return@launch
                     refreshAll()
                     if (_uiState.value.selectedActivity?.id == id) {
@@ -1397,6 +1504,10 @@ class HomeViewModel(
                         )
                     }
                     _uiState.value = _uiState.value.copy(message = "已向发起人支付，报名成功")
+                    AnalyticsTracker.track(
+                        AnalyticsEvents.ACTIVITY_JOIN,
+                        mapOf("activityId" to id, "paid" to true),
+                    )
                 } else {
                     api.joinActivity(id)
                     refreshAll()
@@ -1406,6 +1517,10 @@ class HomeViewModel(
                         )
                     }
                     _uiState.value = _uiState.value.copy(message = "报名成功")
+                    AnalyticsTracker.track(
+                        AnalyticsEvents.ACTIVITY_JOIN,
+                        mapOf("activityId" to id, "paid" to false),
+                    )
                 }
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(error = parseError(e, "报名失败"))
@@ -1425,9 +1540,13 @@ class HomeViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             beginPaymentUi(postId = postId, isPurchasing = true)
             try {
+                AnalyticsTracker.track(
+                    AnalyticsEvents.PRODUCT_PURCHASE_START,
+                    mapOf("postId" to postId),
+                )
                 val order = api.createPostProductOrder(postId)
                 endPaymentUi(postId = postId)
-                val paid = launchPaymentOrder(order)
+                val paid = launchPaymentOrder(order, "product")
                 if (!paid) return@launch
                 loadProductDetail(postId)
                 refreshAll()
@@ -1443,11 +1562,43 @@ class HomeViewModel(
         }
     }
 
-    private suspend fun launchPaymentOrder(order: PaymentOrderResultDto): Boolean {
+    private suspend fun launchPaymentOrder(
+        order: PaymentOrderResultDto,
+        scenario: String,
+    ): Boolean {
         if (isOrderAlreadyPaid(order.status)) {
             return true
         }
-        return payWithAlipay(order.outTradeNo, order.alipayOrderStr())
+        AnalyticsTracker.track(
+            AnalyticsEvents.PAYMENT_START,
+            mapOf(
+                "outTradeNo" to order.outTradeNo,
+                "subject" to order.subject,
+                "amount" to order.amount,
+                "scenario" to scenario,
+            ),
+        )
+        val paid = payWithAlipay(order.outTradeNo, order.alipayOrderStr())
+        if (paid) {
+            AnalyticsTracker.track(
+                AnalyticsEvents.PAYMENT_SUCCESS,
+                mapOf(
+                    "outTradeNo" to order.outTradeNo,
+                    "subject" to order.subject,
+                    "amount" to order.amount,
+                    "scenario" to scenario,
+                ),
+            )
+        }
+        return paid
+    }
+
+    private fun paymentScenarioFromBizType(bizType: String?): String = when (bizType) {
+        "POST_PRODUCT_PURCHASE" -> "product"
+        "ACTIVITY_JOIN" -> "activity_join"
+        "POST_BOOST" -> "post_boost"
+        "ACTIVITY_PROMOTE" -> "activity_promote"
+        else -> bizType?.lowercase() ?: "unknown"
     }
 
     private fun isOrderAlreadyPaid(status: String): Boolean {
@@ -1526,6 +1677,10 @@ class HomeViewModel(
                     productPurchaseOrder = purchaseOrder,
                     isPostLoading = false,
                 )
+                AnalyticsTracker.track(
+                    AnalyticsEvents.PRODUCT_VIEW,
+                    mapOf("postId" to id, "category" to post.category),
+                )
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isPostLoading = false,
@@ -1557,6 +1712,13 @@ class HomeViewModel(
         }
     }
 
+    fun trackContentClick(type: String, contentId: Int) {
+        AnalyticsTracker.track(
+            AnalyticsEvents.CONTENT_CLICK,
+            mapOf("type" to type, "contentId" to contentId),
+        )
+    }
+
     fun loadPostDetail(id: Int) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(
@@ -1576,6 +1738,10 @@ class HomeViewModel(
                 rememberViewedShareFromPost(post)
                 loadPostComments(id, refresh = true)
                 updatePostViewCount(post.id, post.viewCount)
+                AnalyticsTracker.track(
+                    AnalyticsEvents.POST_VIEW,
+                    mapOf("postId" to id, "category" to post.category),
+                )
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isPostLoading = false,
@@ -1698,6 +1864,10 @@ class HomeViewModel(
             try {
                 val state = api.togglePostLike(postId)
                 updatePostSocialState(postId, state)
+                AnalyticsTracker.track(
+                    AnalyticsEvents.POST_LIKE,
+                    mapOf("postId" to postId, "liked" to state.isLiked),
+                )
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(error = parseError(e, "操作失败"))
             } finally {
@@ -1712,6 +1882,10 @@ class HomeViewModel(
             try {
                 val state = api.togglePostFavorite(postId)
                 updatePostSocialState(postId, state)
+                AnalyticsTracker.track(
+                    AnalyticsEvents.POST_FAVORITE,
+                    mapOf("postId" to postId, "favorited" to state.isFavorited),
+                )
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(error = parseError(e, "操作失败"))
             } finally {
@@ -1734,6 +1908,10 @@ class HomeViewModel(
                         ),
                     )
                 }
+                AnalyticsTracker.track(
+                    AnalyticsEvents.COMMENT_LIKE,
+                    mapOf("postId" to postId, "commentId" to commentId, "liked" to state.isLiked),
+                )
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(error = parseError(e, "操作失败"))
             }
@@ -1763,6 +1941,14 @@ class HomeViewModel(
                         selectedPost = post.copy(commentCount = post.commentCount + 1),
                     )
                 }
+                AnalyticsTracker.track(
+                    AnalyticsEvents.POST_COMMENT,
+                    mapOf(
+                        "postId" to postId,
+                        "hasReply" to (parentId != null),
+                        "hasImage" to (imageUrl != null),
+                    ),
+                )
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(error = parseError(e, "评论失败"))
             } finally {
@@ -1887,6 +2073,10 @@ class HomeViewModel(
                     isActivityLoading = false,
                 )
                 rememberViewedShareFromActivity(activity)
+                AnalyticsTracker.track(
+                    AnalyticsEvents.ACTIVITY_VIEW,
+                    mapOf("activityId" to id),
+                )
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isActivityLoading = false,
@@ -1902,6 +2092,10 @@ class HomeViewModel(
             try {
                 val state = api.toggleActivityLike(activityId)
                 updateActivitySocialState(activityId, state)
+                AnalyticsTracker.track(
+                    AnalyticsEvents.ACTIVITY_LIKE,
+                    mapOf("activityId" to activityId, "liked" to state.isLiked),
+                )
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(error = parseError(e, "操作失败"))
             } finally {
@@ -1916,6 +2110,10 @@ class HomeViewModel(
             try {
                 val state = api.toggleActivityFavorite(activityId)
                 updateActivitySocialState(activityId, state)
+                AnalyticsTracker.track(
+                    AnalyticsEvents.ACTIVITY_FAVORITE,
+                    mapOf("activityId" to activityId, "favorited" to state.isFavorited),
+                )
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(error = parseError(e, "操作失败"))
             } finally {
@@ -2094,8 +2292,13 @@ class HomeViewModel(
                 _uiState.value = _uiState.value.copy(unreadCount = loadTotalUnreadCount())
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
-                    messages = previousMessages,
-                    notificationFeed = previousFeed,
+                    messages = _uiState.value.messages.copy(
+                        notificationPreview = previousMessages.notificationPreview,
+                        notificationTotal = previousMessages.notificationTotal,
+                    ),
+                    notificationFeed = previousFeed.copy(
+                        notifications = previousFeed.notifications,
+                    ),
                     error = parseError(e, "删除通知失败"),
                 )
             }
@@ -2116,7 +2319,9 @@ class HomeViewModel(
                 _uiState.value = _uiState.value.copy(unreadCount = loadTotalUnreadCount())
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
-                    messages = previousMessages,
+                    messages = _uiState.value.messages.copy(
+                        conversations = previousMessages.conversations,
+                    ),
                     conversations = previousMessages.conversations,
                     error = parseError(e, "删除会话失败"),
                 )
@@ -2126,10 +2331,12 @@ class HomeViewModel(
 
     fun loadMessages(refresh: Boolean = false) {
         val messages = _uiState.value.messages
-        if (refresh && messages.isRefreshing) return
-        if (!refresh && messages.isLoadingMore) return
+        if (!refresh && (messages.isLoadingMore || !messages.hasMore || messages.isRefreshing)) {
+            return
+        }
 
         val page = if (refresh) 1 else messages.page
+        val generation = ++loadMessagesGeneration
 
         _uiState.value = _uiState.value.copy(
             messages = messages.copy(
@@ -2152,6 +2359,7 @@ class HomeViewModel(
                 }
                 val notificationUnread = api.getNotificationUnreadCount().count
                 val unreadCount = loadTotalUnreadCount()
+                if (generation != loadMessagesGeneration) return@launch
                 val currentMessages = _uiState.value.messages
                 val mergedConversations = if (refresh) {
                     conversationResponse.items
@@ -2163,6 +2371,7 @@ class HomeViewModel(
                 if (refresh) {
                     awaitMinPullRefreshDuration(refreshStartedAt)
                 }
+                if (generation != loadMessagesGeneration) return@launch
                 _uiState.value = _uiState.value.copy(
                     messages = currentMessages.copy(
                         conversations = mergedConversations,
@@ -2171,26 +2380,31 @@ class HomeViewModel(
                         notificationUnreadCount = notificationUnread,
                         page = page + 1,
                         hasMore = conversationResponse.hasMore,
-                        isRefreshing = false,
-                        isInitialLoading = false,
-                        isLoadingMore = false,
                         hasLoadedOnce = true,
                     ),
                     conversations = mergedConversations,
                     unreadCount = unreadCount,
                 )
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
+                if (generation != loadMessagesGeneration) return@launch
                 if (refresh) {
                     awaitMinPullRefreshDuration(refreshStartedAt)
                 }
                 _uiState.value = _uiState.value.copy(
-                    messages = _uiState.value.messages.copy(
-                        isRefreshing = false,
-                        isInitialLoading = false,
-                        isLoadingMore = false,
-                    ),
                     error = parseError(e, "加载消息失败"),
                 )
+            } finally {
+                if (generation == loadMessagesGeneration) {
+                    _uiState.value = _uiState.value.copy(
+                        messages = _uiState.value.messages.copy(
+                            isRefreshing = false,
+                            isInitialLoading = false,
+                            isLoadingMore = false,
+                        ),
+                    )
+                }
             }
         }
     }
@@ -2297,9 +2511,8 @@ class HomeViewModel(
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isChatLoading = true, chatMessages = emptyList())
             try {
-                val messages = api.getChatMessages(conversationId)
-                val currentMessages = _uiState.value.messages
-                var conversation = currentMessages.conversations.find { it.id == conversationId }
+                val chatMessages = api.getChatMessages(conversationId)
+                var conversation = _uiState.value.messages.conversations.find { it.id == conversationId }
                 if (conversation == null) {
                     val response = api.getConversations(page = 1, limit = MESSAGES_CONVERSATION_PAGE_SIZE)
                     conversation = response.items.find { it.id == conversationId }
@@ -2308,10 +2521,19 @@ class HomeViewModel(
                 if (_uiState.value.chatComposeAttachment == null && conversation != null) {
                     prepareChatCompose(conversation.peerUserId)
                 }
+                val latestMessages = _uiState.value.messages
+                val mergedConversations = when {
+                    conversation == null -> latestMessages.conversations
+                    latestMessages.conversations.any { it.id == conversationId } ->
+                        latestMessages.conversations.map { item ->
+                            if (item.id == conversationId) conversation else item
+                        }
+                    else -> listOf(conversation) + latestMessages.conversations
+                }
                 _uiState.value = _uiState.value.copy(
-                    chatMessages = messages,
-                    messages = currentMessages,
-                    conversations = currentMessages.conversations,
+                    chatMessages = chatMessages,
+                    messages = latestMessages.copy(conversations = mergedConversations),
+                    conversations = mergedConversations,
                     selectedConversation = conversation,
                     unreadCount = unreadCount,
                     isChatLoading = false,
@@ -2389,6 +2611,13 @@ class HomeViewModel(
                 selectedConversation = updatedMessages.conversations.find { it.id == conversationId }
                     ?: _uiState.value.selectedConversation,
                 isChatSending = false,
+            )
+            AnalyticsTracker.track(
+                AnalyticsEvents.CHAT_SEND,
+                mapOf(
+                    "conversationId" to conversationId,
+                    "messageType" to messageType,
+                ),
             )
         } catch (e: Exception) {
             _uiState.value = _uiState.value.copy(
@@ -2668,6 +2897,10 @@ class HomeViewModel(
                     selectedUserProfile = resolvedProfile,
                     isUserProfileLoading = false,
                     visitorProfileTabs = seedProfileTabsFromProfile(userId, profile),
+                )
+                AnalyticsTracker.track(
+                    AnalyticsEvents.PROFILE_VIEW,
+                    mapOf("userId" to userId),
                 )
                 loadProfileTab(tab = 0, userId = userId, forceVisitorBucket = true)
                 preloadProfileTabTotals(userId, useSelfBucket = true)
@@ -3598,7 +3831,7 @@ class HomeViewModel(
                 _uiState.value = _uiState.value.copy(
                     orderCenter = _uiState.value.orderCenter.copy(actingOutTradeNo = null),
                 )
-                val paid = launchPaymentOrder(payment)
+                val paid = launchPaymentOrder(payment, paymentScenarioFromBizType(order.bizType))
                 if (paid) {
                     refreshOrderCenter()
                     refreshAll()
@@ -3921,6 +4154,10 @@ class HomeViewModel(
                     selectedUserProfile = profile,
                     detailAuthorFollowing = if (isDetailAuthor(userId)) result.isFollowing else _uiState.value.detailAuthorFollowing,
                 )
+                AnalyticsTracker.track(
+                    AnalyticsEvents.USER_FOLLOW,
+                    mapOf("userId" to userId, "following" to result.isFollowing),
+                )
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(error = parseError(e, "操作失败"))
             }
@@ -3937,6 +4174,10 @@ class HomeViewModel(
                     selectedUserProfile = current.selectedUserProfile?.takeIf { it.id == authorId }
                         ?.copy(isFollowing = result.isFollowing)
                         ?: current.selectedUserProfile,
+                )
+                AnalyticsTracker.track(
+                    AnalyticsEvents.USER_FOLLOW,
+                    mapOf("userId" to authorId, "following" to result.isFollowing),
                 )
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(error = parseError(e, "操作失败"))

@@ -53,6 +53,9 @@ export class ConsumerActivityController {
       query.limit,
       userId,
       query.keyword,
+      query.latitude,
+      query.longitude,
+      query.sort,
     );
   }
 

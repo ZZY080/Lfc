@@ -59,7 +59,7 @@ export class AdminActivityService {
     await this.roleAuthzService.assertRole(userId, UserRole.ADMIN);
     const activity = await this.activityRepository.findOne({
       where: { id },
-      relations: ['author', 'participants'],
+      relations: ['author', 'participants', 'participants.user'],
     });
     if (!activity) {
       throw new NotFoundException('活动不存在');

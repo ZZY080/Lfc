@@ -3,6 +3,7 @@ package com.lfc.consumer.payment
 import android.app.Activity
 import android.os.Build
 import com.alipay.sdk.app.AuthTask
+import com.alipay.sdk.app.EnvUtils
 import com.alipay.sdk.app.PayTask
 import java.net.URLDecoder
 import kotlinx.coroutines.Dispatchers
@@ -22,6 +23,13 @@ data class AlipayAuthResult(
 )
 
 object AlipayHelper {
+    @Volatile
+    private var sandboxMode: Boolean = false
+
+    fun setSandboxMode(enabled: Boolean) {
+        sandboxMode = enabled
+    }
+
     suspend fun pay(orderStr: String): AlipayPayResult {
         val activity = AlipayPaymentHost.getActivity()
             ?: return AlipayPayResult(
@@ -53,7 +61,8 @@ object AlipayHelper {
 
         return withContext(Dispatchers.IO) {
             try {
-                val raw = PayTask(activity).payV2(orderStr, false)
+                applyAlipayEnvironment(orderStr)
+                val raw = PayTask(activity).payV2(orderStr, true)
                 val status = raw["resultStatus"].orEmpty()
                 AlipayPayResult(
                     success = status == "9000",
@@ -93,7 +102,8 @@ object AlipayHelper {
 
         return withContext(Dispatchers.IO) {
             try {
-                val raw = AuthTask(activity).authV2(authInfo, false)
+                applyAlipayEnvironment(authInfo)
+                val raw = AuthTask(activity).authV2(authInfo, true)
                 val status = raw["resultStatus"].orEmpty()
                 val result = raw["result"].orEmpty()
                 val authCode = parseAuthCode(result)
@@ -119,9 +129,18 @@ object AlipayHelper {
         "8000" -> "支付处理中，请稍后查看订单状态"
         "6001" -> "已取消支付"
         "6002" -> "网络异常，请稍后重试"
-        "4000" -> result.memo.ifBlank { "支付失败" }
+        "4000" -> formatPayFailure(result)
         "ERROR" -> result.memo.ifBlank { "支付宝调起失败" }
         else -> result.memo.ifBlank { "支付未完成" }
+    }
+
+    private fun formatPayFailure(result: AlipayPayResult): String {
+        val memo = result.memo.trim()
+        if (memo.contains("系统繁忙")) {
+            return "支付宝系统繁忙：多为沙箱密钥与 AppID 不匹配。请到开放平台沙箱控制台升级环境，" +
+                "上传应用公钥并更新 ALIPAY 配置；支付请使用「支付宝沙箱版」App。"
+        }
+        return memo.ifBlank { "支付失败" }
     }
 
     fun authMessage(result: AlipayAuthResult): String = when (result.resultStatus) {
@@ -131,6 +150,26 @@ object AlipayHelper {
         "4000" -> result.memo.ifBlank { "授权失败" }
         "ERROR" -> result.memo.ifBlank { "支付宝调起失败" }
         else -> result.memo.ifBlank { "授权未完成（status=${result.resultStatus}）" }
+    }
+
+    private fun applyAlipayEnvironment(paramString: String) {
+        val appId = extractQueryParam(paramString, "app_id")
+        val useSandbox = when {
+            appId?.startsWith("902100") == true -> true
+            appId != null -> false
+            else -> sandboxMode
+        }
+        EnvUtils.setEnv(
+            if (useSandbox) EnvUtils.EnvEnum.SANDBOX else EnvUtils.EnvEnum.ONLINE,
+        )
+    }
+
+    private fun extractQueryParam(paramString: String, key: String): String? {
+        val pattern = Regex("(?:^|&)$key=([^&]*)")
+        return pattern.find(paramString)?.groupValues?.getOrNull(1)
+            ?.let { URLDecoder.decode(it, "UTF-8") }
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
     }
 
     private fun isActivityUnavailable(activity: Activity): Boolean {

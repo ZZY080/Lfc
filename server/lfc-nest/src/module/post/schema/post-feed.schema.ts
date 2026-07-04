@@ -27,4 +27,8 @@ export class PostFeedQuerySchema implements PostFeedQueryDto {
   @IsOptional()
   @IsString()
   tab?: string;
+
+  @IsOptional()
+  @IsString()
+  city?: string;
 }

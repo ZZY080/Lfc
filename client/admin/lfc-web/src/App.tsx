@@ -6,6 +6,8 @@ import { ToastProvider } from './components/Toast'
 import { AuthProvider } from './context/AuthContext'
 import {
   ActivitiesPage,
+  ActivityDetailPage,
+  AnalyticsPage,
   DashboardPage,
   CommentsPage,
   LegalDocumentAdminPage,
@@ -37,8 +39,10 @@ export default function App() {
             <Route element={<ProtectedRoute />}>
               <Route element={<Layout />}>
                 <Route index element={<DashboardPage />} />
+                <Route path="analytics" element={<AnalyticsPage />} />
                 <Route path="activities/pending" element={<Navigate to="/activities?status=PENDING" replace />} />
                 <Route path="activities" element={<ActivitiesPage />} />
+                <Route path="activities/:activityId" element={<ActivityDetailPage />} />
                 <Route path="posts/pending" element={<Navigate to="/posts?status=PENDING" replace />} />
                 <Route path="posts" element={<PostsPage />} />
               <Route path="posts/:postId" element={<PostDetailPage />} />
